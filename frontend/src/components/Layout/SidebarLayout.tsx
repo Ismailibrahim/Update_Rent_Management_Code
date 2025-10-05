@@ -121,7 +121,7 @@ export default function SidebarLayout({ children }: SidebarProps) {
     });
     
     setExpandedGroups(newExpandedGroups);
-  }, [pathname, expandedGroups]);
+  }, [pathname]);
 
   const toggleGroup = (groupName: string) => {
     const newExpandedGroups = new Set(expandedGroups);
