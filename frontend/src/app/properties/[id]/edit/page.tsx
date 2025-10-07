@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/UI/Card';
@@ -46,13 +46,7 @@ export default function EditPropertyPage() {
     }
   });
 
-  useEffect(() => {
-    if (propertyId) {
-      fetchProperty();
-    }
-  }, [propertyId]);
-
-  const fetchProperty = async () => {
+  const fetchProperty = useCallback(async () => {
     try {
       setLoading(true);
       const response = await propertiesAPI.getById(parseInt(propertyId));
@@ -84,7 +78,13 @@ export default function EditPropertyPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [propertyId, router, reset]);
+
+  useEffect(() => {
+    if (propertyId) {
+      fetchProperty();
+    }
+  }, [propertyId, fetchProperty]);
 
   const onSubmit = async (data: PropertyFormData) => {
     try {

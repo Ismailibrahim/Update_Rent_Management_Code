@@ -48,6 +48,7 @@ export default function EditRentalUnitPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<number[]>([]);
+  const [originalAssets, setOriginalAssets] = useState<number[]>([]); // Track originally assigned assets
   const [maintenanceNotes, setMaintenanceNotes] = useState<{[key: number]: {notes: string}}>({});
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -103,18 +104,28 @@ export default function EditRentalUnitPage() {
 
       // Set selected assets with quantities
       if (unit.assets && unit.assets.length > 0) {
-        setSelectedAssets(unit.assets.map((asset: { id: number }) => asset.id));
+        console.log('Unit assets:', unit.assets);
+        const assetIds = unit.assets.map((asset: { id: number }) => asset.id);
+        setSelectedAssets(assetIds);
+        setOriginalAssets(assetIds); // Track originally assigned assets
         // Update asset quantities and status from the unit's assets
         setAssets(prevAssets => {
           return prevAssets.map(asset => {
             const unitAsset = unit.assets.find((ua: { id: number; pivot?: { quantity?: number; status?: string } }) => ua.id === asset.id);
-            return unitAsset ? { 
-              ...asset, 
-              quantity: unitAsset.pivot?.quantity || 1,
-              status: unitAsset.pivot?.status || 'working'
-            } : asset;
+            if (unitAsset) {
+              console.log(`Asset ${asset.id} pivot data:`, unitAsset.pivot);
+              return { 
+                ...asset, 
+                quantity: unitAsset.pivot?.quantity || 1,
+                status: unitAsset.pivot?.status || 'working'
+              };
+            }
+            return asset;
           });
         });
+      } else {
+        setSelectedAssets([]);
+        setOriginalAssets([]);
       }
     } catch (error) {
       console.error('Error fetching rental unit:', error);
@@ -196,12 +207,38 @@ export default function EditRentalUnitPage() {
       console.log('Submitting rental unit data:', submitData);
       await rentalUnitsAPI.update(parseInt(rentalUnitId), submitData);
       
-      // Handle asset assignments with quantities
+      // Handle asset assignments and removals
+      console.log('Original assets:', originalAssets);
       console.log('Selected assets:', selectedAssets);
-      if (selectedAssets.length > 0) {
+      
+      // Find assets to remove (were originally assigned but now unselected)
+      const assetsToRemove = originalAssets.filter(assetId => !selectedAssets.includes(assetId));
+      
+      // Find assets to add (newly selected)
+      const assetsToAdd = selectedAssets.filter(assetId => !originalAssets.includes(assetId));
+      
+      console.log('Assets to remove:', assetsToRemove);
+      console.log('Assets to add:', assetsToAdd);
+      
+      // Remove assets that were unselected
+      if (assetsToRemove.length > 0) {
+        try {
+          for (const assetId of assetsToRemove) {
+            await rentalUnitsAPI.removeAsset(parseInt(rentalUnitId), assetId);
+            console.log(`Removed asset ${assetId} from rental unit`);
+          }
+          toast.success(`Removed ${assetsToRemove.length} asset(s) from rental unit`);
+        } catch (removeError) {
+          console.error('Error removing assets:', removeError);
+          toast.error('Failed to remove some assets');
+        }
+      }
+      
+      // Add newly selected assets
+      if (assetsToAdd.length > 0) {
         try {
           // Prepare assets with quantities
-          const assetsWithQuantities = selectedAssets.map(assetId => {
+          const assetsWithQuantities = assetsToAdd.map(assetId => {
             const asset = assets.find(a => a.id === assetId);
             console.log(`Asset ${assetId}:`, asset);
             return {
@@ -211,21 +248,23 @@ export default function EditRentalUnitPage() {
           });
           
           console.log('Adding assets to rental unit:', assetsWithQuantities);
-          console.log('Current assets state:', assets);
           const addResponse = await rentalUnitsAPI.addAssets(parseInt(rentalUnitId), assetsWithQuantities);
           console.log('Add assets response:', addResponse.data);
-          toast.success(`Rental unit updated successfully with ${selectedAssets.length} asset(s) assigned`);
-        } catch (assetError: unknown) {
-          console.error('Error assigning assets:', assetError);
-          if (assetError && typeof assetError === 'object' && 'response' in assetError) {
-            const axiosError = assetError as { response?: { data?: { message?: string } } };
+          toast.success(`Added ${assetsToAdd.length} asset(s) to rental unit`);
+        } catch (addError: unknown) {
+          console.error('Error adding assets:', addError);
+          if (addError && typeof addError === 'object' && 'response' in addError) {
+            const axiosError = addError as { response?: { data?: { message?: string } } };
             console.error('Asset error response:', axiosError.response?.data);
-            toast.error('Failed to assign assets: ' + (axiosError.response?.data?.message || 'Unknown error'));
+            toast.error('Failed to add assets: ' + (axiosError.response?.data?.message || 'Unknown error'));
           } else {
-            toast.error('Failed to assign assets: Unknown error');
+            toast.error('Failed to add assets: Unknown error');
           }
         }
-      } else {
+      }
+      
+      // Show success message if no asset changes
+      if (assetsToRemove.length === 0 && assetsToAdd.length === 0) {
         toast.success('Rental unit updated successfully');
       }
 

@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class PropertyController extends Controller
@@ -256,6 +257,15 @@ class PropertyController extends Controller
                 ], 403);
             }
 
+            // Check if property has rental units
+            $rentalUnitsCount = $property->rentalUnits()->count();
+            if ($rentalUnitsCount > 0) {
+                return response()->json([
+                    'message' => 'Cannot delete property with rental units. Please delete all rental units first.',
+                    'rental_units_count' => $rentalUnitsCount
+                ], 400);
+            }
+
             $property->delete();
 
             return response()->json([
@@ -263,6 +273,12 @@ class PropertyController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Property deletion failed', [
+                'property_id' => $property->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'message' => 'Failed to delete property',
                 'error' => $e->getMessage()

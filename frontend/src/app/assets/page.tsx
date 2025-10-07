@@ -62,12 +62,14 @@ export default function AssetsPage() {
     }
   };
 
-  const filteredAssets = assets.filter(asset =>
-    asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    asset.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    asset.serial_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    asset.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredAssets = assets
+    .filter(asset =>
+      asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      asset.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      asset.serial_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      asset.category.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const handleAddAsset = () => {
     setEditingAsset(null);

@@ -362,7 +362,10 @@ export default function MonthlyRentPage() {
                     {occupiedUnits.map((unit) => (
                       <tr key={unit.id}>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {unit.tenant.personal_info.firstName} {unit.tenant.personal_info.lastName}
+                          {unit.tenant?.personal_info ? 
+                            `${unit.tenant.personal_info.firstName} ${unit.tenant.personal_info.lastName}` : 
+                            'No Tenant'
+                          }
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {unit.property.name}

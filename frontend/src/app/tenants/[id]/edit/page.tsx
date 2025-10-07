@@ -33,53 +33,6 @@ interface RentalUnit {
   status: string;
 }
 
-interface Tenant {
-  id: number;
-  personal_info: {
-    firstName: string;
-    lastName: string;
-    dateOfBirth?: string;
-    gender?: string;
-    nationality?: string;
-    idNumber?: string;
-  };
-  contact_info: {
-    email: string;
-    phone: string;
-    address?: string;
-  };
-  emergency_contact?: {
-    name?: string;
-    phone?: string;
-    relationship?: string;
-  };
-  employment_info?: {
-    employer?: string;
-    position?: string;
-    salary?: string;
-    workPhone?: string;
-  };
-  financial_info?: {
-    bankName?: string;
-    accountNumber?: string;
-    creditScore?: string;
-  };
-  documents?: Array<{
-    name: string;
-    path: string;
-    size: number;
-    type: string;
-    uploaded_at: string;
-  }>;
-  rental_units?: RentalUnit[];
-  status: string;
-  notes?: string;
-  lease_start_date?: string;
-  lease_end_date?: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export default function EditTenantPage() {
   const router = useRouter();
   const params = useParams();
@@ -127,9 +80,9 @@ export default function EditTenantPage() {
   }, [tenantId]);
 
   useEffect(() => {
-    if (formData.rental_unit_ids.length > 0) {
-      fetchAvailableUnits();
-    }
+    // Refresh available units whenever rental_unit_ids change
+    // This ensures we see updated unit statuses after linking/unlinking
+    fetchAvailableUnits();
   }, [formData.rental_unit_ids]);
 
   const fetchTenant = async () => {
@@ -183,9 +136,12 @@ export default function EditTenantPage() {
       const response = await rentalUnitsAPI.getAll();
       const allUnits = response.data.rentalUnits || [];
       
-      // Filter to show only available units and currently assigned units
+      // Filter to show all units that can be assigned to tenants
+      // This includes: available units, currently assigned units, and any occupied units
       const availableUnits = allUnits.filter((unit: RentalUnit) => 
-        unit.status === 'available' || formData.rental_unit_ids.includes(unit.id.toString())
+        unit.status === 'available' || 
+        formData.rental_unit_ids.includes(unit.id.toString()) ||
+        unit.status === 'occupied' // Show occupied units so they can be reassigned
       );
       
       setAvailableUnits(availableUnits);
@@ -229,6 +185,9 @@ export default function EditTenantPage() {
 
       console.log('Submitting tenant data:', submitData);
       await tenantsAPI.update(parseInt(tenantId), submitData);
+      
+      // Refresh the available units after successful update
+      await fetchAvailableUnits();
       
       toast.success('Tenant updated successfully');
       router.push('/tenants');
@@ -485,7 +444,7 @@ export default function EditTenantPage() {
                 <Home className="h-5 w-5 mr-2" />
                 Rental Unit Assignment
               </CardTitle>
-              <CardDescription>Assign the tenant to available rental units. Currently assigned units are shown for reference.</CardDescription>
+              <CardDescription>Assign the tenant to available rental units. You can link/unlink entire properties or individual units. Currently assigned units are shown for reference.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -498,54 +457,157 @@ export default function EditTenantPage() {
                     <span className="ml-2 text-sm text-gray-600">Loading available units...</span>
                   </div>
                 ) : (
-                  <div className="space-y-3 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-3">
-                    {availableUnits.map((unit) => (
-                      <label key={unit.id} className="flex items-start space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
-                        <input
-                          type="checkbox"
-                          checked={formData.rental_unit_ids.includes(unit.id.toString())}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setFormData(prev => ({
-                                ...prev,
-                                rental_unit_ids: [...prev.rental_unit_ids, unit.id.toString()]
-                              }));
-                            } else {
-                              setFormData(prev => ({
-                                ...prev,
-                                rental_unit_ids: prev.rental_unit_ids.filter(id => id !== unit.id.toString())
-                              }));
-                            }
-                          }}
-                          className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900">
-                            {unit.property.name} - Unit {unit.unit_number} (Floor {unit.floor_number})
-                            {unit.status === 'occupied' && formData.rental_unit_ids.includes(unit.id.toString()) && (
-                              <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                Currently Assigned
-                              </span>
-                            )}
+                  <div className="space-y-4 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-3">
+                    {(() => {
+                      // Group units by property
+                      const groupedByProperty = availableUnits.reduce((acc: {[key: string]: RentalUnit[]}, unit) => {
+                        const propertyId = unit.property.id.toString();
+                        if (!acc[propertyId]) {
+                          acc[propertyId] = [];
+                        }
+                        acc[propertyId].push(unit);
+                        return acc;
+                      }, {});
+
+                      return Object.entries(groupedByProperty).map(([propertyId, units]) => {
+                        const property = units[0].property;
+                        const selectedUnitsInProperty = units.filter(unit => 
+                          formData.rental_unit_ids.includes(unit.id.toString())
+                        );
+                        const allUnitsInPropertySelected = selectedUnitsInProperty.length === units.length;
+                        const someUnitsInPropertySelected = selectedUnitsInProperty.length > 0;
+
+                        return (
+                          <div key={propertyId} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
+                            {/* Property Header */}
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center space-x-3">
+                                <input
+                                  type="checkbox"
+                                  checked={allUnitsInPropertySelected}
+                                  ref={(input) => {
+                                    if (input) {
+                                      input.indeterminate = someUnitsInPropertySelected && !allUnitsInPropertySelected;
+                                    }
+                                  }}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      // Select all units in this property
+                                      const unitIdsToAdd = units
+                                        .filter(unit => !formData.rental_unit_ids.includes(unit.id.toString()))
+                                        .map(unit => unit.id.toString());
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        rental_unit_ids: [...prev.rental_unit_ids, ...unitIdsToAdd]
+                                      }));
+                                    } else {
+                                      // Unselect all units in this property
+                                      const unitIdsToRemove = units.map(unit => unit.id.toString());
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        rental_unit_ids: prev.rental_unit_ids.filter(id => !unitIdsToRemove.includes(id))
+                                      }));
+                                    }
+                                  }}
+                                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                />
+                                <div>
+                                  <h4 className="text-sm font-semibold text-gray-900">{property.name}</h4>
+                                  <p className="text-xs text-gray-500">
+                                    {units.length} unit{units.length !== 1 ? 's' : ''} • 
+                                    {selectedUnitsInProperty.length} selected
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (someUnitsInPropertySelected) {
+                                    // Unlink entire property
+                                    const unitIdsToRemove = units.map(unit => unit.id.toString());
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      rental_unit_ids: prev.rental_unit_ids.filter(id => !unitIdsToRemove.includes(id))
+                                    }));
+                                  } else {
+                                    // Link entire property
+                                    const unitIdsToAdd = units
+                                      .filter(unit => !formData.rental_unit_ids.includes(unit.id.toString()))
+                                      .map(unit => unit.id.toString());
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      rental_unit_ids: [...prev.rental_unit_ids, ...unitIdsToAdd]
+                                    }));
+                                  }
+                                }}
+                                className={`text-xs px-2 py-1 rounded ${
+                                  someUnitsInPropertySelected
+                                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                }`}
+                              >
+                                {someUnitsInPropertySelected ? 'Unlink Property' : 'Link Property'}
+                              </button>
+                            </div>
+
+                            {/* Individual Units */}
+                            <div className="ml-7 space-y-2">
+                              {units.map((unit) => (
+                                <label key={unit.id} className="flex items-start space-x-3 cursor-pointer hover:bg-white p-2 rounded">
+                                  <input
+                                    type="checkbox"
+                                    checked={formData.rental_unit_ids.includes(unit.id.toString())}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          rental_unit_ids: [...prev.rental_unit_ids, unit.id.toString()]
+                                        }));
+                                      } else {
+                                        setFormData(prev => ({
+                                          ...prev,
+                                          rental_unit_ids: prev.rental_unit_ids.filter(id => id !== unit.id.toString())
+                                        }));
+                                      }
+                                    }}
+                                    className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      Unit {unit.unit_number} (Floor {unit.floor_number})
+                                      {unit.status === 'occupied' && formData.rental_unit_ids.includes(unit.id.toString()) && (
+                                        <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                          Currently Assigned
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {unit.unit_details.numberOfRooms && unit.unit_details.numberOfToilets && 
+                                        `${unit.unit_details.numberOfRooms} bed, ${unit.unit_details.numberOfToilets} bath`
+                                      }
+                                      {unit.financial.rentAmount && 
+                                        ` • ${unit.financial.currency || '$'}${unit.financial.rentAmount.toLocaleString()}/month`
+                                      }
+                                      <span className={`ml-2 px-2 py-1 rounded-full text-xs ${
+                                        unit.status === 'available' 
+                                          ? 'bg-green-100 text-green-800' 
+                                          : unit.status === 'occupied'
+                                          ? 'bg-red-100 text-red-800'
+                                          : unit.status === 'deactivated'
+                                          ? 'bg-gray-100 text-gray-800'
+                                          : 'bg-yellow-100 text-yellow-800'
+                                      }`}>
+                                        {unit.status}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {unit.unit_details.numberOfRooms && unit.unit_details.numberOfToilets && 
-                              `${unit.unit_details.numberOfRooms} bed, ${unit.unit_details.numberOfToilets} bath`
-                            }
-                            {unit.financial.rentAmount && 
-                              ` • ${unit.financial.currency || '$'}${unit.financial.rentAmount.toLocaleString()}/month`
-                            }
-                            <span className={`ml-2 px-2 py-1 rounded-full text-xs ${
-                              unit.status === 'available' 
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-orange-100 text-orange-800'
-                            }`}>
-                              {unit.status}
-                            </span>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </div>

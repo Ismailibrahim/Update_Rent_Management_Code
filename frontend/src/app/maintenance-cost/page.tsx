@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
-import { DollarSign, FileText, RefreshCw, Plus, Eye, Edit, Trash2 } from 'lucide-react';
+import { DollarSign, FileText, RefreshCw, Eye, Edit, Trash2 } from 'lucide-react';
 import { maintenanceCostsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -333,7 +333,7 @@ export default function MaintenanceCostPage() {
                                   await maintenanceCostsAPI.delete(cost.id);
                                   toast.success('Maintenance cost deleted successfully');
                                   fetchMaintenanceCosts();
-                                } catch (error) {
+                                } catch {
                                   toast.error('Failed to delete maintenance cost');
                                 }
                               }

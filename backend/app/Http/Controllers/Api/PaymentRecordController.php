@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 use App\Models\PaymentRecord;
 
 class PaymentRecordController extends Controller
@@ -16,7 +17,15 @@ class PaymentRecordController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = PaymentRecord::with(['rentalUnit.tenant', 'rentalUnit.property', 'paymentType', 'paymentMode']);
+            // Load relationships without any filtering to include deactivated units
+            $query = PaymentRecord::with([
+                'rentalUnit' => function($query) {
+                    // Don't filter by is_active - include all units (active and deactivated)
+                    $query->with(['tenant', 'property']);
+                },
+                'paymentType', 
+                'paymentMode'
+            ]);
             
             // Apply filters if provided
             if ($request->has('search')) {
@@ -39,6 +48,20 @@ class PaymentRecordController extends Controller
             
             // Transform the data to match frontend expectations
             $transformedRecords = $paymentRecords->map(function($record) {
+                // Debug logging to see what we're getting
+                Log::info('Payment Record Debug', [
+                    'record_id' => $record->id,
+                    'rental_unit_id' => $record->rentalUnit?->id,
+                    'rental_unit_number' => $record->rentalUnit?->unit_number,
+                    'rental_unit_status' => $record->rentalUnit?->status,
+                    'rental_unit_is_active' => $record->rentalUnit?->is_active,
+                    'tenant_id' => $record->rentalUnit?->tenant_id,
+                    'tenant_exists' => $record->rentalUnit?->tenant ? 'Yes' : 'No',
+                    'tenant_name' => $record->rentalUnit?->tenant ? 
+                        $record->rentalUnit->tenant->personal_info['firstName'] . ' ' . $record->rentalUnit->tenant->personal_info['lastName'] : 
+                        'No tenant'
+                ]);
+                
                 return [
                     'id' => $record->id,
                     'tenant_id' => $record->rentalUnit->tenant_id ?? null,

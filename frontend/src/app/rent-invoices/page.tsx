@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
+import { Card, CardContent } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Select } from '../../components/UI/Select';
@@ -104,9 +104,12 @@ export default function RentInvoicesPage() {
   };
 
   const filteredInvoices = invoices.filter(invoice => {
-    const tenantName = `${invoice.tenant.personal_info.firstName} ${invoice.tenant.personal_info.lastName}`.toLowerCase();
-    const propertyName = invoice.property.name.toLowerCase();
-    const invoiceNumber = invoice.invoice_number.toLowerCase();
+    // Handle cases where tenant might be null
+    const tenantName = invoice.tenant?.personal_info ? 
+      `${invoice.tenant.personal_info.firstName} ${invoice.tenant.personal_info.lastName}`.toLowerCase() : 
+      'no tenant';
+    const propertyName = invoice.property?.name?.toLowerCase() || 'no property';
+    const invoiceNumber = invoice.invoice_number?.toLowerCase() || '';
     
     return tenantName.includes(searchTerm.toLowerCase()) ||
            propertyName.includes(searchTerm.toLowerCase()) ||
@@ -411,7 +414,10 @@ export default function RentInvoicesPage() {
                           <div className="flex items-center">
                             <User className="h-4 w-4 mr-2 text-gray-400" />
                             <span className="text-sm text-gray-900">
-                              {invoice.tenant.personal_info.firstName} {invoice.tenant.personal_info.lastName}
+                              {invoice.tenant?.personal_info ? 
+                                `${invoice.tenant.personal_info.firstName} ${invoice.tenant.personal_info.lastName}` : 
+                                'No Tenant'
+                              }
                             </span>
                           </div>
                         </td>
@@ -618,7 +624,10 @@ export default function RentInvoicesPage() {
                   </h3>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
-                  Invoice: {selectedInvoice.invoice_number} - {selectedInvoice.tenant.personal_info.firstName} {selectedInvoice.tenant.personal_info.lastName}
+                  Invoice: {selectedInvoice.invoice_number} - {selectedInvoice.tenant?.personal_info ? 
+                    `${selectedInvoice.tenant.personal_info.firstName} ${selectedInvoice.tenant.personal_info.lastName}` : 
+                    'No Tenant'
+                  }
                 </p>
               </div>
               

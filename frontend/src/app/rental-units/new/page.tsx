@@ -168,11 +168,22 @@ function NewRentalUnitPageContent() {
           depositAmount: parseFloat(formData.financial.depositAmount),
           currency: formData.financial.currency
         },
-        assets: selectedAssets
+        // Include assets with quantities for creation
+        assets: selectedAssets.map(assetId => {
+          return {
+            asset_id: assetId,
+            quantity: 1 // Default quantity for new assignments
+          };
+        })
       };
 
-      const rentalUnit = await rentalUnitsAPI.create(submitData);
-      toast.success('Rental unit created successfully');
+      await rentalUnitsAPI.create(submitData);
+      
+      if (selectedAssets.length > 0) {
+        toast.success(`Rental unit created successfully with ${selectedAssets.length} asset(s) assigned`);
+      } else {
+        toast.success('Rental unit created successfully');
+      }
       
       router.push('/rental-units');
     } catch (error: unknown) {

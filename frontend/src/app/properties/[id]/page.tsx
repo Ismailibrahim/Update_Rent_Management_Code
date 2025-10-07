@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/UI/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/UI/Card';
 import { Button } from '@/components/UI/Button';
 import { ArrowLeft, Edit, Trash2, Building2, MapPin, Calendar, Users, Home } from 'lucide-react';
 import { propertiesAPI, rentalUnitsAPI } from '@/services/api';
@@ -63,14 +63,7 @@ export default function PropertyDetailsPage() {
   const [rentalUnits, setRentalUnits] = useState<RentalUnit[]>([]);
   const [rentalUnitsLoading, setRentalUnitsLoading] = useState(false);
 
-  useEffect(() => {
-    if (propertyId) {
-      fetchProperty();
-      fetchRentalUnits();
-    }
-  }, [propertyId]);
-
-  const fetchProperty = async () => {
+  const fetchProperty = useCallback(async () => {
     try {
       setLoading(true);
       const response = await propertiesAPI.getById(parseInt(propertyId));
@@ -82,9 +75,9 @@ export default function PropertyDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [propertyId]);
 
-  const fetchRentalUnits = async () => {
+  const fetchRentalUnits = useCallback(async () => {
     try {
       setRentalUnitsLoading(true);
       console.log('Fetching rental units for property ID:', propertyId);
@@ -97,7 +90,14 @@ export default function PropertyDetailsPage() {
     } finally {
       setRentalUnitsLoading(false);
     }
-  };
+  }, [propertyId]);
+
+  useEffect(() => {
+    if (propertyId) {
+      fetchProperty();
+      fetchRentalUnits();
+    }
+  }, [propertyId, fetchProperty, fetchRentalUnits]);
 
   const handleEdit = () => {
     router.push(`/properties/${propertyId}/edit`);
@@ -355,7 +355,9 @@ export default function PropertyDetailsPage() {
                                   ? 'bg-green-100 text-green-800' 
                                   : unit.status === 'occupied'
                                   ? 'bg-red-100 text-red-800'
-                                  : 'bg-gray-100 text-gray-800'
+                                  : unit.status === 'deactivated'
+                                  ? 'bg-gray-100 text-gray-800'
+                                  : 'bg-yellow-100 text-yellow-800'
                               }`}>
                                 {unit.status}
                               </span>

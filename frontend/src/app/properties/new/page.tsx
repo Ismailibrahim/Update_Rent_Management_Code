@@ -34,7 +34,7 @@ export default function NewPropertyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   
-  const { register, handleSubmit, formState: { errors }, watch } = useForm<PropertyFormData>({
+  const { register, handleSubmit, formState: { errors } } = useForm<PropertyFormData>({
     defaultValues: {
       status: 'vacant',
       type: 'apartment',

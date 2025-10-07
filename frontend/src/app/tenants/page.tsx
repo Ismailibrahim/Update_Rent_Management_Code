@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
+import { Card, CardContent } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Users, Plus, Search, Edit, Trash2, Eye, Phone, Mail, Home, DollarSign, Building } from 'lucide-react';

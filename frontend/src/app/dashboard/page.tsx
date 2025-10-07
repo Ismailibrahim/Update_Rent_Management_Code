@@ -30,26 +30,16 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastFetch, setLastFetch] = useState<number>(0);
-
-  // Cache data for 30 seconds
-  const CACHE_DURATION = 30000;
 
   useEffect(() => {
     // Only fetch data if user is authenticated
     if (!authLoading && user) {
-      const now = Date.now();
-      // Use cached data if available and not expired
-      if (now - lastFetch < CACHE_DURATION && stats.totalProperties > 0) {
-        setLoading(false);
-        return;
-      }
       fetchDashboardData();
     } else if (!authLoading && !user) {
       setLoading(false);
       setError('Please log in to view dashboard data');
     }
-  }, [user, authLoading, lastFetch, stats.totalProperties]);
+  }, [user, authLoading]);
 
   const fetchDashboardData = async () => {
     try {
@@ -60,16 +50,16 @@ export default function DashboardPage() {
       const [propertiesRes, tenantsRes, rentalUnitsRes] = await Promise.all([
         propertiesAPI.getAll().catch(() => ({ data: { properties: [] } })),
         tenantsAPI.getAll().catch(() => ({ data: { tenants: [] } })),
-        rentalUnitsAPI.getAll().catch(() => ({ data: { rental_units: [] } }))
+        rentalUnitsAPI.getAll().catch(() => ({ data: { rentalUnits: [] } }))
       ]);
 
       const properties = propertiesRes.data.properties || [];
       const tenants = tenantsRes.data.tenants || [];
-      const rentalUnits = rentalUnitsRes.data.rental_units || [];
+      const rentalUnits = rentalUnitsRes.data.rentalUnits || [];
 
       // Calculate stats
-      const occupiedUnits = rentalUnits.filter((unit: { is_occupied: boolean }) => unit.is_occupied).length;
-      const availableUnits = rentalUnits.filter((unit: { is_occupied: boolean }) => !unit.is_occupied).length;
+      const occupiedUnits = rentalUnits.filter((unit: { status: string }) => unit.status === 'occupied').length;
+      const availableUnits = rentalUnits.filter((unit: { status: string }) => unit.status === 'available').length;
       
       setStats({
         totalProperties: properties.length,
@@ -81,8 +71,6 @@ export default function DashboardPage() {
         maintenanceRequests: 0
       });
 
-      // Update cache timestamp
-      setLastFetch(Date.now());
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       setError('Failed to load dashboard data. Please try again.');
@@ -162,7 +150,6 @@ export default function DashboardPage() {
             </div>
             <button
               onClick={() => {
-                setLastFetch(0); // Force refresh by clearing cache
                 fetchDashboardData();
               }}
               className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"

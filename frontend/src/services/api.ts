@@ -111,6 +111,7 @@ interface RentalUnit {
   amenities?: string[];
   photos?: string[];
   notes?: string;
+  is_active?: boolean;
 }
 
 interface Tenant {
@@ -306,6 +307,8 @@ export const tenantsAPI = {
     
     formData.append('status', tenantData.status || 'active');
     formData.append('notes', tenantData.notes || '');
+    formData.append('lease_start_date', tenantData.lease_start_date || '');
+    formData.append('lease_end_date', tenantData.lease_end_date || '');
     
     // Add files
     if (files && files.length > 0) {

@@ -60,6 +60,8 @@ export default function NewTenantPage() {
     },
     status: 'active',
     notes: '',
+    lease_start_date: '',
+    lease_end_date: '',
     rental_unit_ids: [] as string[]
   });
 
@@ -104,6 +106,8 @@ export default function NewTenantPage() {
     try {
       // Create tenant first with files (without rental_unit_ids)
       const { rental_unit_ids, ...tenantData } = formData;
+      
+      
       const tenantResponse = await tenantsAPI.create(tenantData, files);
       const tenant = tenantResponse.data.tenant;
       
@@ -114,7 +118,8 @@ export default function NewTenantPage() {
           await rentalUnitsAPI.update(parseInt(unitId), {
             tenant_id: tenant.id,
             status: 'occupied',
-            move_in_date: new Date().toISOString().split('T')[0]
+            move_in_date: formData.lease_start_date || new Date().toISOString().split('T')[0],
+            lease_end_date: formData.lease_end_date
           });
           assignmentResults.push({ unitId, success: true });
         } catch (unitError: unknown) {
@@ -463,6 +468,38 @@ export default function NewTenantPage() {
                 acceptedTypes={['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png']}
                 maxSize={10}
               />
+            </CardContent>
+          </Card>
+
+          {/* Lease Information */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Lease Information</CardTitle>
+              <CardDescription>Lease start and end dates</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Lease Start Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={formData.lease_start_date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, lease_start_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Lease End Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={formData.lease_end_date}
+                    onChange={(e) => setFormData(prev => ({ ...prev, lease_end_date: e.target.value }))}
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
 

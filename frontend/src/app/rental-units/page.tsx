@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Building2, Plus, Search, Edit, Trash2, Eye, Users } from 'lucide-react';
+import { Building2, Plus, Search, Edit, Trash2 } from 'lucide-react';
 import { rentalUnitsAPI, propertiesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -100,14 +100,9 @@ export default function RentalUnitsPage() {
   const fetchRentalUnits = async () => {
     try {
       setLoading(true);
-      console.log('Fetching rental units...');
       const response = await rentalUnitsAPI.getAll();
-      console.log('Rental units response:', response.data);
       const units = response.data.rentalUnits || [];
-      console.log('First unit assets:', units[0]?.assets);
-      console.log('First unit asset pivot:', units[0]?.assets?.[0]?.pivot);
       setRentalUnits(units);
-      console.log('Rental units updated:', units.length, 'units');
     } catch (error) {
       console.error('Error fetching rental units:', error);
       toast.error('Failed to fetch rental units');
@@ -151,7 +146,7 @@ export default function RentalUnitsPage() {
 
   const handleToggleStatus = async (id: number, currentStatus: boolean) => {
     try {
-      await rentalUnitsAPI.update(id, { status: !currentStatus ? 'active' : 'inactive' });
+      await rentalUnitsAPI.update(id, { is_active: !currentStatus });
       toast.success(`Rental unit ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
       fetchRentalUnits();
     } catch (error) {
@@ -321,7 +316,9 @@ export default function RentalUnitsPage() {
                             ? 'bg-green-100 text-green-800' 
                             : unit.status === 'occupied'
                             ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
+                            : unit.status === 'deactivated'
+                            ? 'bg-gray-100 text-gray-800'
+                            : 'bg-yellow-100 text-yellow-800'
                         }`}>
                           {unit.status}
                         </span>
@@ -340,6 +337,8 @@ export default function RentalUnitsPage() {
                                 )}
                               </div>
                             )
+                            : unit.status === 'deactivated'
+                            ? 'Deactivated'
                             : 'Available'
                           }
                         </div>
