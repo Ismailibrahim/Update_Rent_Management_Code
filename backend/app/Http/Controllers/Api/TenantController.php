@@ -74,6 +74,8 @@ class TenantController extends Controller
             'notes' => 'nullable|string',
             'lease_start_date' => 'nullable|date',
             'lease_end_date' => 'nullable|date|after_or_equal:lease_start_date',
+            'rental_unit_ids' => 'nullable|array',
+            'rental_unit_ids.*' => 'exists:rental_units,id',
             'files' => 'nullable|array',
             'files.*' => 'file|mimes:pdf,doc,docx,jpg,jpeg,png|max:10240', // 10MB max
         ]);
@@ -111,6 +113,18 @@ class TenantController extends Controller
             $tenantData['documents'] = array_merge($existingDocuments, $uploadedDocuments);
 
             $tenant = Tenant::create($tenantData);
+            
+            // Handle rental unit assignments
+            if ($request->has('rental_unit_ids') && !empty($request->rental_unit_ids)) {
+                \App\Models\RentalUnit::whereIn('id', $request->rental_unit_ids)->update([
+                    'tenant_id' => $tenant->id,
+                    'status' => 'occupied',
+                    'move_in_date' => $tenant->lease_start_date ?? now()->toDateString(),
+                    'lease_end_date' => $tenant->lease_end_date
+                ]);
+            }
+            
+            $tenant->load('rentalUnits');
 
             return response()->json([
                 'message' => 'Tenant created successfully',
@@ -161,6 +175,8 @@ class TenantController extends Controller
             'notes' => 'nullable|string',
             'lease_start_date' => 'nullable|date',
             'lease_end_date' => 'nullable|date|after_or_equal:lease_start_date',
+            'rental_unit_ids' => 'nullable|array',
+            'rental_unit_ids.*' => 'exists:rental_units,id',
         ]);
 
         if ($validator->fails()) {
@@ -171,7 +187,36 @@ class TenantController extends Controller
         }
 
         try {
-            $tenant->update($request->all());
+            $updateData = $request->all();
+            
+            // Handle rental unit assignments
+            if ($request->has('rental_unit_ids')) {
+                $rentalUnitIds = $request->rental_unit_ids;
+                
+                // First, unlink all current rental units from this tenant
+                \App\Models\RentalUnit::where('tenant_id', $tenant->id)->update([
+                    'tenant_id' => null,
+                    'status' => 'available',
+                    'move_in_date' => null,
+                    'lease_end_date' => null
+                ]);
+                
+                // Then, link the new rental units to this tenant
+                if (!empty($rentalUnitIds)) {
+                    \App\Models\RentalUnit::whereIn('id', $rentalUnitIds)->update([
+                        'tenant_id' => $tenant->id,
+                        'status' => 'occupied',
+                        'move_in_date' => $tenant->lease_start_date ?? now()->toDateString(),
+                        'lease_end_date' => $tenant->lease_end_date
+                    ]);
+                }
+                
+                // Remove rental_unit_ids from update data since we handle it separately
+                unset($updateData['rental_unit_ids']);
+            }
+            
+            $tenant->update($updateData);
+            $tenant->load('rentalUnits');
 
             return response()->json([
                 'message' => 'Tenant updated successfully',

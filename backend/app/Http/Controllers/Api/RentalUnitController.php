@@ -101,7 +101,7 @@ class RentalUnitController extends Controller
             'financial.rentAmount' => 'required|numeric|min:0',
             'financial.depositAmount' => 'required|numeric|min:0',
             'financial.currency' => 'required|string|max:10',
-            'status' => ['sometimes', Rule::in(['available', 'occupied', 'maintenance', 'renovation'])],
+            'status' => ['sometimes', Rule::in(['available', 'occupied', 'maintenance', 'renovation', 'deactivated'])],
             'tenant_id' => 'nullable|exists:tenants,id',
             'move_in_date' => 'nullable|date',
             'lease_end_date' => 'nullable|date|after:move_in_date',
@@ -109,7 +109,7 @@ class RentalUnitController extends Controller
             'photos' => 'nullable|array',
             'notes' => 'nullable|string',
             'assets' => 'nullable|array',
-            'assets.*' => 'exists:assets,id',
+            'assets.*' => 'nullable',
         ]);
 
         if ($validator->fails()) {
@@ -148,7 +148,10 @@ class RentalUnitController extends Controller
 
             // Handle asset assignments
             if ($request->has('assets') && is_array($request->assets)) {
-                foreach ($request->assets as $assetId) {
+                foreach ($request->assets as $assetData) {
+                    $assetId = is_array($assetData) ? $assetData['asset_id'] : $assetData;
+                    $quantity = is_array($assetData) ? ($assetData['quantity'] ?? 1) : 1;
+                    
                     $asset = Asset::find($assetId);
                     if ($asset) {
                         // Check if asset is already assigned
@@ -163,6 +166,8 @@ class RentalUnitController extends Controller
                                 'assigned_date' => now(),
                                 'notes' => 'Assigned during unit creation',
                                 'is_active' => true,
+                                'quantity' => $quantity,
+                                'status' => 'working',
                             ]);
                         }
                     }
@@ -226,7 +231,8 @@ class RentalUnitController extends Controller
             'financial.rentAmount' => 'sometimes|numeric|min:0',
             'financial.depositAmount' => 'sometimes|numeric|min:0',
             'financial.currency' => 'sometimes|string|max:10',
-            'status' => ['sometimes', Rule::in(['available', 'occupied', 'maintenance', 'renovation'])],
+            'status' => ['sometimes', Rule::in(['available', 'occupied', 'maintenance', 'renovation', 'deactivated'])],
+            'is_active' => 'sometimes|boolean',
             'tenant_id' => 'nullable|exists:tenants,id',
             'move_in_date' => 'nullable|date',
             'lease_end_date' => 'nullable|date|after:move_in_date',
@@ -273,18 +279,44 @@ class RentalUnitController extends Controller
                 }
             }
             
-            // If tenant_id is being set to null, ensure status is available
-            if (isset($updateData['tenant_id']) && is_null($updateData['tenant_id'])) {
-                $updateData['status'] = 'available';
-                $updateData['move_in_date'] = null;
-                $updateData['lease_end_date'] = null;
+            // Handle is_active changes FIRST - this takes precedence over tenant logic
+            if (isset($updateData['is_active'])) {
+                if ($updateData['is_active'] === false) {
+                    // When deactivating, set status to deactivated (override any other status)
+                    $updateData['status'] = 'deactivated';
+                    Log::info('Deactivating rental unit', [
+                        'rental_unit_id' => $rentalUnit->id,
+                        'current_status' => $rentalUnit->status,
+                        'new_status' => 'deactivated'
+                    ]);
+                } else if ($updateData['is_active'] === true && $rentalUnit->is_active === false) {
+                    // When reactivating, set status to available (unless tenant is assigned)
+                    if (empty($rentalUnit->tenant_id)) {
+                        $updateData['status'] = 'available';
+                        Log::info('Reactivating rental unit', [
+                            'rental_unit_id' => $rentalUnit->id,
+                            'current_status' => $rentalUnit->status,
+                            'new_status' => 'available'
+                        ]);
+                    }
+                }
             }
             
-            // If tenant_id is being set to a value, ensure status is occupied
-            if (isset($updateData['tenant_id']) && !is_null($updateData['tenant_id'])) {
-                $updateData['status'] = 'occupied';
-                if (!isset($updateData['move_in_date'])) {
-                    $updateData['move_in_date'] = now()->toDateString();
+            // Handle tenant assignments (only if not deactivating)
+            if (!isset($updateData['is_active']) || $updateData['is_active'] !== false) {
+                // If tenant_id is being set to null, ensure status is available
+                if (isset($updateData['tenant_id']) && is_null($updateData['tenant_id'])) {
+                    $updateData['status'] = 'available';
+                    $updateData['move_in_date'] = null;
+                    $updateData['lease_end_date'] = null;
+                }
+                
+                // If tenant_id is being set to a value, ensure status is occupied
+                if (isset($updateData['tenant_id']) && !is_null($updateData['tenant_id'])) {
+                    $updateData['status'] = 'occupied';
+                    if (!isset($updateData['move_in_date'])) {
+                        $updateData['move_in_date'] = now()->toDateString();
+                    }
                 }
             }
             
