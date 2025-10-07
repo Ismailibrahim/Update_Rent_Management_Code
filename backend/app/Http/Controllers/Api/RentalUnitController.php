@@ -356,13 +356,47 @@ class RentalUnitController extends Controller
     public function destroy(RentalUnit $rentalUnit): JsonResponse
     {
         try {
+            Log::info('Deleting rental unit', [
+                'rental_unit_id' => $rentalUnit->id,
+                'unit_number' => $rentalUnit->unit_number,
+                'has_tenant' => !is_null($rentalUnit->tenant_id),
+                'has_assets' => $rentalUnit->assets()->count() > 0
+            ]);
+
+            // Check if rental unit has a tenant assigned
+            if ($rentalUnit->tenant_id) {
+                return response()->json([
+                    'message' => 'Cannot delete rental unit with assigned tenant. Please unassign the tenant first.',
+                    'error' => 'Rental unit has assigned tenant'
+                ], 400);
+            }
+
+            // Check if rental unit has active assets
+            $activeAssets = $rentalUnit->assets()->wherePivot('is_active', true)->count();
+            if ($activeAssets > 0) {
+                return response()->json([
+                    'message' => 'Cannot delete rental unit with assigned assets. Please remove all assets first.',
+                    'error' => 'Rental unit has assigned assets'
+                ], 400);
+            }
+
+            // Delete the rental unit
             $rentalUnit->delete();
+
+            Log::info('Rental unit deleted successfully', [
+                'rental_unit_id' => $rentalUnit->id
+            ]);
 
             return response()->json([
                 'message' => 'Rental unit deleted successfully'
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Rental unit deletion failed', [
+                'rental_unit_id' => $rentalUnit->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'message' => 'Failed to delete rental unit',
                 'error' => $e->getMessage()
