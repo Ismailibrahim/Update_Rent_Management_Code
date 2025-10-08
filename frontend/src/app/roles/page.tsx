@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Textarea } from '../../components/UI/Textarea';
-import { Select } from '../../components/UI/Select';
 import { Shield, Plus, Search, Edit, Trash2, Save, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -35,7 +34,7 @@ export default function RolesPage() {
     is_active: true
   });
 
-  const availablePermissions = [
+  const availablePermissions = useMemo(() => [
     'properties',
     'tenants',
     'rental_units',
@@ -46,13 +45,9 @@ export default function RolesPage() {
     'settings',
     'maintenance',
     'assets'
-  ];
+  ], []);
 
-  useEffect(() => {
-    fetchRoles();
-  }, []);
-
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     try {
       setLoading(true);
       // For now, we'll use mock data since we don't have a roles API yet
@@ -69,20 +64,20 @@ export default function RolesPage() {
         },
         {
           id: 2,
-          name: 'property_manager',
+          name: 'manager',
           display_name: 'Property Manager',
-          description: 'Manage properties and tenants',
-          permissions: ['properties', 'tenants', 'rental_units', 'maintenance'],
+          description: 'Property and tenant management',
+          permissions: ['properties', 'tenants', 'rental_units', 'payments', 'reports'],
           is_active: true,
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z'
         },
         {
           id: 3,
-          name: 'accountant',
-          display_name: 'Accountant',
-          description: 'Manage payments and financial reports',
-          permissions: ['payments', 'reports'],
+          name: 'viewer',
+          display_name: 'Viewer',
+          description: 'Read-only access',
+          permissions: ['properties', 'tenants', 'rental_units', 'reports'],
           is_active: true,
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z'
@@ -95,7 +90,11 @@ export default function RolesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [availablePermissions]);
+
+  useEffect(() => {
+    fetchRoles();
+  }, [fetchRoles]);
 
   const filteredRoles = roles.filter(role =>
     role.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

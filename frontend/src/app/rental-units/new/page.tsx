@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../../components/UI/Button';
 import { Input } from '../../../components/UI/Input';
 import { ArrowLeft, Save, X } from 'lucide-react';
-import { rentalUnitsAPI, propertiesAPI, assetsAPI } from '../../../services/api';
+import { rentalUnitsAPI, propertiesAPI, assetsAPI, rentalUnitTypesAPI } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -25,6 +25,15 @@ interface Asset {
   category: string;
 }
 
+interface RentalUnitType {
+  id: number;
+  name: string;
+  description?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface RentalUnit {
   id: number;
   unit_details: {
@@ -39,6 +48,7 @@ function NewRentalUnitPageContent() {
   const propertyIdFromUrl = searchParams.get('property');
   const [properties, setProperties] = useState<Property[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [unitTypes, setUnitTypes] = useState<RentalUnitType[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
@@ -46,10 +56,12 @@ function NewRentalUnitPageContent() {
   const [formData, setFormData] = useState({
     property_id: propertyIdFromUrl || '',
     unit_number: '',
+    unit_type: '',
     floor_number: '',
     unit_details: {
       numberOfRooms: '',
-      numberOfToilets: ''
+      numberOfToilets: '',
+      squareFeet: ''
     },
     financial: {
       rentAmount: '',
@@ -61,9 +73,17 @@ function NewRentalUnitPageContent() {
     assets: []
   });
 
+  const allowedUnitTypes = ['residential', 'office', 'shop', 'warehouse', 'other'];
+  const mapToAllowedUnitType = (name: string): string => {
+    if (!name) return 'other';
+    const normalized = name.trim().toLowerCase();
+    return allowedUnitTypes.includes(normalized) ? normalized : 'other';
+  };
+
   useEffect(() => {
     fetchProperties();
     fetchAssets();
+    fetchUnitTypes();
     
     // If coming from a property page, fetch property details
     if (propertyIdFromUrl) {
@@ -88,6 +108,16 @@ function NewRentalUnitPageContent() {
     } catch (error) {
       console.error('Error fetching assets:', error);
       toast.error('Failed to fetch assets');
+    }
+  };
+
+  const fetchUnitTypes = async () => {
+    try {
+      const response = await rentalUnitTypesAPI.getAll({ active_only: true });
+      const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
+      setUnitTypes(types);
+    } catch (error) {
+      console.error('Error fetching unit types:', error);
     }
   };
 
@@ -161,7 +191,8 @@ function NewRentalUnitPageContent() {
         floor_number: parseInt(formData.floor_number),
         unit_details: {
           numberOfRooms: parseInt(formData.unit_details.numberOfRooms),
-          numberOfToilets: parseFloat(formData.unit_details.numberOfToilets)
+          numberOfToilets: parseFloat(formData.unit_details.numberOfToilets),
+          squareFeet: formData.unit_details.squareFeet ? parseFloat(formData.unit_details.squareFeet) : undefined
         },
         financial: {
           rentAmount: parseFloat(formData.financial.rentAmount),
@@ -326,6 +357,35 @@ function NewRentalUnitPageContent() {
                     required
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unit Type *
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={formData.unit_type}
+                    onChange={(e) => setFormData(prev => ({ ...prev, unit_type: e.target.value }))}
+                    required
+                  >
+                    <option value="">Select unit type</option>
+                    {unitTypes.map((unitType) => {
+                      const value = mapToAllowedUnitType(unitType.name);
+                      return (
+                        <option key={unitType.id} value={value}>
+                          {unitType.name}
+                        </option>
+                      );
+                    })}
+                    {unitTypes.length === 0 && (
+                      <>
+                        {allowedUnitTypes.map((t) => (
+                          <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -396,6 +456,23 @@ function NewRentalUnitPageContent() {
                     min="0"
                     step="0.5"
                     required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Square Feet (Optional)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Square feet"
+                    value={formData.unit_details.squareFeet}
+                    onChange={(e) => setFormData(prev => ({ 
+                      ...prev, 
+                      unit_details: { ...prev.unit_details, squareFeet: e.target.value }
+                    }))}
+                    min="0"
+                    step="0.01"
                   />
                 </div>
               </div>

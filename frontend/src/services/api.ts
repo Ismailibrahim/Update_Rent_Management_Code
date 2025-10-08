@@ -89,15 +89,25 @@ interface Property {
   assigned_manager_id?: number;
 }
 
+interface RentalUnitType {
+  id: number;
+  name: string;
+  description?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 interface RentalUnit {
   id: number;
   property_id: number;
   unit_number: string;
+  unit_type: string;
   floor_number: number;
   unit_details: {
     numberOfRooms?: number;
     numberOfToilets?: number;
-    square_feet?: number;
+    squareFeet?: number;
   };
   financial: {
     rentAmount: number;
@@ -148,6 +158,8 @@ interface Tenant {
   documents?: string[];
   status: string;
   notes?: string;
+  lease_start_date?: string;
+  lease_end_date?: string;
   created_at: string;
   updated_at: string;
 }
@@ -540,12 +552,22 @@ export const rentInvoicesAPI = {
   delete: (id: number) => api.delete(`/rent-invoices/${id}`),
   generateMonthly: (data: { month: number; year: number; due_date_offset?: number }) => 
     api.post('/rent-invoices/generate-monthly', data),
-  markAsPaid: (id: number, data?: Record<string, unknown>) => api.patch(`/rent-invoices/${id}/mark-paid`, data),
+  markAsPaid: (id: number, data?: Record<string, unknown> | FormData) => {
+    return api.post(`/rent-invoices/${id}/mark-paid`, data);
+  },
   getStatistics: () => api.get('/rent-invoices/statistics'),
 };
 
 export const settingsAPI = {
   getDropdowns: () => api.get('/settings/dropdowns'),
+};
+
+export const rentalUnitTypesAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/rental-unit-types', { params }),
+  getById: (id: number) => api.get(`/rental-unit-types/${id}`),
+  create: (data: Partial<RentalUnitType>) => api.post('/rental-unit-types', data),
+  update: (id: number, data: Partial<RentalUnitType>) => api.put(`/rental-unit-types/${id}`, data),
+  delete: (id: number) => api.delete(`/rental-unit-types/${id}`),
 };
 
 export const dashboardAPI = {

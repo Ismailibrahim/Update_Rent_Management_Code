@@ -44,7 +44,7 @@ export function Dialog({ open, onOpenChange, children, className }: DialogProps)
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/50" 
+        className="fixed inset-0 backdrop-blur-sm" 
         onClick={() => onOpenChange(false)}
       />
       

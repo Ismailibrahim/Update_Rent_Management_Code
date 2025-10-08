@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Settings, Save, Building2, DollarSign, Bell, Shield, Users, Globe } from 'lucide-react';
+import { Settings, Save, Building2, DollarSign, Bell } from 'lucide-react';
 import { settingsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';

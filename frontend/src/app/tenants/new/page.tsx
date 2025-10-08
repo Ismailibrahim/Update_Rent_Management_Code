@@ -105,7 +105,7 @@ export default function NewTenantPage() {
 
     try {
       // Create tenant first with files (without rental_unit_ids)
-      const { rental_unit_ids, ...tenantData } = formData;
+      const { rental_unit_ids: selectedUnitIds, ...tenantData } = formData;
       
       
       const tenantResponse = await tenantsAPI.create(tenantData, files);
@@ -113,7 +113,7 @@ export default function NewTenantPage() {
       
       // Assign the tenant to all selected rental units
       const assignmentResults = [];
-      for (const unitId of formData.rental_unit_ids) {
+      for (const unitId of selectedUnitIds) {
         try {
           await rentalUnitsAPI.update(parseInt(unitId), {
             tenant_id: tenant.id,
@@ -134,10 +134,10 @@ export default function NewTenantPage() {
       const successfulAssignments = assignmentResults.filter(r => r.success).length;
       const failedAssignments = assignmentResults.filter(r => !r.success).length;
       
-      if (successfulAssignments === formData.rental_unit_ids.length) {
+      if (successfulAssignments === selectedUnitIds.length) {
         toast.success(`Tenant created and assigned to ${successfulAssignments} rental unit(s) successfully`);
       } else if (successfulAssignments > 0) {
-        toast.success(`Tenant created and assigned to ${successfulAssignments} of ${formData.rental_unit_ids.length} rental units. ${failedAssignments} assignments failed.`);
+        toast.success(`Tenant created and assigned to ${successfulAssignments} of ${selectedUnitIds.length} rental units. ${failedAssignments} assignments failed.`);
       } else {
         toast.error('Tenant created but failed to assign to any rental units. Please manually assign the tenant.');
       }

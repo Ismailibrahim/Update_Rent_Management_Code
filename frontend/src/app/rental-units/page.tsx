@@ -14,10 +14,12 @@ interface RentalUnit {
   id: number;
   property_id: number;
   unit_number: string;
+  unit_type?: string;
   floor_number: number;
   unit_details: {
     numberOfRooms: number;
     numberOfToilets: number;
+    squareFeet?: number;
   };
   financial: {
     rentAmount: number;
@@ -64,6 +66,9 @@ interface RentalUnit {
       assigned_date: string;
       notes?: string;
       is_active: boolean;
+      status?: string;
+      quantity?: number;
+      maintenance_notes?: string;
     };
   }>;
 }
@@ -131,6 +136,11 @@ export default function RentalUnitsPage() {
     return matchesSearch && matchesProperty;
   });
 
+  const formatUnitType = (t?: string) => {
+    if (!t) return 'Not set';
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+
   const handleDeleteRentalUnit = async (id: number) => {
     if (!confirm('Are you sure you want to delete this rental unit?')) return;
     
@@ -173,7 +183,7 @@ export default function RentalUnitsPage() {
 
   return (
     <SidebarLayout>
-      <div className="space-y-8">
+      <div className="w-full space-y-8 -mx-6 px-6">
         {/* Page Header */}
         <div className="mb-8 flex justify-between items-center">
           <div>
@@ -247,37 +257,48 @@ export default function RentalUnitsPage() {
         </div>
 
         {/* Rental Units Table */}
-        <Card>
+        <Card className="w-full">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div className="w-full">
+              <table className="w-full table-auto">
+                <colgroup>
+                  <col className="w-[12%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[6%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[8%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[14%]" />
+                </colgroup>
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Unit Details
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Property
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Floor
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Rooms/Toilets
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Rent Amount
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Tenant
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Assets
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -285,33 +306,45 @@ export default function RentalUnitsPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredRentalUnits.map((unit) => (
                     <tr key={unit.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                      <td className="px-2 py-2 align-top">
+                        <div className="text-sm font-medium text-gray-900 truncate">
                           Unit {unit.unit_number}
                         </div>
+                        {unit.unit_type && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                              {formatUnitType(unit.unit_type)}
+                            </span>
+                          </div>
+                        )}
+                        {typeof unit.unit_details.squareFeet === 'number' && (
+                          <div className="mt-1 text-xs text-gray-600 truncate">
+                            Sq Ft: {unit.unit_details.squareFeet}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                      <td className="px-2 py-2 align-top">
+                        <div className="text-sm text-gray-900 break-words">
                           {unit.property?.name || 'Unknown Property'}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-2 py-2 align-top text-center">
                         <div className="text-sm text-gray-900">
                           {unit.floor_number}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-2 py-2 align-top text-center">
                         <div className="text-sm text-gray-900">
                           {unit.unit_details.numberOfRooms}/{unit.unit_details.numberOfToilets}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {unit.financial.currency} {unit.financial.rentAmount?.toLocaleString()}
+                      <td className="px-2 py-2 align-top">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {unit.financial.currency} {unit.financial.rentAmount?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      <td className="px-2 py-2 align-top">
+                        <span className={`inline-flex px-1.5 py-0.5 text-xs font-semibold rounded-full ${
                           unit.status === 'available' 
                             ? 'bg-green-100 text-green-800' 
                             : unit.status === 'occupied'
@@ -323,17 +356,17 @@ export default function RentalUnitsPage() {
                           {unit.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-2 py-2 align-top">
                         <div className="text-sm text-gray-900">
                           {unit.status === 'occupied' && unit.tenant 
                             ? (
                               <div>
-                                <div className="font-medium">{unit.tenant.name}</div>
+                                <div className="font-medium truncate" title={unit.tenant.name}>{unit.tenant.name}</div>
                                 {unit.tenant.contact_info?.phone && (
-                                  <div className="text-xs text-gray-500">{unit.tenant.contact_info.phone}</div>
+                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.contact_info.phone}</div>
                                 )}
                                 {unit.tenant.contact_info?.email && (
-                                  <div className="text-xs text-gray-500">{unit.tenant.contact_info.email}</div>
+                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.contact_info.email}</div>
                                 )}
                               </div>
                             )
@@ -343,23 +376,28 @@ export default function RentalUnitsPage() {
                           }
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-2 py-2 align-top">
                         <div className="text-sm text-gray-900">
                           {unit.assets && unit.assets.length > 0 ? (
                             <div className="space-y-1">
                               {unit.assets.slice(0, 2).map((asset) => {
-                                console.log(`Asset ${asset.id} pivot:`, asset.pivot);
+                                const isMaintenance = asset.pivot?.status === 'maintenance';
+                                const isActiveAssignment = asset.pivot?.is_active !== false;
+                                const qty = asset.pivot?.quantity ?? undefined;
                                 return (
-                                  <div key={asset.id} className="flex items-center space-x-2">
-                                    <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                                      asset.pivot?.is_active 
-                                        ? 'bg-green-100 text-green-800' 
-                                        : 'bg-gray-100 text-gray-800'
+                                  <div key={asset.id} className="flex items-center space-x-1">
+                                    <span className={`inline-flex px-1 py-0.5 text-xs rounded-full border truncate ${
+                                      isMaintenance
+                                        ? 'bg-orange-50 text-orange-800 border-orange-200'
+                                        : isActiveAssignment
+                                        ? 'bg-green-50 text-green-800 border-green-200'
+                                        : 'bg-gray-50 text-gray-700 border-gray-200'
                                     }`}>
-                                      {asset.name} (Qty: N/A)
-                                      {!asset.pivot?.is_active && (
-                                        <span className="ml-1 text-gray-600">🔧</span>
+                                      {asset.name}
+                                      {typeof qty === 'number' && (
+                                        <span className="ml-1 opacity-80">({qty})</span>
                                       )}
+                                      {isMaintenance && <span className="ml-1 font-medium">🔧</span>}
                                     </span>
                                   </div>
                                 );
@@ -367,16 +405,11 @@ export default function RentalUnitsPage() {
                               {unit.assets.length > 2 && (
                                 <div className="text-xs text-gray-500">
                                   +{unit.assets.length - 2} more
-                                  {unit.assets.filter(a => !a.pivot?.is_active).length > 0 && (
+                                  {unit.assets.filter(a => a.pivot?.status === 'maintenance').length > 0 && (
                                     <span className="ml-1 text-orange-600">
-                                      ({unit.assets.filter(a => !a.pivot?.is_active).length} inactive)
+                                      ({unit.assets.filter(a => a.pivot?.status === 'maintenance').length} 🔧)
                                     </span>
                                   )}
-                                </div>
-                              )}
-                              {unit.assets.filter(a => !a.pivot?.is_active).length > 0 && unit.assets.length <= 2 && (
-                                <div className="text-xs text-orange-600 font-medium">
-                                  🔧 {unit.assets.filter(a => !a.pivot?.is_active).length} asset(s) inactive
                                 </div>
                               )}
                             </div>
@@ -385,8 +418,8 @@ export default function RentalUnitsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
+                      <td className="px-2 py-2 text-sm font-medium align-top">
+                        <div className="flex flex-row gap-1.5">
                           <Button 
                             variant="outline" 
                             size="sm"
@@ -395,14 +428,17 @@ export default function RentalUnitsPage() {
                               // Refresh data after navigation
                               setTimeout(() => fetchRentalUnits(), 1000);
                             }}
+                            className="h-7 px-2"
+                            title="Edit"
                           >
-                            <Edit className="h-4 w-4" />
+                            <Edit className="h-3 w-3" />
                           </Button>
                           <Button 
                             variant="outline" 
                             size="sm"
                             onClick={() => handleToggleStatus(unit.id, unit.is_active)}
-                            className={unit.is_active ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}
+                            className={`h-7 px-2 text-xs ${unit.is_active ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}`}
+                            title={unit.is_active ? 'Deactivate' : 'Activate'}
                           >
                             {unit.is_active ? 'Deactivate' : 'Activate'}
                           </Button>
@@ -410,9 +446,10 @@ export default function RentalUnitsPage() {
                             variant="outline" 
                             size="sm" 
                             onClick={() => handleDeleteRentalUnit(unit.id)}
-                            className="text-red-600 hover:text-red-700"
+                            className="h-7 px-2 text-red-600 hover:text-red-700"
+                            title="Delete"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3" />
                           </Button>
                         </div>
                       </td>

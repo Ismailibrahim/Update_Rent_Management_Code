@@ -1,14 +1,22 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { Card, CardContent } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Select } from '../../components/UI/Select';
-import { FileText, Search, Edit, Trash2, Eye, DollarSign, Calendar, User, Building, CheckCircle, Clock, AlertCircle, Plus } from 'lucide-react';
+import { FileText, Search, Trash2, Eye, User, Building, CheckCircle, Clock, AlertCircle, Plus, Upload, FileImage, Receipt } from 'lucide-react';
 import { rentInvoicesAPI, paymentTypesAPI, paymentModesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+
+interface PaymentDetails {
+  payment_type?: string;
+  payment_mode?: string;
+  reference_number?: string;
+  notes?: string;
+}
 
 interface RentInvoice {
   id: number;
@@ -25,7 +33,8 @@ interface RentInvoice {
   status: 'pending' | 'paid' | 'overdue' | 'cancelled';
   paid_date?: string;
   notes?: string;
-  payment_details?: Record<string, unknown>;
+  payment_details?: PaymentDetails;
+  payment_slip_paths?: string[];
   tenant: {
     personal_info: {
       firstName: string;
@@ -56,23 +65,29 @@ export default function RentInvoicesPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [dueDateOffset, setDueDateOffset] = useState(7);
+  const [skippedTenants, setSkippedTenants] = useState<Array<{
+    tenant_name: string;
+    unit_number: string;
+    reason: string;
+    lease_start_date?: string;
+    lease_end_date?: string;
+  }>>([]);
   
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showPaymentSlipModal, setShowPaymentSlipModal] = useState(false);
+  const [showViewInvoiceModal, setShowViewInvoiceModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<RentInvoice | null>(null);
   const [paymentType, setPaymentType] = useState('');
   const [paymentMode, setPaymentMode] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [paymentSlips, setPaymentSlips] = useState<File[]>([]);
+  const [paymentSlipPreviews, setPaymentSlipPreviews] = useState<string[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<Record<string, unknown>[]>([]);
   const [paymentModes, setPaymentModes] = useState<Record<string, unknown>[]>([]);
 
-  useEffect(() => {
-    fetchInvoices();
-    fetchPaymentTypesAndModes();
-  }, [statusFilter, monthFilter, yearFilter]);
-
-  const fetchInvoices = async () => {
+  const fetchInvoices = useCallback(async () => {
     try {
       setLoading(true);
       const params: Record<string, unknown> = {};
@@ -88,7 +103,12 @@ export default function RentInvoicesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter, monthFilter, yearFilter]);
+
+  useEffect(() => {
+    fetchInvoices();
+    fetchPaymentTypesAndModes();
+  }, [fetchInvoices]);
 
   const fetchPaymentTypesAndModes = async () => {
     try {
@@ -135,7 +155,56 @@ export default function RentInvoicesPage() {
     setPaymentMode('');
     setReferenceNumber('');
     setPaymentNotes('');
+    setPaymentSlips([]);
+    setPaymentSlipPreviews([]);
     setShowPaymentModal(true);
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    const validFiles: File[] = [];
+
+    files.forEach(file => {
+      // Check file type
+      if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+        toast.error(`File ${file.name} is not supported. Please upload only images or PDF files.`);
+        return;
+      }
+      
+      // Check file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error(`File ${file.name} is too large. Maximum size is 5MB.`);
+        return;
+      }
+      
+      validFiles.push(file);
+      
+      // Create preview for images
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const preview = e.target?.result as string;
+          setPaymentSlipPreviews(prev => [...prev, preview]);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    if (validFiles.length > 0) {
+      setPaymentSlips(prev => [...prev, ...validFiles]);
+      toast.success(`${validFiles.length} file(s) added successfully`);
+      console.log('Files added to paymentSlips:', validFiles.map(f => ({ name: f.name, size: f.size, type: f.type })));
+    }
+
+    // Reset the input
+    event.target.value = '';
+  };
+
+  const removePaymentSlip = (index: number) => {
+    setPaymentSlips(prev => prev.filter((_, i) => i !== index));
+    setPaymentSlipPreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleConfirmPayment = async () => {
@@ -146,16 +215,41 @@ export default function RentInvoicesPage() {
       return;
     }
 
-    try {
-      const paymentDetails = {
-        payment_type: paymentType,
-        payment_mode: paymentMode,
-        reference_number: referenceNumber,
-        notes: paymentNotes,
-        payment_date: new Date().toISOString().split('T')[0]
-      };
+    if (paymentSlips.length === 0) {
+      toast.error('Please upload at least one payment slip');
+      return;
+    }
 
-      await rentInvoicesAPI.markAsPaid(selectedInvoice.id, paymentDetails);
+    try {
+      const formData = new FormData();
+      formData.append('payment_type', paymentType);
+      formData.append('payment_mode', paymentMode);
+      formData.append('reference_number', referenceNumber);
+      formData.append('notes', paymentNotes);
+      formData.append('payment_date', new Date().toISOString().split('T')[0]);
+      
+      // Append all payment slip files
+      paymentSlips.forEach((file, index) => {
+        formData.append(`payment_slip_${index}`, file);
+      });
+
+      // Debug: Log what we're sending
+      console.log('Sending FormData:', {
+        paymentType,
+        paymentMode,
+        referenceNumber,
+        paymentNotes,
+        paymentSlipsCount: paymentSlips.length,
+        paymentSlips: paymentSlips.map(f => ({ name: f.name, size: f.size, type: f.type }))
+      });
+
+      // Debug: Log FormData contents
+      console.log('FormData entries:');
+      for (const [key, value] of formData.entries()) {
+        console.log(`${key}:`, value);
+      }
+
+      await rentInvoicesAPI.markAsPaid(selectedInvoice.id, formData);
       toast.success('Invoice marked as paid successfully');
       setShowPaymentModal(false);
       fetchInvoices();
@@ -175,14 +269,35 @@ export default function RentInvoicesPage() {
         due_date_offset: dueDateOffset
       });
 
+      // Store skipped tenants information
+      if (response.data.skipped_tenants) {
+        setSkippedTenants(response.data.skipped_tenants);
+      }
+
       if (response.data.generated_count > 0) {
-        toast.success(`Successfully generated ${response.data.generated_count} rent invoices`);
+        let message = `Successfully generated ${response.data.generated_count} rent invoices`;
+        
+        // Add information about skipped tenants if any
+        if (response.data.skipped_count > 0) {
+          message += ` (${response.data.skipped_count} tenants skipped due to lease period)`;
+        }
+        
+        toast.success(message);
         setShowGenerateModal(false);
         fetchInvoices(); // Refresh the invoices list
-      }
-      
-      if (response.data.errors && response.data.errors.length > 0) {
-        toast.error(`${response.data.errors.length} invoices could not be generated`);
+      } else {
+        let message = 'No Rent Invoice Pending - All invoices for the selected period have already been generated';
+        
+        // Add information about skipped tenants if any
+        if (response.data.skipped_count > 0) {
+          message += ` (${response.data.skipped_count} tenants skipped due to lease period)`;
+        }
+        
+        toast(message, {
+          icon: 'ℹ️',
+          duration: 4000,
+        });
+        setShowGenerateModal(false);
       }
 
     } catch (error: unknown) {
@@ -226,11 +341,17 @@ export default function RentInvoicesPage() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string = 'MVR') => {
+  const formatCurrency = (amount: number | undefined | null, currency: string = 'MVR') => {
+    // Handle undefined, null, or NaN values
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      return currency === 'MVR' ? 'MVR 0' : '$0';
+    }
+    
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currency === 'MVR' ? 'USD' : currency,
       minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount).replace('$', currency === 'MVR' ? 'MVR ' : '$');
   };
 
@@ -248,7 +369,7 @@ export default function RentInvoicesPage() {
 
   return (
     <SidebarLayout>
-      <div className="space-y-8">
+      <div className="space-y-8 w-full -mx-6 px-6">
         {/* Page Header */}
         <div className="mb-8 flex justify-between items-center">
           <div>
@@ -267,11 +388,11 @@ export default function RentInvoicesPage() {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <FileText className="h-8 w-8 text-blue-500" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card className="h-full">
+            <CardContent className="p-4 h-full flex items-center">
+              <div className="flex items-center w-full">
+                <FileText className="h-8 w-8 text-blue-500 flex-shrink-0" />
                 <div className="ml-3">
                   <p className="text-sm font-medium text-gray-600">Total Invoices</p>
                   <p className="text-2xl font-bold text-gray-900">{invoices.length}</p>
@@ -280,42 +401,66 @@ export default function RentInvoicesPage() {
             </CardContent>
           </Card>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <Clock className="h-8 w-8 text-yellow-500" />
+          <Card className="h-full">
+            <CardContent className="p-4 h-full flex items-center">
+              <div className="flex items-center w-full">
+                <Clock className="h-8 w-8 text-yellow-500 flex-shrink-0" />
                 <div className="ml-3">
                   <p className="text-sm font-medium text-gray-600">Pending</p>
                   <p className="text-2xl font-bold text-gray-900">
                     {invoices.filter(inv => inv.status === 'pending').length}
                   </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <CheckCircle className="h-8 w-8 text-green-500" />
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-600">Paid</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {invoices.filter(inv => inv.status === 'paid').length}
+                  <p className="text-xs text-yellow-600 font-medium">
+                    {formatCurrency(
+                      invoices
+                        .filter(inv => inv.status === 'pending')
+                        .reduce((sum, inv) => sum + (parseFloat(inv.total_amount?.toString() || '0') || 0), 0),
+                      'MVR'
+                    )}
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center">
-                <AlertCircle className="h-8 w-8 text-red-500" />
+          <Card className="h-full">
+            <CardContent className="p-4 h-full flex items-center">
+              <div className="flex items-center w-full">
+                <CheckCircle className="h-8 w-8 text-green-500 flex-shrink-0" />
+                <div className="ml-3">
+                  <p className="text-sm font-medium text-gray-600">Paid</p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {invoices.filter(inv => inv.status === 'paid').length}
+                  </p>
+                  <p className="text-xs text-green-600 font-medium">
+                    {formatCurrency(
+                      invoices
+                        .filter(inv => inv.status === 'paid')
+                        .reduce((sum, inv) => sum + (parseFloat(inv.total_amount?.toString() || '0') || 0), 0),
+                      'MVR'
+                    )}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="h-full">
+            <CardContent className="p-4 h-full flex items-center">
+              <div className="flex items-center w-full">
+                <AlertCircle className="h-8 w-8 text-red-500 flex-shrink-0" />
                 <div className="ml-3">
                   <p className="text-sm font-medium text-gray-600">Overdue</p>
                   <p className="text-2xl font-bold text-gray-900">
                     {invoices.filter(inv => inv.status === 'overdue' || isOverdue(inv.due_date, inv.status)).length}
+                  </p>
+                  <p className="text-xs text-red-600 font-medium">
+                    {formatCurrency(
+                      invoices
+                        .filter(inv => inv.status === 'overdue' || isOverdue(inv.due_date, inv.status))
+                        .reduce((sum, inv) => sum + (parseFloat(inv.total_amount?.toString() || '0') || 0), 0),
+                      'MVR'
+                    )}
                   </p>
                 </div>
               </div>
@@ -324,9 +469,9 @@ export default function RentInvoicesPage() {
         </div>
 
         {/* Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <Card className="w-full">
+          <CardContent className="p-5">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
@@ -382,38 +527,47 @@ export default function RentInvoicesPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         ) : (
-          <Card>
+          <Card className="w-full">
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div>
+                <table className="w-full table-auto">
+                  <colgroup>
+                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '15%' }} />
+                  </colgroup>
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tenant</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tenant</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
+                      <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
+                      <th className="px-2 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredInvoices.map((invoice) => (
                       <tr key={invoice.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-2 py-2 align-top">
                           <div>
-                            <div className="text-sm font-medium text-gray-900">
+                            <div className="text-sm font-medium text-gray-900 truncate">
                               {invoice.invoice_number}
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-xs text-gray-500">
                               {new Date(invoice.invoice_date).toLocaleDateString()}
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-2 py-2 align-top truncate">
                           <div className="flex items-center">
-                            <User className="h-4 w-4 mr-2 text-gray-400" />
-                            <span className="text-sm text-gray-900">
+                            <User className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                            <span className="text-sm text-gray-900 whitespace-nowrap truncate">
                               {invoice.tenant?.personal_info ? 
                                 `${invoice.tenant.personal_info.firstName} ${invoice.tenant.personal_info.lastName}` : 
                                 'No Tenant'
@@ -421,20 +575,17 @@ export default function RentInvoicesPage() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-2 py-2 align-top truncate">
                           <div className="flex items-center">
-                            <Building className="h-4 w-4 mr-2 text-gray-400" />
-                            <span className="text-sm text-gray-600">
+                            <Building className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
+                            <span className="text-sm text-gray-600 whitespace-nowrap truncate">
                               {invoice.property.name} - Unit {invoice.rental_unit.unit_number}
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <DollarSign className="h-4 w-4 mr-1 text-green-500" />
-                            <span className="text-sm font-medium text-green-600">
-                              {formatCurrency(invoice.total_amount, invoice.currency)}
-                            </span>
+                        <td className="px-2 py-2 align-top text-right">
+                          <div className="text-sm font-medium text-green-600">
+                            {formatCurrency(invoice.total_amount, invoice.currency)}
                           </div>
                           {invoice.late_fee > 0 && (
                             <div className="text-xs text-red-500">
@@ -442,49 +593,72 @@ export default function RentInvoicesPage() {
                             </div>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <Calendar className="h-4 w-4 mr-2 text-gray-400" />
-                            <span className={`text-sm ${
-                              isOverdue(invoice.due_date, invoice.status) ? 'text-red-600 font-medium' : 'text-gray-600'
-                            }`}>
-                              {new Date(invoice.due_date).toLocaleDateString()}
-                            </span>
+                        <td className="px-2 py-2 align-top">
+                          <div className="text-sm text-gray-600">
+                            {new Date(invoice.due_date).toLocaleDateString()}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
+                        <td className="px-2 py-2 align-top text-center">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 text-xs font-semibold rounded-full ${getStatusColor(invoice.status)}`}>
                             {getStatusIcon(invoice.status)}
                             <span className="ml-1">{invoice.status}</span>
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center space-x-2">
-                            <Button variant="outline" size="sm" title="View Details">
-                              <Eye className="h-4 w-4" />
+                        <td className="px-2 py-2 align-top text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button variant="ghost" size="sm" title="View Details" className="p-1 h-7">
+                              <Eye className="h-4 w-4 text-blue-600" />
                             </Button>
                             {invoice.status === 'pending' && (
                               <Button 
-                                variant="outline" 
+                                variant="ghost" 
                                 size="sm" 
                                 onClick={() => handleMarkAsPaid(invoice)}
-                                className="text-green-600 hover:text-green-700"
+                                className="p-1 h-7"
                                 title="Mark as Paid"
                               >
-                                <CheckCircle className="h-4 w-4" />
+                                <CheckCircle className="h-4 w-4 text-green-600" />
                               </Button>
                             )}
-                            <Button variant="outline" size="sm" title="Edit Invoice">
-                              <Edit className="h-4 w-4" />
+                            {invoice.status === 'paid' && invoice.payment_slip_paths && invoice.payment_slip_paths.length > 0 && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => {
+                                  if (invoice.payment_slip_paths && invoice.payment_slip_paths.length === 1) {
+                                    window.open(`/api/rent-invoices/${invoice.id}/payment-slip`, '_blank');
+                                  } else {
+                                    // Show modal with multiple files
+                                    setSelectedInvoice(invoice);
+                                    setShowPaymentSlipModal(true);
+                                  }
+                                }}
+                                className="p-1 h-7"
+                                title={`View Payment Slip${invoice.payment_slip_paths && invoice.payment_slip_paths.length > 1 ? 's' : ''} (${invoice.payment_slip_paths?.length || 0})`}
+                              >
+                                <FileImage className="h-4 w-4 text-purple-600" />
+                              </Button>
+                            )}
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => {
+                                setSelectedInvoice(invoice);
+                                setShowViewInvoiceModal(true);
+                              }}
+                              className="p-1 h-7"
+                              title="View Invoice"
+                            >
+                              <Receipt className="h-4 w-4 text-blue-600" />
                             </Button>
                             <Button 
-                              variant="outline" 
+                              variant="ghost" 
                               size="sm" 
                               onClick={() => handleDeleteInvoice(invoice.id)}
-                              className="text-red-600 hover:text-red-700"
+                              className="p-1 h-7"
                               title="Delete Invoice"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-4 w-4 text-red-600" />
                             </Button>
                           </div>
                         </td>
@@ -516,11 +690,14 @@ export default function RentInvoicesPage() {
         {/* Generation Modal */}
         {showGenerateModal && (
           <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-            onClick={() => setShowGenerateModal(false)}
+            className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={() => {
+              setShowGenerateModal(false);
+              setSkippedTenants([]);
+            }}
           >
             <div 
-              className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+              className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-6 py-4 border-b border-gray-200">
@@ -576,12 +753,45 @@ export default function RentInvoicesPage() {
                     />
                   </div>
                 </div>
+                
+                {/* Skipped Tenants Information */}
+                {skippedTenants.length > 0 && (
+                  <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center mb-3">
+                      <AlertCircle className="h-5 w-5 text-yellow-600 mr-2" />
+                      <h4 className="text-sm font-medium text-yellow-800">
+                        Skipped Tenants ({skippedTenants.length})
+                      </h4>
+                    </div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {skippedTenants.map((tenant, index) => (
+                        <div key={index} className="text-sm text-yellow-700">
+                          <div className="font-medium">
+                            {tenant.tenant_name} - Unit {tenant.unit_number}
+                          </div>
+                          <div className="text-yellow-600">
+                            {tenant.reason}
+                            {tenant.lease_start_date && (
+                              <span> (Lease starts: {tenant.lease_start_date})</span>
+                            )}
+                            {tenant.lease_end_date && (
+                              <span> (Lease ends: {tenant.lease_end_date})</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end space-x-3">
                 <Button
                   variant="outline"
-                  onClick={() => setShowGenerateModal(false)}
+                  onClick={() => {
+                    setShowGenerateModal(false);
+                    setSkippedTenants([]);
+                  }}
                 >
                   Cancel
                 </Button>
@@ -609,11 +819,11 @@ export default function RentInvoicesPage() {
         {/* Payment Modal */}
         {showPaymentModal && selectedInvoice && (
           <div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50"
             onClick={() => setShowPaymentModal(false)}
           >
             <div 
-              className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4"
+              className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="px-6 py-4 border-b border-gray-200">
@@ -688,6 +898,81 @@ export default function RentInvoicesPage() {
                       onChange={(e) => setPaymentNotes(e.target.value)}
                     />
                   </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Payment Slips *
+                    </label>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-center w-full">
+                        <label htmlFor="payment-slip-upload" className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                            <Upload className="w-8 h-8 mb-4 text-gray-500" />
+                            <p className="mb-2 text-sm text-gray-500">
+                              <span className="font-semibold">Click to upload</span> payment slips
+                            </p>
+                            <p className="text-xs text-gray-500">PNG, JPG, PDF (MAX. 5MB each) - Multiple files allowed</p>
+                          </div>
+                          <input 
+                            id="payment-slip-upload" 
+                            type="file" 
+                            className="hidden" 
+                            accept="image/*,.pdf"
+                            multiple
+                            onChange={handleFileUpload}
+                          />
+                        </label>
+                      </div>
+                      
+                      {paymentSlips.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-gray-700">
+                            Uploaded Files ({paymentSlips.length}):
+                          </p>
+                          {paymentSlips.map((file, index) => (
+                            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <div className="flex items-center space-x-3">
+                                <FileImage className="h-5 w-5 text-blue-500" />
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => removePaymentSlip(index)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {paymentSlipPreviews.length > 0 && (
+                        <div className="mt-3">
+                          <p className="text-sm font-medium text-gray-700 mb-2">Previews:</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {paymentSlipPreviews.map((preview, index) => (
+                              <Image 
+                                key={index}
+                                src={preview} 
+                                alt={`Payment slip preview ${index + 1}`} 
+                                width={200}
+                                height={128}
+                                className="max-w-full h-32 object-contain border rounded-lg"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
               
@@ -709,6 +994,279 @@ export default function RentInvoicesPage() {
             </div>
           </div>
         )}
+
+        {/* Payment Slip Modal */}
+        {showPaymentSlipModal && selectedInvoice && (
+          <div 
+            className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={() => setShowPaymentSlipModal(false)}
+          >
+            <div 
+              className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <FileImage className="h-6 w-6 text-purple-600 mr-3" />
+                    <h3 className="text-lg font-medium text-gray-900">
+                      Payment Slips - {selectedInvoice.invoice_number}
+                    </h3>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowPaymentSlipModal(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </Button>
+                </div>
+                <p className="text-sm text-gray-600 mt-1">
+                  {selectedInvoice.tenant?.personal_info ? 
+                    `${selectedInvoice.tenant.personal_info.firstName} ${selectedInvoice.tenant.personal_info.lastName}` : 
+                    'No Tenant'
+                  } - {selectedInvoice.payment_slip_paths?.length || 0} file(s)
+                </p>
+              </div>
+              
+              <div className="px-6 py-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {selectedInvoice.payment_slip_paths?.map((_, index) => (
+                    <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-medium text-gray-900">
+                          Payment Slip {index + 1}
+                        </h4>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(`/api/rent-invoices/${selectedInvoice.id}/payment-slip/${index}`, '_blank')}
+                          className="text-blue-600 hover:text-blue-700"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          View
+                        </Button>
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Click &quot;View&quot; to open in new tab
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPaymentSlipModal(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* View Invoice Modal */}
+        {showViewInvoiceModal && selectedInvoice && (
+          <div 
+            className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50"
+            onClick={() => setShowViewInvoiceModal(false)}
+          >
+            <div 
+              className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-4 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <FileText className="h-6 w-6 text-blue-600 mr-3" />
+                    <h3 className="text-lg font-medium text-gray-900">
+                      Invoice Details - {selectedInvoice.invoice_number}
+                    </h3>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowViewInvoiceModal(false)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </Button>
+                </div>
+              </div>
+              
+              <div className="px-6 py-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Invoice Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Invoice Information</h4>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Invoice Number:</span>
+                        <span className="text-sm text-gray-900">{selectedInvoice.invoice_number}</span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Invoice Date:</span>
+                        <span className="text-sm text-gray-900">
+                          {new Date(selectedInvoice.invoice_date).toLocaleDateString()}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Due Date:</span>
+                        <span className="text-sm text-gray-900">
+                          {new Date(selectedInvoice.due_date).toLocaleDateString()}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Status:</span>
+                        <span className={`text-sm px-2 py-1 rounded-full ${
+                          selectedInvoice.status === 'paid' ? 'bg-green-100 text-green-800' :
+                          selectedInvoice.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                          selectedInvoice.status === 'overdue' ? 'bg-red-100 text-red-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {selectedInvoice.status.charAt(0).toUpperCase() + selectedInvoice.status.slice(1)}
+                        </span>
+                      </div>
+                      
+                      {selectedInvoice.paid_date && (
+                        <div className="flex justify-between">
+                          <span className="text-sm font-medium text-gray-600">Paid Date:</span>
+                          <span className="text-sm text-gray-900">
+                            {new Date(selectedInvoice.paid_date).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Financial Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Financial Details</h4>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Rent Amount:</span>
+                        <span className="text-sm text-gray-900">
+                          {selectedInvoice.currency} {selectedInvoice.rent_amount?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Late Fee:</span>
+                        <span className="text-sm text-gray-900">
+                          {selectedInvoice.currency} {selectedInvoice.late_fee?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between border-t pt-2">
+                        <span className="text-sm font-bold text-gray-900">Total Amount:</span>
+                        <span className="text-sm font-bold text-gray-900">
+                          {selectedInvoice.currency} {selectedInvoice.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tenant Information */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Tenant Information</h4>
+                    
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Tenant Name:</span>
+                        <span className="text-sm text-gray-900">
+                          {selectedInvoice.tenant?.personal_info ? 
+                            `${selectedInvoice.tenant.personal_info.firstName} ${selectedInvoice.tenant.personal_info.lastName}` : 
+                            'N/A'
+                          }
+                        </span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Property:</span>
+                        <span className="text-sm text-gray-900">{selectedInvoice.property?.name || 'N/A'}</span>
+                      </div>
+                      
+                      <div className="flex justify-between">
+                        <span className="text-sm font-medium text-gray-600">Unit Number:</span>
+                        <span className="text-sm text-gray-900">{selectedInvoice.rental_unit?.unit_number || 'N/A'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Information */}
+                  {selectedInvoice.status === 'paid' && selectedInvoice.payment_details && (
+                    <div className="space-y-4">
+                      <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Payment Information</h4>
+                      
+                      <div className="space-y-3">
+                        {(() => {
+                          const paymentDetails = selectedInvoice.payment_details as PaymentDetails;
+                          return (
+                            <>
+                              {paymentDetails.payment_type && (
+                                <div className="flex justify-between">
+                                  <span className="text-sm font-medium text-gray-600">Payment Type:</span>
+                                  <span className="text-sm text-gray-900">{paymentDetails.payment_type}</span>
+                                </div>
+                              )}
+                              
+                              {paymentDetails.payment_mode && (
+                                <div className="flex justify-between">
+                                  <span className="text-sm font-medium text-gray-600">Payment Mode:</span>
+                                  <span className="text-sm text-gray-900">{paymentDetails.payment_mode}</span>
+                                </div>
+                              )}
+                              
+                              {paymentDetails.reference_number && (
+                                <div className="flex justify-between">
+                                  <span className="text-sm font-medium text-gray-600">Reference Number:</span>
+                                  <span className="text-sm text-gray-900">{paymentDetails.reference_number}</span>
+                                </div>
+                              )}
+                              
+                              {paymentDetails.notes && (
+                                <div className="flex justify-between">
+                                  <span className="text-sm font-medium text-gray-600">Notes:</span>
+                                  <span className="text-sm text-gray-900">{paymentDetails.notes}</span>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  {selectedInvoice.notes && (
+                    <div className="md:col-span-2 space-y-4">
+                      <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Notes</h4>
+                      <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
+                        {selectedInvoice.notes}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowViewInvoiceModal(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </SidebarLayout>
   );

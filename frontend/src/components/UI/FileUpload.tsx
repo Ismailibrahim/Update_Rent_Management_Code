@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Button } from './Button';
-import { Upload, X, File, FileText, Image, FileType, Eye } from 'lucide-react';
+import { Upload, X, File, FileText, Image as ImageIcon, FileType, Eye } from 'lucide-react';
 
 interface FileUploadProps {
   files: File[];
@@ -118,7 +118,7 @@ export default function FileUpload({
       case 'jpg':
       case 'jpeg':
       case 'png':
-        return <Image className="h-4 w-4 text-green-500" />;
+        return <ImageIcon className="h-4 w-4 text-green-500" />;
       default:
         return <File className="h-4 w-4 text-gray-500" />;
     }

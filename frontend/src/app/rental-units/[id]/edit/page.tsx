@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/UI/Card';
 import { Button } from '../../../../components/UI/Button';
 import { Input } from '../../../../components/UI/Input';
 import { ArrowLeft, Save, X } from 'lucide-react';
-import { rentalUnitsAPI, propertiesAPI, assetsAPI, tenantsAPI } from '../../../../services/api';
+import { rentalUnitsAPI, propertiesAPI, assetsAPI, tenantsAPI, rentalUnitTypesAPI } from '../../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../../components/Layout/SidebarLayout';
 import { useRouter, useParams } from 'next/navigation';
@@ -46,6 +46,7 @@ export default function EditRentalUnitPage() {
   
   const [properties, setProperties] = useState<Property[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
+  const [unitTypes, setUnitTypes] = useState<Array<{ id: number; name: string; is_active: boolean }>>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<number[]>([]);
   const [originalAssets, setOriginalAssets] = useState<number[]>([]); // Track originally assigned assets
@@ -54,10 +55,12 @@ export default function EditRentalUnitPage() {
   const [formData, setFormData] = useState({
     property_id: '',
     unit_number: '',
+    unit_type: '',
     floor_number: '',
     unit_details: {
       numberOfRooms: '',
-      numberOfToilets: ''
+      numberOfToilets: '',
+      squareFeet: ''
     },
     financial: {
       rentAmount: '',
@@ -69,17 +72,7 @@ export default function EditRentalUnitPage() {
     notes: ''
   });
 
-  useEffect(() => {
-    const loadData = async () => {
-      await fetchAssets();
-      await fetchRentalUnit();
-      await fetchProperties();
-      await fetchTenants();
-    };
-    loadData();
-  }, [rentalUnitId]);
-
-  const fetchRentalUnit = async () => {
+  const fetchRentalUnit = useCallback(async () => {
     try {
       const response = await rentalUnitsAPI.getById(parseInt(rentalUnitId));
       const unit = response.data.rentalUnit;
@@ -87,10 +80,12 @@ export default function EditRentalUnitPage() {
       setFormData({
         property_id: unit.property_id.toString(),
         unit_number: unit.unit_number,
+        unit_type: unit.unit_type || '',
         floor_number: unit.floor_number.toString(),
         unit_details: {
           numberOfRooms: unit.unit_details.numberOfRooms.toString(),
-          numberOfToilets: unit.unit_details.numberOfToilets.toString()
+          numberOfToilets: unit.unit_details.numberOfToilets.toString(),
+          squareFeet: typeof unit.unit_details.squareFeet === 'number' ? String(unit.unit_details.squareFeet) : ''
         },
         financial: {
           rentAmount: unit.financial.rentAmount.toString(),
@@ -102,7 +97,7 @@ export default function EditRentalUnitPage() {
         notes: unit.notes || ''
       });
 
-      // Set selected assets with quantities
+      // Set selected assets with quantities and maintenance details
       if (unit.assets && unit.assets.length > 0) {
         console.log('Unit assets:', unit.assets);
         const assetIds = unit.assets.map((asset: { id: number }) => asset.id);
@@ -123,6 +118,15 @@ export default function EditRentalUnitPage() {
             return asset;
           });
         });
+
+        // Initialize maintenance notes state from pivot data
+        const initialNotes: { [key: number]: { notes: string } } = {};
+        unit.assets.forEach((ua: { id: number; pivot?: { maintenance_notes?: string } }) => {
+          if (ua.pivot && typeof ua.pivot.maintenance_notes === 'string' && ua.pivot.maintenance_notes.length > 0) {
+            initialNotes[ua.id] = { notes: ua.pivot.maintenance_notes };
+          }
+        });
+        setMaintenanceNotes(initialNotes);
       } else {
         setSelectedAssets([]);
         setOriginalAssets([]);
@@ -130,6 +134,27 @@ export default function EditRentalUnitPage() {
     } catch (error) {
       console.error('Error fetching rental unit:', error);
       toast.error('Failed to fetch rental unit details');
+    }
+  }, [rentalUnitId]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      await fetchAssets();
+      await fetchUnitTypes();
+      await fetchRentalUnit();
+      await fetchProperties();
+      await fetchTenants();
+    };
+    loadData();
+  }, [rentalUnitId, fetchRentalUnit]);
+
+  const fetchUnitTypes = async () => {
+    try {
+      const response = await rentalUnitTypesAPI.getAll({ active_only: true });
+      const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
+      setUnitTypes(types);
+    } catch (error) {
+      console.error('Error fetching unit types:', error);
     }
   };
 
@@ -191,10 +216,12 @@ export default function EditRentalUnitPage() {
       const submitData = {
         ...formData,
         property_id: parseInt(formData.property_id),
+        unit_type: formData.unit_type,
         floor_number: parseInt(formData.floor_number),
         unit_details: {
           numberOfRooms: parseInt(formData.unit_details.numberOfRooms),
-          numberOfToilets: parseFloat(formData.unit_details.numberOfToilets)
+          numberOfToilets: parseFloat(formData.unit_details.numberOfToilets),
+          squareFeet: formData.unit_details.squareFeet ? parseFloat(formData.unit_details.squareFeet) : undefined
         },
         financial: {
           rentAmount: parseFloat(formData.financial.rentAmount),
@@ -379,6 +406,29 @@ export default function EditRentalUnitPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Unit Type *
+                  </label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={formData.unit_type}
+                    onChange={(e) => setFormData(prev => ({ ...prev, unit_type: e.target.value }))}
+                    required
+                  >
+                    <option value="">Select unit type</option>
+                    {unitTypes.map((unitType) => {
+                      const allowed = ['residential','office','shop','warehouse','other'];
+                      const value = (unitType.name || '').trim().toLowerCase();
+                      const mapped = allowed.includes(value) ? value : 'other';
+                      return (
+                        <option key={unitType.id} value={mapped}>
+                          {unitType.name}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Floor Number *
                   </label>
                   <Input
@@ -444,6 +494,23 @@ export default function EditRentalUnitPage() {
                     min="0"
                     step="0.5"
                     required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Square Feet (Optional)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Square feet"
+                    value={formData.unit_details.squareFeet}
+                    onChange={(e) => setFormData(prev => ({ 
+                      ...prev, 
+                      unit_details: { ...prev.unit_details, squareFeet: e.target.value }
+                    }))}
+                    min="0"
+                    step="0.01"
                   />
                 </div>
               </div>

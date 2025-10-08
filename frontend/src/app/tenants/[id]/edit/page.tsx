@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/UI/Card';
 import { Button } from '../../../../components/UI/Button';
 import { Input } from '../../../../components/UI/Input';
@@ -75,17 +75,29 @@ export default function EditTenantPage() {
     rental_unit_ids: [] as string[]
   });
 
-  useEffect(() => {
-    fetchTenant();
-  }, [tenantId]);
-
-  useEffect(() => {
-    // Refresh available units whenever rental_unit_ids change
-    // This ensures we see updated unit statuses after linking/unlinking
-    fetchAvailableUnits();
+  const fetchAvailableUnits = useCallback(async () => {
+    try {
+      setUnitsLoading(true);
+      const response = await rentalUnitsAPI.getAll();
+      const allUnits = response.data.rentalUnits || [];
+      
+      // Filter out units that are already assigned to this tenant
+      const assignedUnitIds = formData.rental_unit_ids.map(id => parseInt(id));
+      const availableUnits = allUnits.filter((unit: { id: number; status: string }) => 
+        !assignedUnitIds.includes(unit.id) || 
+        unit.status === 'occupied' // Include occupied units so they can be re-assigned
+      );
+      
+      setAvailableUnits(availableUnits);
+    } catch (error) {
+      console.error('Error fetching rental units:', error);
+      toast.error('Failed to fetch rental units');
+    } finally {
+      setUnitsLoading(false);
+    }
   }, [formData.rental_unit_ids]);
 
-  const fetchTenant = async () => {
+  const fetchTenant = useCallback(async () => {
     try {
       setLoading(true);
       const response = await tenantsAPI.getById(parseInt(tenantId));
@@ -93,17 +105,17 @@ export default function EditTenantPage() {
       
       setFormData({
         personal_info: {
-          firstName: tenant.personal_info?.firstName || '',
-          lastName: tenant.personal_info?.lastName || '',
-          dateOfBirth: tenant.personal_info?.dateOfBirth || '',
-          gender: tenant.personal_info?.gender || '',
-          nationality: tenant.personal_info?.nationality || '',
-          idNumber: tenant.personal_info?.idNumber || ''
+          firstName: tenant.personal_info.firstName,
+          lastName: tenant.personal_info.lastName,
+          dateOfBirth: tenant.personal_info.dateOfBirth,
+          gender: tenant.personal_info.gender,
+          nationality: tenant.personal_info.nationality,
+          idNumber: tenant.personal_info.idNumber
         },
         contact_info: {
-          email: tenant.contact_info?.email || '',
-          phone: tenant.contact_info?.phone || '',
-          address: tenant.contact_info?.address || ''
+          email: tenant.personal_info.email,
+          phone: tenant.personal_info.phone,
+          address: tenant.contact_info.address
         },
         emergency_contact: {
           name: tenant.emergency_contact?.name || '',
@@ -114,9 +126,9 @@ export default function EditTenantPage() {
         notes: tenant.notes || '',
         lease_start_date: tenant.lease_start_date || '',
         lease_end_date: tenant.lease_end_date || '',
-        rental_unit_ids: tenant.rental_units?.map((unit: RentalUnit) => unit.id.toString()) || []
+        rental_unit_ids: tenant.rental_units ? tenant.rental_units.map((unit: { id: number }) => unit.id.toString()) : []
       });
-      
+
       // Set existing documents
       setExistingDocuments(tenant.documents || []);
       
@@ -128,30 +140,17 @@ export default function EditTenantPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [tenantId, fetchAvailableUnits]);
 
-  const fetchAvailableUnits = async () => {
-    try {
-      setUnitsLoading(true);
-      const response = await rentalUnitsAPI.getAll();
-      const allUnits = response.data.rentalUnits || [];
-      
-      // Filter to show all units that can be assigned to tenants
-      // This includes: available units, currently assigned units, and any occupied units
-      const availableUnits = allUnits.filter((unit: RentalUnit) => 
-        unit.status === 'available' || 
-        formData.rental_unit_ids.includes(unit.id.toString()) ||
-        unit.status === 'occupied' // Show occupied units so they can be reassigned
-      );
-      
-      setAvailableUnits(availableUnits);
-    } catch (error) {
-      console.error('Error fetching rental units:', error);
-      toast.error('Failed to fetch rental units');
-    } finally {
-      setUnitsLoading(false);
-    }
-  };
+  useEffect(() => {
+    fetchTenant();
+  }, [tenantId, fetchTenant]);
+
+  useEffect(() => {
+    // Refresh available units whenever rental_unit_ids change
+    // This ensures we see updated unit statuses after linking/unlinking
+    fetchAvailableUnits();
+  }, [formData.rental_unit_ids, fetchAvailableUnits]);
 
   const handleInputChange = (section: string, field: string, value: string) => {
     setFormData(prev => ({
@@ -179,8 +178,8 @@ export default function EditTenantPage() {
         personal_info: formData.personal_info,
         contact_info: formData.contact_info,
         emergency_contact: formData.emergency_contact,
-        lease_start_date: formData.lease_start_date || null,
-        lease_end_date: formData.lease_end_date || null
+        lease_start_date: formData.lease_start_date || undefined,
+        lease_end_date: formData.lease_end_date || undefined
       };
 
       console.log('Submitting tenant data:', submitData);

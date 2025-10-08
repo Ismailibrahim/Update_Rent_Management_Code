@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
-import { BarChart3, Download, Calendar, TrendingUp, DollarSign, Users, Building2, Package, RefreshCw, X, FileText } from 'lucide-react';
+import { BarChart3, Download, TrendingUp, DollarSign, Users, Building2, Package, RefreshCw, X } from 'lucide-react';
 import { propertiesAPI, tenantsAPI, rentalUnitsAPI, maintenanceCostsAPI } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -41,53 +41,48 @@ export default function ReportsPage() {
   // Cache data for 30 seconds
   const CACHE_DURATION = 30000;
 
-  useEffect(() => {
-    // Only fetch data if user is authenticated
-    if (!authLoading && user) {
-      const now = Date.now();
-      // Use cached data if available and not expired
-      if (now - lastFetch < CACHE_DURATION && stats.totalProperties > 0) {
-        setLoading(false);
-        return;
-      }
-      fetchReportData();
-    } else if (!authLoading && !user) {
-      setLoading(false);
-      setError('Please log in to view reports data');
-    }
-  }, [user, authLoading]);
-
-  const fetchReportData = async () => {
+  const fetchReportData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
       // Fetch all data in parallel with timeout
-      const [propertiesRes, tenantsRes, rentalUnitsRes, maintenanceCostsRes] = await Promise.all([
-        propertiesAPI.getAll().catch(() => ({ data: { properties: [] } })),
-        tenantsAPI.getAll().catch(() => ({ data: { tenants: [] } })),
-        rentalUnitsAPI.getAll().catch(() => ({ data: { rental_units: [] } })),
-        maintenanceCostsAPI.getAll().catch(() => ({ data: { maintenance_costs: [] } }))
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+
+      const dataPromise = Promise.all([
+        propertiesAPI.getAll(),
+        tenantsAPI.getAll(),
+        rentalUnitsAPI.getAll(),
+        maintenanceCostsAPI.getAll()
       ]);
 
-      const properties = propertiesRes.data.properties || [];
-      const tenants = tenantsRes.data.tenants || [];
-      const rentalUnits = rentalUnitsRes.data.rental_units || [];
-      const maintenanceCosts = maintenanceCostsRes.data.maintenance_costs || [];
+      const [propertiesResponse, tenantsResponse, rentalUnitsResponse, maintenanceResponse] = 
+        await Promise.race([dataPromise, timeoutPromise]) as [
+          { data: { properties: unknown[] } },
+          { data: { tenants: unknown[] } },
+          { data: { rentalUnits: unknown[] } },
+          { data: { maintenanceCosts: unknown[] } }
+        ];
 
-      // Calculate stats
-      const occupiedUnits = rentalUnits.filter((unit: { is_occupied: boolean }) => unit.is_occupied).length;
-      const availableUnits = rentalUnits.filter((unit: { is_occupied: boolean }) => !unit.is_occupied).length;
-      
-      // Calculate total maintenance costs
-      const totalMaintenanceCosts = maintenanceCosts.reduce((sum: number, cost: { repair_cost: string | number }) => {
-        return sum + (parseFloat(String(cost.repair_cost)) || 0);
-      }, 0);
+      const properties = (propertiesResponse.data.properties || []) as unknown[];
+      const tenants = (tenantsResponse.data.tenants || []) as unknown[];
+      const rentalUnits = (rentalUnitsResponse.data.rentalUnits || []) as { status: string }[];
+      const maintenanceCosts = (maintenanceResponse.data.maintenanceCosts || []) as { amount?: number }[];
+
+      // Calculate statistics
+      const totalProperties = properties.length;
+      const totalTenants = tenants.length;
+      const totalRentalUnits = rentalUnits.length;
+      const occupiedUnits = rentalUnits.filter(unit => unit.status === 'occupied').length;
+      const availableUnits = rentalUnits.filter(unit => unit.status === 'available').length;
+      const totalMaintenanceCosts = maintenanceCosts.reduce((sum: number, cost: { amount?: number }) => sum + (cost.amount || 0), 0);
 
       setStats({
-        totalProperties: properties.length,
-        totalTenants: tenants.length,
-        totalRentalUnits: rentalUnits.length,
+        totalProperties,
+        totalTenants,
+        totalRentalUnits,
         occupiedUnits,
         availableUnits,
         totalMaintenanceCosts,
@@ -102,7 +97,23 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Only fetch data if user is authenticated
+    if (!authLoading && user) {
+      const now = Date.now();
+      // Use cached data if available and not expired
+      if (now - lastFetch < CACHE_DURATION && stats.totalProperties > 0) {
+        setLoading(false);
+        return;
+      }
+      fetchReportData();
+    } else if (!authLoading && !user) {
+      setLoading(false);
+      setError('Please log in to view reports data');
+    }
+  }, [user, authLoading, lastFetch, stats.totalProperties, fetchReportData]);
 
   const handleGenerateReport = async (reportType: string, reportName: string) => {
     setGeneratingReport(true);

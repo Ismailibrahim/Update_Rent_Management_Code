@@ -55,6 +55,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { name: 'Properties', href: '/properties', icon: Building2 },
       { name: 'Rental Units', href: '/rental-units', icon: HomeIcon },
+      { name: 'Rental Unit Types', href: '/rental-unit-types', icon: Building },
       { name: 'Tenants', href: '/tenants', icon: Users },
       { name: 'Assets', href: '/assets', icon: Package },
     ]
@@ -121,7 +122,7 @@ export default function SidebarLayout({ children }: SidebarProps) {
     });
     
     setExpandedGroups(newExpandedGroups);
-  }, [pathname]);
+  }, [pathname, expandedGroups]);
 
   const toggleGroup = (groupName: string) => {
     const newExpandedGroups = new Set(expandedGroups);

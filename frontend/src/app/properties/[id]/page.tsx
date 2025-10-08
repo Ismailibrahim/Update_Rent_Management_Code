@@ -75,7 +75,7 @@ export default function PropertyDetailsPage() {
     } finally {
       setLoading(false);
     }
-  }, [propertyId]);
+  }, [propertyId, router]);
 
   const fetchRentalUnits = useCallback(async () => {
     try {
