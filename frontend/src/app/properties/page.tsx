@@ -9,6 +9,7 @@ import { Building2, Plus, Search, Edit, Trash2, Eye } from 'lucide-react';
 import { propertiesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Property {
   id: number;
@@ -31,13 +32,20 @@ interface Property {
 
 export default function PropertiesPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    fetchProperties();
-  }, []);
+    if (!authLoading && !user) {
+      router.push('/login');
+      return;
+    }
+    if (user) {
+      fetchProperties();
+    }
+  }, [user, authLoading, router]);
 
   const fetchProperties = async () => {
     try {
@@ -83,6 +91,16 @@ export default function PropertiesPage() {
   const handleEditProperty = (id: number) => {
     router.push(`/properties/${id}/edit`);
   };
+
+  if (authLoading || loading) {
+    return (
+      <SidebarLayout>
+        <div className="flex items-center justify-center h-64">
+          <div className="text-lg">Loading...</div>
+        </div>
+      </SidebarLayout>
+    );
+  }
 
   return (
     <SidebarLayout>

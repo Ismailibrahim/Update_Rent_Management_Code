@@ -34,12 +34,11 @@ interface RentInvoice {
   paid_date?: string;
   notes?: string;
   payment_details?: PaymentDetails;
-  payment_slip_paths?: string[];
+  payment_slip_files?: string;
   tenant: {
-    personal_info: {
-      firstName: string;
-      lastName: string;
-    };
+    first_name: string;
+    last_name: string;
+    full_name?: string;
   };
   property: {
     name: string;
@@ -82,6 +81,7 @@ export default function RentInvoicesPage() {
   const [paymentMode, setPaymentMode] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [totalAmount, setTotalAmount] = useState('');
   const [paymentSlips, setPaymentSlips] = useState<File[]>([]);
   const [paymentSlipPreviews, setPaymentSlipPreviews] = useState<string[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<Record<string, unknown>[]>([]);
@@ -125,8 +125,8 @@ export default function RentInvoicesPage() {
 
   const filteredInvoices = invoices.filter(invoice => {
     // Handle cases where tenant might be null
-    const tenantName = invoice.tenant?.personal_info ? 
-      `${invoice.tenant.personal_info.firstName} ${invoice.tenant.personal_info.lastName}`.toLowerCase() : 
+    const tenantName = invoice.tenant?.full_name ? 
+      invoice.tenant.full_name.toLowerCase() : 
       'no tenant';
     const propertyName = invoice.property?.name?.toLowerCase() || 'no property';
     const invoiceNumber = invoice.invoice_number?.toLowerCase() || '';
@@ -155,6 +155,7 @@ export default function RentInvoicesPage() {
     setPaymentMode('');
     setReferenceNumber('');
     setPaymentNotes('');
+    setTotalAmount(invoice.total_amount?.toString() || '');
     setPaymentSlips([]);
     setPaymentSlipPreviews([]);
     setShowPaymentModal(true);
@@ -210,13 +211,8 @@ export default function RentInvoicesPage() {
   const handleConfirmPayment = async () => {
     if (!selectedInvoice) return;
     
-    if (!paymentType || !paymentMode) {
-      toast.error('Please select both payment type and payment mode');
-      return;
-    }
-
-    if (paymentSlips.length === 0) {
-      toast.error('Please upload at least one payment slip');
+    if (!paymentType || !paymentMode || !totalAmount) {
+      toast.error('Please fill in all required fields');
       return;
     }
 
@@ -226,6 +222,7 @@ export default function RentInvoicesPage() {
       formData.append('payment_mode', paymentMode);
       formData.append('reference_number', referenceNumber);
       formData.append('notes', paymentNotes);
+      formData.append('total_amount', totalAmount);
       formData.append('payment_date', new Date().toISOString().split('T')[0]);
       
       // Append all payment slip files
@@ -568,10 +565,7 @@ export default function RentInvoicesPage() {
                           <div className="flex items-center">
                             <User className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                             <span className="text-sm text-gray-900 whitespace-nowrap truncate">
-                              {invoice.tenant?.personal_info ? 
-                                `${invoice.tenant.personal_info.firstName} ${invoice.tenant.personal_info.lastName}` : 
-                                'No Tenant'
-                              }
+                              {invoice.tenant?.full_name || 'No Tenant'}
                             </span>
                           </div>
                         </td>
@@ -606,9 +600,6 @@ export default function RentInvoicesPage() {
                         </td>
                         <td className="px-2 py-2 align-top text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            <Button variant="ghost" size="sm" title="View Details" className="p-1 h-7">
-                              <Eye className="h-4 w-4 text-blue-600" />
-                            </Button>
                             {invoice.status === 'pending' && (
                               <Button 
                                 variant="ghost" 
@@ -620,12 +611,12 @@ export default function RentInvoicesPage() {
                                 <CheckCircle className="h-4 w-4 text-green-600" />
                               </Button>
                             )}
-                            {invoice.status === 'paid' && invoice.payment_slip_paths && invoice.payment_slip_paths.length > 0 && (
+                            {invoice.status === 'paid' && invoice.payment_slip_files && invoice.payment_slip_files.split(',').length > 0 && (
                               <Button 
                                 variant="ghost" 
                                 size="sm" 
                                 onClick={() => {
-                                  if (invoice.payment_slip_paths && invoice.payment_slip_paths.length === 1) {
+                                  if (invoice.payment_slip_files && invoice.payment_slip_files.split(',').length === 1) {
                                     window.open(`/api/rent-invoices/${invoice.id}/payment-slip`, '_blank');
                                   } else {
                                     // Show modal with multiple files
@@ -634,7 +625,7 @@ export default function RentInvoicesPage() {
                                   }
                                 }}
                                 className="p-1 h-7"
-                                title={`View Payment Slip${invoice.payment_slip_paths && invoice.payment_slip_paths.length > 1 ? 's' : ''} (${invoice.payment_slip_paths?.length || 0})`}
+                                title={`View Payment Slip${invoice.payment_slip_files && invoice.payment_slip_files.split(',').length > 1 ? 's' : ''} (${invoice.payment_slip_files?.split(',').length || 0})`}
                               >
                                 <FileImage className="h-4 w-4 text-purple-600" />
                               </Button>
@@ -834,10 +825,7 @@ export default function RentInvoicesPage() {
                   </h3>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
-                  Invoice: {selectedInvoice.invoice_number} - {selectedInvoice.tenant?.personal_info ? 
-                    `${selectedInvoice.tenant.personal_info.firstName} ${selectedInvoice.tenant.personal_info.lastName}` : 
-                    'No Tenant'
-                  }
+                  Invoice: {selectedInvoice.invoice_number} - {selectedInvoice.tenant?.full_name || 'No Tenant'}
                 </p>
               </div>
               
@@ -879,6 +867,19 @@ export default function RentInvoicesPage() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Total Amount *
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="Enter total amount paid"
+                      value={totalAmount}
+                      onChange={(e) => setTotalAmount(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Reference Number
                     </label>
                     <Input
@@ -901,77 +902,96 @@ export default function RentInvoicesPage() {
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Payment Slips *
+                      Payment Slips (Optional)
                     </label>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-center w-full">
-                        <label htmlFor="payment-slip-upload" className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                          <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                            <Upload className="w-8 h-8 mb-4 text-gray-500" />
-                            <p className="mb-2 text-sm text-gray-500">
-                              <span className="font-semibold">Click to upload</span> payment slips
-                            </p>
-                            <p className="text-xs text-gray-500">PNG, JPG, PDF (MAX. 5MB each) - Multiple files allowed</p>
-                          </div>
-                          <input 
-                            id="payment-slip-upload" 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*,.pdf"
-                            multiple
-                            onChange={handleFileUpload}
-                          />
-                        </label>
-                      </div>
+                    {(() => {
+                      // Check if selected payment mode is bank transfer
+                      const selectedMode = paymentModes.find(mode => String(mode.id) === paymentMode);
+                      const isBankTransfer = selectedMode && 
+                        (String(selectedMode.name).toLowerCase().includes('bank') || 
+                         String(selectedMode.name).toLowerCase().includes('transfer') ||
+                         String(selectedMode.name).toLowerCase().includes('wire'));
                       
-                      {paymentSlips.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-gray-700">
-                            Uploaded Files ({paymentSlips.length}):
-                          </p>
-                          {paymentSlips.map((file, index) => (
-                            <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                              <div className="flex items-center space-x-3">
-                                <FileImage className="h-5 w-5 text-blue-500" />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                                  <p className="text-xs text-gray-500">
-                                    {(file.size / 1024 / 1024).toFixed(2)} MB
-                                  </p>
-                                </div>
+                      if (!isBankTransfer) {
+                        return (
+                          <div className="text-sm text-gray-500 italic">
+                            Payment slips are only available for bank transfer payments
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-center w-full">
+                            <label htmlFor="payment-slip-upload" className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <Upload className="w-8 h-8 mb-4 text-gray-500" />
+                                <p className="mb-2 text-sm text-gray-500">
+                                  <span className="font-semibold">Click to upload</span> payment slips
+                                </p>
+                                <p className="text-xs text-gray-500">PNG, JPG, PDF (MAX. 5MB each) - Multiple files allowed</p>
                               </div>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => removePaymentSlip(index)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                Remove
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      
-                      {paymentSlipPreviews.length > 0 && (
-                        <div className="mt-3">
-                          <p className="text-sm font-medium text-gray-700 mb-2">Previews:</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            {paymentSlipPreviews.map((preview, index) => (
-                              <Image 
-                                key={index}
-                                src={preview} 
-                                alt={`Payment slip preview ${index + 1}`} 
-                                width={200}
-                                height={128}
-                                className="max-w-full h-32 object-contain border rounded-lg"
+                              <input 
+                                id="payment-slip-upload" 
+                                type="file" 
+                                className="hidden" 
+                                accept="image/*,.pdf"
+                                multiple
+                                onChange={handleFileUpload}
                               />
-                            ))}
+                            </label>
                           </div>
+                          
+                          {paymentSlips.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium text-gray-700">
+                                Uploaded Files ({paymentSlips.length}):
+                              </p>
+                              {paymentSlips.map((file, index) => (
+                                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                  <div className="flex items-center space-x-3">
+                                    <FileImage className="h-5 w-5 text-blue-500" />
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                                      <p className="text-xs text-gray-500">
+                                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => removePaymentSlip(index)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    Remove
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
+                          {paymentSlipPreviews.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-sm font-medium text-gray-700 mb-2">Previews:</p>
+                              <div className="grid grid-cols-2 gap-2">
+                                {paymentSlipPreviews.map((preview, index) => (
+                                  <Image 
+                                    key={index}
+                                    src={preview} 
+                                    alt={`Payment slip preview ${index + 1}`} 
+                                    width={200}
+                                    height={128}
+                                    className="max-w-full h-32 object-contain border rounded-lg"
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1022,16 +1042,13 @@ export default function RentInvoicesPage() {
                   </Button>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
-                  {selectedInvoice.tenant?.personal_info ? 
-                    `${selectedInvoice.tenant.personal_info.firstName} ${selectedInvoice.tenant.personal_info.lastName}` : 
-                    'No Tenant'
-                  } - {selectedInvoice.payment_slip_paths?.length || 0} file(s)
+                  {selectedInvoice.tenant?.full_name || 'No Tenant'} - {selectedInvoice.payment_slip_files?.split(',').length || 0} file(s)
                 </p>
               </div>
               
               <div className="px-6 py-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {selectedInvoice.payment_slip_paths?.map((_, index) => (
+                  {selectedInvoice.payment_slip_files?.split(',').map((_, index) => (
                     <div key={index} className="border rounded-lg p-4 bg-gray-50">
                       <div className="flex items-center justify-between mb-2">
                         <h4 className="text-sm font-medium text-gray-900">
@@ -1180,10 +1197,7 @@ export default function RentInvoicesPage() {
                       <div className="flex justify-between">
                         <span className="text-sm font-medium text-gray-600">Tenant Name:</span>
                         <span className="text-sm text-gray-900">
-                          {selectedInvoice.tenant?.personal_info ? 
-                            `${selectedInvoice.tenant.personal_info.firstName} ${selectedInvoice.tenant.personal_info.lastName}` : 
-                            'N/A'
-                          }
+                          {selectedInvoice.tenant?.full_name || 'N/A'}
                         </span>
                       </div>
                       

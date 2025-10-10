@@ -104,16 +104,13 @@ interface RentalUnit {
   unit_number: string;
   unit_type: string;
   floor_number: number;
-  unit_details: {
-    numberOfRooms?: number;
-    numberOfToilets?: number;
-    squareFeet?: number;
-  };
-  financial: {
-    rentAmount: number;
-    depositAmount: number;
-    currency: string;
-  };
+  // New separate columns
+  rent_amount: number;
+  deposit_amount?: number;
+  currency: string;
+  number_of_rooms: number;
+  number_of_toilets: number;
+  square_feet?: number;
   status: string;
   tenant_id?: number;
   move_in_date?: string;
@@ -124,45 +121,51 @@ interface RentalUnit {
   is_active?: boolean;
 }
 
-interface Tenant {
+export interface Tenant {
   id: number;
-  personal_info: {
-    firstName: string;
-    lastName: string;
-    dateOfBirth?: string;
-    gender?: string;
-    nationality?: string;
-    idNumber?: string;
-  };
-  contact_info: {
-    email: string;
-    phone: string;
-    address?: string;
-  };
-  emergency_contact?: {
-    name?: string;
-    relationship?: string;
-    phone?: string;
-  };
-  employment_info?: {
-    employer?: string;
-    position?: string;
-    salary?: string;
-    workPhone?: string;
-  };
-  financial_info?: {
-    bankName?: string;
-    accountNumber?: string;
-    creditScore?: string;
-  };
-  documents?: string[];
+  // Tenant type
+  tenant_type?: 'individual' | 'company';
+  // New separate columns
+  first_name: string;
+  last_name: string;
+  date_of_birth?: string;
+  national_id?: string;
+  nationality?: string;
+  gender?: string;
+  email: string;
+  phone: string;
+  address?: string;
+  city?: string;
+  postal_code?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relationship?: string;
+  employment_company?: string;
+  employment_position?: string;
+  employment_salary?: number;
+  employment_phone?: string;
+  bank_name?: string;
+  account_number?: string;
+  account_holder_name?: string;
+  documents?: string[] | string;
   status: string;
   notes?: string;
   lease_start_date?: string;
   lease_end_date?: string;
+  rental_unit_ids?: number[];
+  // Company-specific fields
+  company_name?: string;
+  company_address?: string;
+  company_registration_number?: string;
+  company_gst_tin?: string;
+  company_telephone?: string;
+  company_email?: string;
   created_at: string;
   updated_at: string;
+  // Computed properties
+  full_name?: string;
 }
+
 
 interface Asset {
   id: number;
@@ -286,41 +289,19 @@ export const tenantsAPI = {
   create: (tenantData: Partial<Tenant>, files?: File[]) => {
     const formData = new FormData();
     
-    // Add tenant data as objects (not JSON strings)
-    if (tenantData.personal_info) {
-      Object.keys(tenantData.personal_info).forEach(key => {
-        formData.append(`personal_info[${key}]`, tenantData.personal_info![key as keyof typeof tenantData.personal_info] || '');
+    // Add tenant data as separate fields
+    Object.keys(tenantData).forEach(key => {
+      if (key !== 'rental_unit_ids' && tenantData[key as keyof Tenant] !== undefined && tenantData[key as keyof Tenant] !== null) {
+        formData.append(key, String(tenantData[key as keyof Tenant]));
+      }
+    });
+    
+    // Add rental unit IDs
+    if (tenantData.rental_unit_ids) {
+      tenantData.rental_unit_ids.forEach(id => {
+        formData.append('rental_unit_ids[]', String(id));
       });
     }
-    
-    if (tenantData.contact_info) {
-      Object.keys(tenantData.contact_info).forEach(key => {
-        formData.append(`contact_info[${key}]`, tenantData.contact_info![key as keyof typeof tenantData.contact_info] || '');
-      });
-    }
-    
-    if (tenantData.emergency_contact) {
-      Object.keys(tenantData.emergency_contact).forEach(key => {
-        formData.append(`emergency_contact[${key}]`, tenantData.emergency_contact![key as keyof typeof tenantData.emergency_contact] || '');
-      });
-    }
-    
-    if (tenantData.employment_info) {
-      Object.keys(tenantData.employment_info).forEach(key => {
-        formData.append(`employment_info[${key}]`, tenantData.employment_info![key as keyof typeof tenantData.employment_info] || '');
-      });
-    }
-    
-    if (tenantData.financial_info) {
-      Object.keys(tenantData.financial_info).forEach(key => {
-        formData.append(`financial_info[${key}]`, tenantData.financial_info![key as keyof typeof tenantData.financial_info] || '');
-      });
-    }
-    
-    formData.append('status', tenantData.status || 'active');
-    formData.append('notes', tenantData.notes || '');
-    formData.append('lease_start_date', tenantData.lease_start_date || '');
-    formData.append('lease_end_date', tenantData.lease_end_date || '');
     
     // Add files
     if (files && files.length > 0) {
@@ -331,11 +312,49 @@ export const tenantsAPI = {
     
     return api.post('/tenants', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        // Don't set Content-Type for FormData - let browser set it with boundary
       },
+      transformRequest: [(data) => data], // Prevent axios from transforming FormData
     });
   },
-  update: (id: number, tenantData: Partial<Tenant>) => api.put(`/tenants/${id}`, tenantData),
+  update: (id: number, tenantData: Partial<Tenant>, files?: File[]) => {
+    console.log('API update called with:', { id, tenantData, files });
+    const formData = new FormData();
+    
+    // Add tenant data as separate fields
+    Object.keys(tenantData).forEach(key => {
+      if (key !== 'rental_unit_ids' && tenantData[key as keyof Tenant] !== undefined && tenantData[key as keyof Tenant] !== null) {
+        formData.append(key, String(tenantData[key as keyof Tenant]));
+      }
+    });
+    
+    // Add rental unit IDs
+    if (tenantData.rental_unit_ids) {
+      tenantData.rental_unit_ids.forEach(id => {
+        formData.append('rental_unit_ids[]', String(id));
+      });
+    }
+    
+    // Add files
+    if (files && files.length > 0) {
+      files.forEach(file => {
+        formData.append('files[]', file);
+      });
+    }
+    
+    // Debug FormData contents
+    console.log('FormData entries:');
+    for (const [key, value] of formData.entries()) {
+      console.log(`${key}:`, value);
+    }
+    
+    return api.post(`/tenants/${id}/update`, formData, {
+      headers: {
+        // Don't set Content-Type for FormData - let browser set it with boundary
+      },
+      transformRequest: [(data) => data], // Prevent axios from transforming FormData
+    });
+  },
   delete: (id: number) => api.delete(`/tenants/${id}`),
 };
 

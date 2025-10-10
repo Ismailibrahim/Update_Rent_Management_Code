@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\RentInvoiceController;
 use App\Http\Controllers\Api\MaintenanceCostController;
+use App\Http\Controllers\Api\RentalUnitTypeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -31,6 +32,10 @@ use App\Http\Controllers\Api\MaintenanceCostController;
 */
 
 // Public routes
+Route::get('/test', function () {
+    return response()->json(['message' => 'API is working', 'timestamp' => now()]);
+});
+
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
 Route::get('/settings/dropdowns', [SettingsController::class, 'getDropdowns']); // Public route
@@ -64,6 +69,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Tenant routes
     Route::apiResource('tenants', TenantController::class);
+    Route::post('/tenants/{tenant}/update', [TenantController::class, 'update']); // Additional POST route for updates with files
 
     // Dashboard routes
     Route::get('/dashboard/statistics', [DashboardController::class, 'statistics']);
@@ -100,6 +106,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Rent Invoice routes
     Route::apiResource('rent-invoices', RentInvoiceController::class);
     Route::post('/rent-invoices/generate-monthly', [RentInvoiceController::class, 'generateMonthlyInvoices']);
-    Route::patch('/rent-invoices/{rentInvoice}/mark-paid', [RentInvoiceController::class, 'markAsPaid']);
+    Route::post('/rent-invoices/{rentInvoice}/mark-paid', [RentInvoiceController::class, 'markAsPaid']);
+    Route::get('/rent-invoices/{rentInvoice}/payment-slip', [RentInvoiceController::class, 'getPaymentSlip']);
+    Route::get('/rent-invoices/{rentInvoice}/payment-slips', [RentInvoiceController::class, 'getAllPaymentSlips']);
+    Route::get('/rent-invoices/{rentInvoice}/payment-slip/{index}', [RentInvoiceController::class, 'getPaymentSlipByIndex']);
     Route::get('/rent-invoices/statistics', [RentInvoiceController::class, 'getStatistics']);
+
+    // Rental Unit Type routes
+    Route::apiResource('rental-unit-types', RentalUnitTypeController::class);
 });

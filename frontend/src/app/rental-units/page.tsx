@@ -16,16 +16,13 @@ interface RentalUnit {
   unit_number: string;
   unit_type?: string;
   floor_number: number;
-  unit_details: {
-    numberOfRooms: number;
-    numberOfToilets: number;
-    squareFeet?: number;
-  };
-  financial: {
-    rentAmount: number;
-    depositAmount: number;
-    currency: string;
-  };
+  // New separate columns
+  rent_amount: number;
+  deposit_amount?: number;
+  currency: string;
+  number_of_rooms: number;
+  number_of_toilets: number;
+  square_feet?: number;
   status: string;
   tenant_id?: number;
   move_in_date?: string;
@@ -46,15 +43,11 @@ interface RentalUnit {
   };
   tenant?: {
     id: number;
-    name: string;
-    personal_info?: {
-      firstName: string;
-      lastName: string;
-    };
-    contact_info?: {
-      email: string;
-      phone: string;
-    };
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string;
+    full_name?: string;
   };
   assets?: Array<{
     id: number;
@@ -129,7 +122,7 @@ export default function RentalUnitsPage() {
     const matchesSearch = 
       unit.unit_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       unit.property?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      unit.tenant?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+      (unit.tenant?.full_name || `${unit.tenant?.first_name} ${unit.tenant?.last_name}`).toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesProperty = selectedProperty === 'all' || unit.property_id.toString() === selectedProperty;
     
@@ -317,9 +310,9 @@ export default function RentalUnitsPage() {
                             </span>
                           </div>
                         )}
-                        {typeof unit.unit_details.squareFeet === 'number' && (
+                        {typeof unit.square_feet === 'number' && (
                           <div className="mt-1 text-xs text-gray-600 truncate">
-                            Sq Ft: {unit.unit_details.squareFeet}
+                            Sq Ft: {unit.square_feet}
                           </div>
                         )}
                       </td>
@@ -335,12 +328,12 @@ export default function RentalUnitsPage() {
                       </td>
                       <td className="px-2 py-2 align-top text-center">
                         <div className="text-sm text-gray-900">
-                          {unit.unit_details.numberOfRooms}/{unit.unit_details.numberOfToilets}
+                          {unit.number_of_rooms}/{unit.number_of_toilets}
                         </div>
                       </td>
                       <td className="px-2 py-2 align-top">
                         <div className="text-sm font-medium text-gray-900 truncate">
-                          {unit.financial.currency} {unit.financial.rentAmount?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          {unit.currency} {Math.round(Number(unit.rent_amount || 0)).toLocaleString('en-US')}
                         </div>
                       </td>
                       <td className="px-2 py-2 align-top">
@@ -361,12 +354,14 @@ export default function RentalUnitsPage() {
                           {unit.status === 'occupied' && unit.tenant 
                             ? (
                               <div>
-                                <div className="font-medium truncate" title={unit.tenant.name}>{unit.tenant.name}</div>
-                                {unit.tenant.contact_info?.phone && (
-                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.contact_info.phone}</div>
+                                <div className="font-medium truncate" title={unit.tenant.full_name || `${unit.tenant.first_name} ${unit.tenant.last_name}`}>
+                                  {unit.tenant.full_name || `${unit.tenant.first_name} ${unit.tenant.last_name}`}
+                                </div>
+                                {unit.tenant.phone && (
+                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.phone}</div>
                                 )}
-                                {unit.tenant.contact_info?.email && (
-                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.contact_info.email}</div>
+                                {unit.tenant.email && (
+                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.email}</div>
                                 )}
                               </div>
                             )

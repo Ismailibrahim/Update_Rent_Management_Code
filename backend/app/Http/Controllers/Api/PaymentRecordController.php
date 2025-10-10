@@ -24,7 +24,9 @@ class PaymentRecordController extends Controller
                     $query->with(['tenant', 'property']);
                 },
                 'paymentType', 
-                'paymentMode'
+                'paymentMode',
+                'currency',
+                'rentInvoice'
             ]);
             
             // Apply filters if provided
@@ -34,8 +36,10 @@ class PaymentRecordController extends Controller
                     $q->where('remarks', 'like', "%{$search}%")
                       ->orWhere('paid_by', 'like', "%{$search}%")
                       ->orWhereHas('rentalUnit.tenant', function($tenantQuery) use ($search) {
-                          $tenantQuery->whereRaw("JSON_EXTRACT(personal_info, '$.firstName') LIKE ?", ["%{$search}%"])
-                                     ->orWhereRaw("JSON_EXTRACT(personal_info, '$.lastName') LIKE ?", ["%{$search}%"]);
+                          $tenantQuery->where('first_name', 'like', "%{$search}%")
+                                     ->orWhere('last_name', 'like', "%{$search}%")
+                                     ->orWhere('email', 'like', "%{$search}%")
+                                     ->orWhere('phone', 'like', "%{$search}%");
                       });
                 });
             }
@@ -45,6 +49,19 @@ class PaymentRecordController extends Controller
             }
             
             $paymentRecords = $query->orderBy('created_at', 'desc')->get();
+            
+            // Debug: Log payment records and their relationships
+            Log::info('Payment Records Debug:', [
+                'total_records' => $paymentRecords->count(),
+                'sample_record' => $paymentRecords->first() ? [
+                    'id' => $paymentRecords->first()->id,
+                    'unit_id' => $paymentRecords->first()->unit_id,
+                    'rent_invoice' => $paymentRecords->first()->rentInvoice ? [
+                        'id' => $paymentRecords->first()->rentInvoice->id,
+                        'invoice_number' => $paymentRecords->first()->rentInvoice->invoice_number,
+                    ] : null
+                ] : null
+            ]);
             
             // Transform the data to match frontend expectations
             $transformedRecords = $paymentRecords->map(function($record) {
@@ -58,7 +75,7 @@ class PaymentRecordController extends Controller
                     'tenant_id' => $record->rentalUnit?->tenant_id,
                     'tenant_exists' => $record->rentalUnit?->tenant ? 'Yes' : 'No',
                     'tenant_name' => $record->rentalUnit?->tenant ? 
-                        $record->rentalUnit->tenant->personal_info['firstName'] . ' ' . $record->rentalUnit->tenant->personal_info['lastName'] : 
+                        $record->rentalUnit->tenant->full_name : 
                         'No tenant'
                 ]);
                 
@@ -69,12 +86,30 @@ class PaymentRecordController extends Controller
                     'payment_type_id' => $record->payment_type_id,
                     'payment_mode_id' => $record->payment_mode_id,
                     'amount' => $record->amount,
+                    'currency' => $record->currency ? [
+                        'code' => $record->currency->code,
+                        'symbol' => $record->currency->symbol,
+                    ] : null,
+                    'rental_unit' => $record->rentalUnit ? [
+                        'unit_number' => $record->rentalUnit->unit_number,
+                        'status' => $record->rentalUnit->status,
+                        'unit_type' => $record->rentalUnit->unit_type ?? null,
+                    ] : null,
                     'reference_number' => $record->remarks, // Using remarks as reference
                     'payment_date' => $record->paid_date,
                     'status' => $record->is_active ? 'completed' : 'pending',
                     'notes' => $record->remarks,
+                    'rent_invoice' => $record->rentInvoice ? [
+                        'id' => $record->rentInvoice->id,
+                        'invoice_number' => $record->rentInvoice->invoice_number,
+                        'total_amount' => $record->rentInvoice->total_amount,
+                        'currency' => $record->rentInvoice->currency,
+                        'invoice_date' => $record->rentInvoice->invoice_date,
+                        'due_date' => $record->rentInvoice->due_date,
+                        'status' => $record->rentInvoice->status,
+                    ] : null,
                     'tenant' => $record->rentalUnit->tenant ? [
-                        'name' => $record->rentalUnit->tenant->personal_info['firstName'] . ' ' . $record->rentalUnit->tenant->personal_info['lastName']
+                        'name' => $record->rentalUnit->tenant->full_name
                     ] : null,
                     'property' => $record->rentalUnit->property ? [
                         'name' => $record->rentalUnit->property->name

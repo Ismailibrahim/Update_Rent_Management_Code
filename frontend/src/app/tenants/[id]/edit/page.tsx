@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, use } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/UI/Card';
 import { Button } from '../../../../components/UI/Button';
 import { Input } from '../../../../components/UI/Input';
@@ -10,8 +10,9 @@ import { ArrowLeft, Save, X, Home, Upload } from 'lucide-react';
 import { tenantsAPI, rentalUnitsAPI } from '../../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../../components/Layout/SidebarLayout';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import FileUpload from '../../../../components/UI/FileUpload';
+import { useAuth } from '../../../../contexts/AuthContext';
 
 interface RentalUnit {
   id: number;
@@ -21,22 +22,19 @@ interface RentalUnit {
     id: number;
     name: string;
   };
-  unit_details: {
-    numberOfRooms?: number;
-    numberOfToilets?: number;
-    square_feet?: number;
-  };
-  financial: {
-    rentAmount?: number;
-    currency?: string;
-  };
+  number_of_rooms?: number;
+  number_of_toilets?: number;
+  square_feet?: number;
+  rent_amount?: number;
+  currency?: string;
   status: string;
 }
 
-export default function EditTenantPage() {
+export default function EditTenantPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const params = useParams();
-  const tenantId = params.id as string;
+  const { user, loading: authLoading } = useAuth();
+  const resolvedParams = use(params);
+  const tenantId = resolvedParams.id;
   
   const [loading, setLoading] = useState(false);
   const [availableUnits, setAvailableUnits] = useState<RentalUnit[]>([]);
@@ -50,39 +48,52 @@ export default function EditTenantPage() {
     uploaded_at: string;
   }>>([]);
   const [formData, setFormData] = useState({
-    personal_info: {
-      firstName: '',
-      lastName: '',
-      dateOfBirth: '',
-      gender: '',
-      nationality: '',
-      idNumber: ''
-    },
-    contact_info: {
-      email: '',
-      phone: '',
-      address: ''
-    },
-    emergency_contact: {
-      name: '',
-      phone: '',
-      relationship: ''
-    },
+    // Tenant type selection
+    tenant_type: 'individual' as 'individual' | 'company',
+    // New separate columns
+    first_name: '',
+    last_name: '',
+    date_of_birth: '',
+    national_id: '',
+    gender: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: '',
+    postal_code: '',
+    emergency_contact_name: '',
+    emergency_contact_phone: '',
+    emergency_contact_relationship: '',
+    employment_company: '',
+    employment_position: '',
+    employment_salary: '',
+    employment_phone: '',
+    bank_name: '',
+    account_number: '',
+    account_holder_name: '',
     status: 'active',
     notes: '',
     lease_start_date: '',
     lease_end_date: '',
-    rental_unit_ids: [] as string[]
+    rental_unit_ids: [] as string[],
+    // Company-specific fields
+    company_name: '',
+    company_address: '',
+    company_registration_number: '',
+    company_gst_tin: '',
+    company_telephone: '',
+    company_email: '',
+    // Additional fields
+    nationality: ''
   });
 
-  const fetchAvailableUnits = useCallback(async () => {
+  const fetchAvailableUnits = useCallback(async (assignedUnitIds: number[] = []) => {
     try {
       setUnitsLoading(true);
       const response = await rentalUnitsAPI.getAll();
       const allUnits = response.data.rentalUnits || [];
       
       // Filter out units that are already assigned to this tenant
-      const assignedUnitIds = formData.rental_unit_ids.map(id => parseInt(id));
       const availableUnits = allUnits.filter((unit: { id: number; status: string }) => 
         !assignedUnitIds.includes(unit.id) || 
         unit.status === 'occupied' // Include occupied units so they can be re-assigned
@@ -95,104 +106,195 @@ export default function EditTenantPage() {
     } finally {
       setUnitsLoading(false);
     }
-  }, [formData.rental_unit_ids]);
+  }, []);
 
   const fetchTenant = useCallback(async () => {
     try {
       setLoading(true);
+      console.log('Fetching tenant with ID:', tenantId);
+      console.log('Token exists:', !!localStorage.getItem('token'));
       const response = await tenantsAPI.getById(parseInt(tenantId));
+      console.log('API Response received:', response);
       const tenant = response.data.tenant;
       
-      setFormData({
-        personal_info: {
-          firstName: tenant.personal_info.firstName,
-          lastName: tenant.personal_info.lastName,
-          dateOfBirth: tenant.personal_info.dateOfBirth,
-          gender: tenant.personal_info.gender,
-          nationality: tenant.personal_info.nationality,
-          idNumber: tenant.personal_info.idNumber
-        },
-        contact_info: {
-          email: tenant.personal_info.email,
-          phone: tenant.personal_info.phone,
-          address: tenant.contact_info.address
-        },
-        emergency_contact: {
-          name: tenant.emergency_contact?.name || '',
-          phone: tenant.emergency_contact?.phone || '',
-          relationship: tenant.emergency_contact?.relationship || ''
-        },
+      // Helper function to format date for HTML date input
+      const formatDateForInput = (dateString: string | null | undefined) => {
+        if (!dateString) return '';
+        try {
+          return new Date(dateString).toISOString().split('T')[0];
+        } catch {
+          return '';
+        }
+      };
+
+      const formDataToSet = {
+        // Tenant type
+        tenant_type: tenant.tenant_type || 'individual',
+        // New separate columns
+        first_name: tenant.first_name || '',
+        last_name: tenant.last_name || '',
+        date_of_birth: formatDateForInput(tenant.date_of_birth),
+        national_id: tenant.national_id || '',
+        nationality: tenant.nationality || '',
+        gender: tenant.gender || '',
+        email: tenant.email || '',
+        phone: tenant.phone || '',
+        address: tenant.address || '',
+        city: tenant.city || '',
+        postal_code: tenant.postal_code || '',
+        emergency_contact_name: tenant.emergency_contact_name || '',
+        emergency_contact_phone: tenant.emergency_contact_phone || '',
+        emergency_contact_relationship: tenant.emergency_contact_relationship || '',
+        employment_company: tenant.employment_company || '',
+        employment_position: tenant.employment_position || '',
+        employment_salary: tenant.employment_salary?.toString() || '',
+        employment_phone: tenant.employment_phone || '',
+        bank_name: tenant.bank_name || '',
+        account_number: tenant.account_number || '',
+        account_holder_name: tenant.account_holder_name || '',
         status: tenant.status || 'active',
         notes: tenant.notes || '',
-        lease_start_date: tenant.lease_start_date || '',
-        lease_end_date: tenant.lease_end_date || '',
-        rental_unit_ids: tenant.rental_units ? tenant.rental_units.map((unit: { id: number }) => unit.id.toString()) : []
-      });
-
-      // Set existing documents
-      setExistingDocuments(tenant.documents || []);
+        lease_start_date: formatDateForInput(tenant.lease_start_date),
+        lease_end_date: formatDateForInput(tenant.lease_end_date),
+        rental_unit_ids: tenant.rental_units ? tenant.rental_units.map((unit: { id: number }) => unit.id.toString()) : [],
+        // Company-specific fields
+        company_name: tenant.company_name || '',
+        company_address: tenant.company_address || '',
+        company_registration_number: tenant.company_registration_number || '',
+        company_gst_tin: tenant.company_gst_tin || '',
+        company_telephone: tenant.company_telephone || '',
+        company_email: tenant.company_email || ''
+      };
       
-      // Fetch available units after setting the form data
-      fetchAvailableUnits();
+      console.log('Form data to set:', formDataToSet);
+      console.log('Current form data before setting:', formData);
+      setFormData(formDataToSet);
+      console.log('Form data set completed');
+
+      // Set existing documents - handle both string and array formats
+      let documents = [];
+      if (tenant.documents) {
+        if (typeof tenant.documents === 'string') {
+          try {
+            documents = JSON.parse(tenant.documents);
+          } catch (e) {
+            console.error('Error parsing documents:', e);
+            documents = [];
+          }
+        } else if (Array.isArray(tenant.documents)) {
+          documents = tenant.documents;
+        }
+      }
+      setExistingDocuments(documents);
     } catch (error) {
       console.error('Error fetching tenant:', error);
       toast.error('Failed to fetch tenant details');
     } finally {
       setLoading(false);
     }
-  }, [tenantId, fetchAvailableUnits]);
+  }, [tenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchTenant();
   }, [tenantId, fetchTenant]);
 
   useEffect(() => {
-    // Refresh available units whenever rental_unit_ids change
-    // This ensures we see updated unit statuses after linking/unlinking
-    fetchAvailableUnits();
+    // Fetch available units after tenant data is loaded
+    if (formData.rental_unit_ids.length >= 0) {
+      const assignedUnitIds = formData.rental_unit_ids.map(id => parseInt(id));
+      fetchAvailableUnits(assignedUnitIds);
+    }
   }, [formData.rental_unit_ids, fetchAvailableUnits]);
 
-  const handleInputChange = (section: string, field: string, value: string) => {
+  const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
-      [section]: {
-        ...(prev[section as keyof typeof prev] as Record<string, unknown> || {}),
-        [field]: value
-      }
+      [field]: value
     }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.personal_info.firstName || !formData.personal_info.lastName) {
-      toast.error('Please fill in required fields');
-      return;
-    }
+    console.log('Form submission started');
+    console.log('Form data:', formData);
+    console.log('Files:', files);
+
+        // Validate required fields based on tenant type
+        if (formData.tenant_type === 'individual') {
+          if (!formData.first_name || !formData.last_name) {
+            toast.error('Please fill in first name and last name for individual tenant');
+            return;
+          }
+        } else if (formData.tenant_type === 'company') {
+          if (!formData.company_name || !formData.company_address || !formData.company_registration_number) {
+            toast.error('Please fill in required fields for company tenant');
+            return;
+          }
+          // For company tenants, personal information is optional
+          // No additional validation needed - personal info can be partial or empty
+        }
 
     try {
       setLoading(true);
       
       const submitData = {
         ...formData,
-        personal_info: formData.personal_info,
-        contact_info: formData.contact_info,
-        emergency_contact: formData.emergency_contact,
         lease_start_date: formData.lease_start_date || undefined,
-        lease_end_date: formData.lease_end_date || undefined
+        lease_end_date: formData.lease_end_date || undefined,
+        date_of_birth: formData.date_of_birth || undefined,
+        employment_salary: formData.employment_salary ? parseFloat(formData.employment_salary) : undefined,
+        rental_unit_ids: Array.isArray(formData.rental_unit_ids) ? formData.rental_unit_ids.map(id => parseInt(id)) : []
       };
 
+           // For company tenants, only map company fields if they are being updated
+           // Don't override personal information fields with company data during updates
+           if (formData.tenant_type === 'company') {
+             // Only update company-specific fields, preserve personal information
+             if (formData.company_name) submitData.company_name = formData.company_name;
+             if (formData.company_address) submitData.company_address = formData.company_address;
+             if (formData.company_registration_number) submitData.company_registration_number = formData.company_registration_number;
+             if (formData.company_gst_tin) submitData.company_gst_tin = formData.company_gst_tin;
+             if (formData.company_telephone) submitData.company_telephone = formData.company_telephone;
+             if (formData.company_email) submitData.company_email = formData.company_email;
+           }
+
+      // Remove empty strings and convert to undefined
+      Object.keys(submitData).forEach(key => {
+        if (submitData[key as keyof typeof submitData] === '') {
+          (submitData as Record<string, unknown>)[key] = undefined;
+        }
+      });
+
       console.log('Submitting tenant data:', submitData);
-      await tenantsAPI.update(parseInt(tenantId), submitData);
+      console.log('Tenant ID:', tenantId);
+      console.log('Form data keys:', Object.keys(submitData));
+      console.log('Rental unit IDs:', submitData.rental_unit_ids);
+      console.log('Files to upload:', files);
+      
+      await tenantsAPI.update(parseInt(tenantId), submitData, files);
       
       // Refresh the available units after successful update
-      await fetchAvailableUnits();
+      const assignedUnitIds = formData.rental_unit_ids.map(id => parseInt(id));
+      await fetchAvailableUnits(assignedUnitIds);
       
       toast.success('Tenant updated successfully');
       router.push('/tenants');
-    } catch (error) {
-      console.error('Error updating tenant:', error);
-      toast.error('Failed to update tenant');
+        } catch (error: unknown) {
+          console.error('Error updating tenant:', error);
+          
+          // Show detailed error message if available
+          const errorMessage = error instanceof Error && 'response' in error 
+            ? (error as { response?: { data?: { error?: string } } }).response?.data?.error || error.message || 'Failed to update tenant'
+            : error instanceof Error 
+            ? error.message 
+            : 'Failed to update tenant';
+          toast.error(errorMessage);
+      
+      // Log detailed error for debugging
+      if (error instanceof Error && 'response' in error && (error as { response?: { data?: { details?: unknown } } }).response?.data?.details) {
+        console.error('Detailed error:', (error as { response: { data: { details: unknown } } }).response.data.details);
+      }
     } finally {
       setLoading(false);
     }
@@ -202,7 +304,14 @@ export default function EditTenantPage() {
     router.push('/tenants');
   };
 
-  if (loading) {
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  if (authLoading || loading) {
     return (
       <SidebarLayout>
         <div className="flex items-center justify-center min-h-screen">
@@ -235,6 +344,40 @@ export default function EditTenantPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Tenant Type Selection */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Tenant Type</CardTitle>
+              <CardDescription>Select whether this is an individual or company tenant</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    name="tenant_type"
+                    value="individual"
+                    checked={formData.tenant_type === 'individual'}
+                    onChange={(e) => handleInputChange('tenant_type', e.target.value)}
+                    className="text-blue-600"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Individual</span>
+                </label>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    name="tenant_type"
+                    value="company"
+                    checked={formData.tenant_type === 'company'}
+                    onChange={(e) => handleInputChange('tenant_type', e.target.value)}
+                    className="text-blue-600"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Company</span>
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Personal Information */}
           <Card>
             <CardHeader>
@@ -249,8 +392,8 @@ export default function EditTenantPage() {
                   </label>
                   <Input
                     placeholder="Enter first name"
-                    value={formData.personal_info.firstName}
-                    onChange={(e) => handleInputChange('personal_info', 'firstName', e.target.value)}
+                    value={formData.first_name}
+                    onChange={(e) => handleInputChange('first_name', e.target.value)}
                     required
                   />
                 </div>
@@ -260,8 +403,8 @@ export default function EditTenantPage() {
                   </label>
                   <Input
                     placeholder="Enter last name"
-                    value={formData.personal_info.lastName}
-                    onChange={(e) => handleInputChange('personal_info', 'lastName', e.target.value)}
+                    value={formData.last_name}
+                    onChange={(e) => handleInputChange('last_name', e.target.value)}
                     required
                   />
                 </div>
@@ -273,8 +416,8 @@ export default function EditTenantPage() {
                   </label>
                   <Input
                     type="date"
-                    value={formData.personal_info.dateOfBirth}
-                    onChange={(e) => handleInputChange('personal_info', 'dateOfBirth', e.target.value)}
+                    value={formData.date_of_birth}
+                    onChange={(e) => handleInputChange('date_of_birth', e.target.value)}
                   />
                 </div>
                 <div>
@@ -282,8 +425,8 @@ export default function EditTenantPage() {
                     Gender
                   </label>
                   <Select
-                    value={formData.personal_info.gender}
-                    onChange={(e) => handleInputChange('personal_info', 'gender', e.target.value)}
+                    value={formData.gender}
+                    onChange={(e) => handleInputChange('gender', e.target.value)}
                   >
                     <option value="">Select gender</option>
                     <option value="male">Male</option>
@@ -297,8 +440,8 @@ export default function EditTenantPage() {
                   </label>
                   <Input
                     placeholder="Enter ID number"
-                    value={formData.personal_info.idNumber}
-                    onChange={(e) => handleInputChange('personal_info', 'idNumber', e.target.value)}
+                    value={formData.national_id}
+                    onChange={(e) => handleInputChange('national_id', e.target.value)}
                   />
                 </div>
               </div>
@@ -308,12 +451,70 @@ export default function EditTenantPage() {
                 </label>
                 <Input
                   placeholder="Enter nationality"
-                  value={formData.personal_info.nationality}
-                  onChange={(e) => handleInputChange('personal_info', 'nationality', e.target.value)}
+                  value={formData.nationality}
+                  onChange={(e) => handleInputChange('nationality', e.target.value)}
                 />
               </div>
             </CardContent>
           </Card>
+
+          {/* Company Information - Only show for company tenants */}
+          {formData.tenant_type === 'company' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Company Information</CardTitle>
+                <CardDescription>Company details and registration information</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Company Name *
+                  </label>
+                  <Input
+                    placeholder="Enter company name"
+                    value={formData.company_name}
+                    onChange={(e) => handleInputChange('company_name', e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Company Address *
+                  </label>
+                  <Textarea
+                    placeholder="Enter company address"
+                    value={formData.company_address}
+                    onChange={(e) => handleInputChange('company_address', e.target.value)}
+                    rows={3}
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Company Registration Number *
+                    </label>
+                    <Input
+                      placeholder="Enter registration number"
+                      value={formData.company_registration_number}
+                      onChange={(e) => handleInputChange('company_registration_number', e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      GST TIN
+                    </label>
+                    <Input
+                      placeholder="Enter GST TIN"
+                      value={formData.company_gst_tin}
+                      onChange={(e) => handleInputChange('company_gst_tin', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Contact Information */}
           <Card>
@@ -322,43 +523,119 @@ export default function EditTenantPage() {
               <CardDescription>Contact details and address</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Email *
-                  </label>
-                  <Input
-                    type="email"
-                    placeholder="Enter email address"
-                    value={formData.contact_info.email}
-                    onChange={(e) => handleInputChange('contact_info', 'email', e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Phone *
-                  </label>
-                  <Input
-                    type="tel"
-                    placeholder="Enter phone number"
-                    value={formData.contact_info.phone}
-                    onChange={(e) => handleInputChange('contact_info', 'phone', e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Address
-                </label>
-                <Textarea
-                  placeholder="Enter full address"
-                  value={formData.contact_info.address}
-                  onChange={(e) => handleInputChange('contact_info', 'address', e.target.value)}
-                  rows={3}
-                />
-              </div>
+              {formData.tenant_type === 'individual' ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Email *
+                      </label>
+                      <Input
+                        type="email"
+                        placeholder="Enter email address"
+                        value={formData.email}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone *
+                      </label>
+                      <Input
+                        type="tel"
+                        placeholder="Enter phone number"
+                        value={formData.phone}
+                        onChange={(e) => handleInputChange('phone', e.target.value)}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Address
+                    </label>
+                    <Textarea
+                      placeholder="Enter full address"
+                      value={formData.address}
+                      onChange={(e) => handleInputChange('address', e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Personal Contact */}
+                  <div className="border-b pb-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Personal Contact</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Personal Email
+                        </label>
+                        <Input
+                          type="email"
+                          placeholder="Enter personal email"
+                          value={formData.email}
+                          onChange={(e) => handleInputChange('email', e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Personal Phone
+                        </label>
+                        <Input
+                          type="tel"
+                          placeholder="Enter personal phone"
+                          value={formData.phone}
+                          onChange={(e) => handleInputChange('phone', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Personal Address
+                      </label>
+                      <Textarea
+                        placeholder="Enter personal address"
+                        value={formData.address}
+                        onChange={(e) => handleInputChange('address', e.target.value)}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Company Contact */}
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Company Contact</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Company Telephone *
+                        </label>
+                        <Input
+                          placeholder="Enter company telephone"
+                          value={formData.company_telephone}
+                          onChange={(e) => handleInputChange('company_telephone', e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Company Email *
+                        </label>
+                        <Input
+                          type="email"
+                          placeholder="Enter company email"
+                          value={formData.company_email}
+                          onChange={(e) => handleInputChange('company_email', e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -408,8 +685,8 @@ export default function EditTenantPage() {
                   </label>
                   <Input
                     placeholder="Enter emergency contact name"
-                    value={formData.emergency_contact.name}
-                    onChange={(e) => handleInputChange('emergency_contact', 'name', e.target.value)}
+                    value={formData.emergency_contact_name}
+                    onChange={(e) => handleInputChange('emergency_contact_name', e.target.value)}
                   />
                 </div>
                 <div>
@@ -418,8 +695,8 @@ export default function EditTenantPage() {
                   </label>
                   <Input
                     placeholder="Enter emergency contact phone"
-                    value={formData.emergency_contact.phone}
-                    onChange={(e) => handleInputChange('emergency_contact', 'phone', e.target.value)}
+                    value={formData.emergency_contact_phone}
+                    onChange={(e) => handleInputChange('emergency_contact_phone', e.target.value)}
                   />
                 </div>
                 <div>
@@ -428,8 +705,8 @@ export default function EditTenantPage() {
                   </label>
                   <Input
                     placeholder="e.g., Spouse, Parent, Sibling"
-                    value={formData.emergency_contact.relationship}
-                    onChange={(e) => handleInputChange('emergency_contact', 'relationship', e.target.value)}
+                    value={formData.emergency_contact_relationship}
+                    onChange={(e) => handleInputChange('emergency_contact_relationship', e.target.value)}
                   />
                 </div>
               </div>
@@ -581,11 +858,11 @@ export default function EditTenantPage() {
                                       )}
                                     </div>
                                     <div className="text-xs text-gray-500">
-                                      {unit.unit_details.numberOfRooms && unit.unit_details.numberOfToilets && 
-                                        `${unit.unit_details.numberOfRooms} bed, ${unit.unit_details.numberOfToilets} bath`
+                                      {unit.number_of_rooms && unit.number_of_toilets && 
+                                        `${unit.number_of_rooms} bed, ${unit.number_of_toilets} bath`
                                       }
-                                      {unit.financial.rentAmount && 
-                                        ` • ${unit.financial.currency || '$'}${unit.financial.rentAmount.toLocaleString()}/month`
+                                      {unit.rent_amount && 
+                                        ` • ${unit.currency || '$'}${unit.rent_amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/month`
                                       }
                                       <span className={`ml-2 px-2 py-1 rounded-full text-xs ${
                                         unit.status === 'available' 
@@ -623,8 +900,8 @@ export default function EditTenantPage() {
                       return unit ? (
                         <div key={unitId} className="text-xs text-blue-700">
                           • {unit.property.name} - Unit {unit.unit_number} (Floor {unit.floor_number})
-                          {unit.financial.rentAmount && 
-                            ` - ${unit.financial.currency || '$'}${unit.financial.rentAmount.toLocaleString()}/month`
+                          {unit.rent_amount && 
+                            ` - ${unit.currency || '$'}${unit.rent_amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/month`
                           }
                         </div>
                       ) : null;
@@ -656,11 +933,11 @@ export default function EditTenantPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Existing Documents */}
-              {existingDocuments.length > 0 && (
+              {Array.isArray(existingDocuments) && existingDocuments.length > 0 && (
                 <div>
                   <h4 className="text-sm font-medium text-gray-700 mb-3">Existing Documents</h4>
                   <div className="space-y-2">
-                    {existingDocuments.map((doc, index) => (
+                    {Array.isArray(existingDocuments) && existingDocuments.map((doc, index) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-md">
                         <div className="flex items-center space-x-3">
                           <div className="flex-shrink-0">
@@ -687,7 +964,7 @@ export default function EditTenantPage() {
                         </div>
                         <div className="flex items-center space-x-2">
                           <a
-                            href={`/storage/${doc.path}`}
+                            href={`http://localhost:8000/storage/${doc.path}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:text-blue-800 text-sm font-medium"
@@ -697,7 +974,7 @@ export default function EditTenantPage() {
                           <button
                             onClick={() => {
                               const link = document.createElement('a');
-                              link.href = `/storage/${doc.path}`;
+                              link.href = `http://localhost:8000/storage/${doc.path}`;
                               link.download = doc.name;
                               link.click();
                             }}
@@ -715,7 +992,7 @@ export default function EditTenantPage() {
               {/* New File Upload */}
               <div>
                 <h4 className="text-sm font-medium text-gray-700 mb-3">
-                  {existingDocuments.length > 0 ? 'Add More Documents' : 'Upload Documents'}
+                  {Array.isArray(existingDocuments) && existingDocuments.length > 0 ? 'Add More Documents' : 'Upload Documents'}
                 </h4>
                 <FileUpload
                   files={files}

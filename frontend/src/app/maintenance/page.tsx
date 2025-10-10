@@ -53,7 +53,7 @@ export default function MaintenancePage() {
     repair_date: string;
     repair_provider: string;
     notes: string;
-    attached_bills: string[];
+    bill_file_paths: string;
   } | null>(null);
   const [costForm, setCostForm] = useState({
     repair_cost: '',
@@ -660,11 +660,11 @@ export default function MaintenancePage() {
                   </p>
                   
                   {/* Display existing attached bills when editing */}
-                  {isEditing && existingCostData && existingCostData.attached_bills && existingCostData.attached_bills.length > 0 && (
+                  {isEditing && existingCostData && existingCostData.bill_file_paths && existingCostData.bill_file_paths.split(',').length > 0 && (
                     <div className="mt-3">
                       <p className="text-sm font-medium text-gray-700 mb-2">Existing Attached Bills:</p>
                       <div className="space-y-2">
-                        {existingCostData.attached_bills.map((billPath: string, index: number) => {
+                        {existingCostData.bill_file_paths.split(',').map((billPath: string, index: number) => {
                           const fileName = billPath.split('/').pop() || 'Unknown file';
                           return (
                             <div key={index} className="flex items-center justify-between bg-green-50 p-2 rounded-md border border-green-200">

@@ -14,7 +14,7 @@ interface MaintenanceCost {
   repair_cost: number;
   currency: string;
   description?: string;
-  attached_bills?: string[];
+  bill_file_paths?: string;
   repair_date?: string;
   repair_provider?: string;
   status: string;
@@ -277,9 +277,9 @@ export default function MaintenanceCostPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center">
-                          {cost.attached_bills && cost.attached_bills.length > 0 ? (
+                          {cost.bill_file_paths && cost.bill_file_paths.split(',').length > 0 ? (
                             <div className="flex flex-col space-y-1">
-                              {cost.attached_bills.map((bill, index) => {
+                              {cost.bill_file_paths.split(',').map((bill, index) => {
                                 const fileName = bill.split('/').pop() || `bill_${index + 1}`;
                                 const fileUrl = `http://localhost:8000/storage/${bill}`;
                                 return (

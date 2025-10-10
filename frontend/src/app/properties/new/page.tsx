@@ -214,27 +214,41 @@ export default function NewPropertyPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Bedrooms
+                      Bedrooms *
                     </label>
                     <Input
                       type="number"
-                      min="0"
-                      placeholder="0"
-                      {...register('bedrooms', { valueAsNumber: true })}
+                      min="1"
+                      placeholder="1"
+                      {...register('bedrooms', { 
+                        required: 'Number of bedrooms is required',
+                        min: { value: 1, message: 'At least 1 bedroom is required' },
+                        valueAsNumber: true 
+                      })}
                     />
+                    {errors.bedrooms && (
+                      <p className="mt-1 text-sm text-red-600">{errors.bedrooms.message}</p>
+                    )}
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Bathrooms
+                      Bathrooms *
                     </label>
                     <Input
                       type="number"
-                      min="0"
+                      min="1"
                       step="0.5"
-                      placeholder="0"
-                      {...register('bathrooms', { valueAsNumber: true })}
+                      placeholder="1"
+                      {...register('bathrooms', { 
+                        required: 'Number of bathrooms is required',
+                        min: { value: 1, message: 'At least 1 bathroom is required' },
+                        valueAsNumber: true 
+                      })}
                     />
+                    {errors.bathrooms && (
+                      <p className="mt-1 text-sm text-red-600">{errors.bathrooms.message}</p>
+                    )}
                   </div>
 
                   <div>

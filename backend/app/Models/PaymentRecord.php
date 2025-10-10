@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\RentalUnit;
 use App\Models\Tenant;
 use App\Models\Property;
+use App\Models\Currency;
+use App\Models\RentInvoice;
 class PaymentRecord extends Model
 {
     use HasFactory;
@@ -75,6 +77,29 @@ class PaymentRecord extends Model
     public function paymentMode()
     {
         return $this->belongsTo(PaymentMode::class);
+    }
+
+    /**
+     * Get the currency for this payment record.
+     */
+    public function currency()
+    {
+        return $this->belongsTo(Currency::class, 'currency_id');
+    }
+
+    /**
+     * Get the associated rent invoice through rental unit.
+     */
+    public function rentInvoice()
+    {
+        return $this->hasOneThrough(
+            RentInvoice::class,
+            RentalUnit::class,
+            'id', // Foreign key on rental_units table
+            'rental_unit_id', // Foreign key on rent_invoices table
+            'unit_id', // Local key on payment_records table
+            'id' // Local key on rental_units table
+        )->where('rent_invoices.status', 'paid');
     }
 
     /**

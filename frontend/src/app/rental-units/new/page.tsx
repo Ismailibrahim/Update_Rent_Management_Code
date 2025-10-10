@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useMemo, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/UI/Card';
 import { Button } from '../../../components/UI/Button';
 import { Input } from '../../../components/UI/Input';
@@ -36,10 +36,8 @@ interface RentalUnitType {
 
 interface RentalUnit {
   id: number;
-  unit_details: {
-    numberOfRooms: number;
-    numberOfToilets: number;
-  };
+  number_of_rooms: number;
+  number_of_toilets: number;
 }
 
 function NewRentalUnitPageContent() {
@@ -53,21 +51,20 @@ function NewRentalUnitPageContent() {
   const [loading, setLoading] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [existingRentalUnits, setExistingRentalUnits] = useState<RentalUnit[]>([]);
+  const [isLoadingProperty, setIsLoadingProperty] = useState(false);
+  const lastFetchedPropertyId = useRef<number | null>(null);
   const [formData, setFormData] = useState({
     property_id: propertyIdFromUrl || '',
     unit_number: '',
     unit_type: '',
     floor_number: '',
-    unit_details: {
-      numberOfRooms: '',
-      numberOfToilets: '',
-      squareFeet: ''
-    },
-    financial: {
-      rentAmount: '',
-      depositAmount: '',
-      currency: 'MVR'
-    },
+    // New separate columns
+    rent_amount: '',
+    deposit_amount: '',
+    currency: 'MVR',
+    number_of_rooms: '',
+    number_of_toilets: '',
+    square_feet: '',
     status: 'available',
     description: '',
     assets: []
@@ -79,17 +76,6 @@ function NewRentalUnitPageContent() {
     const normalized = name.trim().toLowerCase();
     return allowedUnitTypes.includes(normalized) ? normalized : 'other';
   };
-
-  useEffect(() => {
-    fetchProperties();
-    fetchAssets();
-    fetchUnitTypes();
-    
-    // If coming from a property page, fetch property details
-    if (propertyIdFromUrl) {
-      fetchPropertyDetails(parseInt(propertyIdFromUrl));
-    }
-  }, [propertyIdFromUrl]);
 
   const fetchProperties = async () => {
     try {
@@ -121,8 +107,15 @@ function NewRentalUnitPageContent() {
     }
   };
 
-  const fetchPropertyDetails = async (propertyId: number) => {
+  const fetchPropertyDetails = useCallback(async (propertyId: number) => {
+    if (isLoadingProperty || lastFetchedPropertyId.current === propertyId) {
+      return; // Prevent duplicate calls
+    }
+    
     try {
+      setIsLoadingProperty(true);
+      lastFetchedPropertyId.current = propertyId;
+      
       const response = await propertiesAPI.getById(propertyId);
       const property = response.data.property;
       setSelectedProperty(property);
@@ -133,17 +126,31 @@ function NewRentalUnitPageContent() {
     } catch (error) {
       console.error('Error fetching property details:', error);
       toast.error('Failed to fetch property details');
+      lastFetchedPropertyId.current = null; // Reset on error
+    } finally {
+      setIsLoadingProperty(false);
     }
-  };
+  }, [isLoadingProperty]);
 
-  const calculateAvailableCapacity = () => {
-    if (!selectedProperty) return { availableRooms: 0, availableToilets: 0 };
+  useEffect(() => {
+    fetchProperties();
+    fetchAssets();
+    fetchUnitTypes();
+    
+    // If coming from a property page, fetch property details
+    if (propertyIdFromUrl) {
+      fetchPropertyDetails(parseInt(propertyIdFromUrl));
+    }
+  }, [propertyIdFromUrl, fetchPropertyDetails]);
+
+  const capacity = useMemo(() => {
+    if (!selectedProperty) return { availableRooms: 0, availableToilets: 0, totalRooms: 0, totalToilets: 0, allocatedRooms: 0, allocatedToilets: 0 };
     
     const totalRooms = selectedProperty.bedrooms || 0;
     const totalToilets = selectedProperty.bathrooms || 0;
     
-    const allocatedRooms = existingRentalUnits.reduce((sum, unit) => sum + unit.unit_details.numberOfRooms, 0);
-    const allocatedToilets = existingRentalUnits.reduce((sum, unit) => sum + unit.unit_details.numberOfToilets, 0);
+    const allocatedRooms = existingRentalUnits.reduce((sum, unit) => sum + unit.number_of_rooms, 0);
+    const allocatedToilets = existingRentalUnits.reduce((sum, unit) => sum + unit.number_of_toilets, 0);
     
     return {
       availableRooms: totalRooms - allocatedRooms,
@@ -153,7 +160,7 @@ function NewRentalUnitPageContent() {
       allocatedRooms,
       allocatedToilets
     };
-  };
+  }, [selectedProperty, existingRentalUnits]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -169,9 +176,8 @@ function NewRentalUnitPageContent() {
     }
 
     // Validate capacity
-    const capacity = calculateAvailableCapacity();
-    const requestedRooms = parseInt(formData.unit_details.numberOfRooms) || 0;
-    const requestedToilets = parseFloat(formData.unit_details.numberOfToilets) || 0;
+    const requestedRooms = parseInt(formData.number_of_rooms) || 0;
+    const requestedToilets = parseFloat(formData.number_of_toilets) || 0;
     
     if (requestedRooms > capacity.availableRooms) {
       toast.error(`Cannot add ${requestedRooms} rooms. Only ${capacity.availableRooms} rooms available.`);
@@ -189,16 +195,13 @@ function NewRentalUnitPageContent() {
         ...formData,
         property_id: parseInt(formData.property_id),
         floor_number: parseInt(formData.floor_number),
-        unit_details: {
-          numberOfRooms: parseInt(formData.unit_details.numberOfRooms),
-          numberOfToilets: parseFloat(formData.unit_details.numberOfToilets),
-          squareFeet: formData.unit_details.squareFeet ? parseFloat(formData.unit_details.squareFeet) : undefined
-        },
-        financial: {
-          rentAmount: parseFloat(formData.financial.rentAmount),
-          depositAmount: parseFloat(formData.financial.depositAmount),
-          currency: formData.financial.currency
-        },
+        // New separate columns
+        rent_amount: parseFloat(formData.rent_amount),
+        deposit_amount: parseFloat(formData.deposit_amount),
+        currency: formData.currency,
+        number_of_rooms: parseInt(formData.number_of_rooms),
+        number_of_toilets: parseInt(formData.number_of_toilets),
+        square_feet: formData.square_feet ? parseFloat(formData.square_feet) : undefined,
         // Include assets with quantities for creation
         assets: selectedAssets.map(assetId => {
           return {
@@ -243,9 +246,10 @@ function NewRentalUnitPageContent() {
 
   const handlePropertyChange = (propertyId: string) => {
     setFormData(prev => ({ ...prev, property_id: propertyId }));
-    if (propertyId) {
+    if (propertyId && propertyId !== propertyIdFromUrl && !isLoadingProperty) {
+      // Only fetch if it's different from the URL property ID and not already loading
       fetchPropertyDetails(parseInt(propertyId));
-    } else {
+    } else if (!propertyId) {
       setSelectedProperty(null);
       setExistingRentalUnits([]);
     }
@@ -311,41 +315,6 @@ function NewRentalUnitPageContent() {
                   </div>
                 )}
 
-                {/* Capacity Display */}
-                {selectedProperty && (
-                  <div className="col-span-2">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="text-sm font-medium text-blue-900 mb-2">Property Capacity</h4>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-blue-700">Total Bedrooms:</span>
-                          <span className="ml-2 font-medium">{calculateAvailableCapacity().totalRooms}</span>
-                        </div>
-                        <div>
-                          <span className="text-blue-700">Total Bathrooms:</span>
-                          <span className="ml-2 font-medium">{calculateAvailableCapacity().totalToilets}</span>
-                        </div>
-                        <div>
-                          <span className="text-blue-700">Allocated Bedrooms:</span>
-                          <span className="ml-2 font-medium">{calculateAvailableCapacity().allocatedRooms}</span>
-                        </div>
-                        <div>
-                          <span className="text-blue-700">Allocated Bathrooms:</span>
-                          <span className="ml-2 font-medium">{calculateAvailableCapacity().allocatedToilets}</span>
-                        </div>
-                        <div>
-                          <span className="text-green-700 font-medium">Available Bedrooms:</span>
-                          <span className="ml-2 font-bold text-green-800">{calculateAvailableCapacity().availableRooms}</span>
-                        </div>
-                        <div>
-                          <span className="text-green-700 font-medium">Available Bathrooms:</span>
-                          <span className="ml-2 font-bold text-green-800">{calculateAvailableCapacity().availableToilets}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Unit Number *
@@ -388,6 +357,52 @@ function NewRentalUnitPageContent() {
                 </div>
               </div>
 
+              {/* Capacity Display */}
+              {selectedProperty && (
+                <div key={`capacity-${selectedProperty.id}`} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-blue-900 mb-3">Property Capacity</h4>
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Bedrooms Column */}
+                    <div className="space-y-2">
+                      <h5 className="text-sm font-medium text-blue-800">Bedrooms</h5>
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Total:</span>
+                          <span className="font-medium">{capacity.totalRooms}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Allocated:</span>
+                          <span className="font-medium">{capacity.allocatedRooms}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700 font-medium">Available:</span>
+                          <span className="font-bold text-green-800">{capacity.availableRooms}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Bathrooms Column */}
+                    <div className="space-y-2">
+                      <h5 className="text-sm font-medium text-blue-800">Bathrooms</h5>
+                      <div className="space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Total:</span>
+                          <span className="font-medium">{capacity.totalToilets}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-blue-700">Allocated:</span>
+                          <span className="font-medium">{capacity.allocatedToilets}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700 font-medium">Available:</span>
+                          <span className="font-bold text-green-800">{capacity.availableToilets}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -408,10 +423,10 @@ function NewRentalUnitPageContent() {
                     Currency *
                   </label>
                   <select
-                    value={formData.financial.currency}
+                    value={formData.currency}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      financial: { ...prev.financial, currency: e.target.value }
+                      currency: e.target.value
                     }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
@@ -431,10 +446,10 @@ function NewRentalUnitPageContent() {
                   <Input
                     type="number"
                     placeholder="Number of rooms"
-                    value={formData.unit_details.numberOfRooms}
+                    value={formData.number_of_rooms}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      unit_details: { ...prev.unit_details, numberOfRooms: e.target.value }
+                      number_of_rooms: e.target.value
                     }))}
                     min="0"
                     required
@@ -448,10 +463,10 @@ function NewRentalUnitPageContent() {
                   <Input
                     type="number"
                     placeholder="Number of toilets"
-                    value={formData.unit_details.numberOfToilets}
+                    value={formData.number_of_toilets}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      unit_details: { ...prev.unit_details, numberOfToilets: e.target.value }
+                      number_of_toilets: e.target.value
                     }))}
                     min="0"
                     step="0.5"
@@ -466,10 +481,10 @@ function NewRentalUnitPageContent() {
                   <Input
                     type="number"
                     placeholder="Square feet"
-                    value={formData.unit_details.squareFeet}
+                    value={formData.square_feet}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      unit_details: { ...prev.unit_details, squareFeet: e.target.value }
+                      square_feet: e.target.value
                     }))}
                     min="0"
                     step="0.01"
@@ -485,10 +500,10 @@ function NewRentalUnitPageContent() {
                   <Input
                     type="number"
                     placeholder="Monthly rent amount"
-                    value={formData.financial.rentAmount}
+                    value={formData.rent_amount}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      financial: { ...prev.financial, rentAmount: e.target.value }
+                      rent_amount: e.target.value
                     }))}
                     min="0"
                     step="0.01"
@@ -503,10 +518,10 @@ function NewRentalUnitPageContent() {
                   <Input
                     type="number"
                     placeholder="Deposit amount"
-                    value={formData.financial.depositAmount}
+                    value={formData.deposit_amount}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      financial: { ...prev.financial, depositAmount: e.target.value }
+                      deposit_amount: e.target.value
                     }))}
                     min="0"
                     step="0.01"

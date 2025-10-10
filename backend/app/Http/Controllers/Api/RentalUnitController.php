@@ -93,10 +93,12 @@ class RentalUnitController extends Controller
         $validator = Validator::make($request->all(), [
             'property_id' => 'required|exists:properties,id',
             'unit_number' => 'required|string|max:50',
+            'unit_type' => ['required', Rule::in(['residential', 'office', 'shop', 'warehouse', 'other'])],
             'floor_number' => 'required|integer|min:1',
             'unit_details' => 'required|array',
             'unit_details.numberOfRooms' => 'required|integer|min:0',
             'unit_details.numberOfToilets' => 'required|integer|min:0',
+            'unit_details.squareFeet' => 'nullable|numeric|min:0',
             'financial' => 'required|array',
             'financial.rentAmount' => 'required|numeric|min:0',
             'financial.depositAmount' => 'required|numeric|min:0',
@@ -242,10 +244,12 @@ class RentalUnitController extends Controller
         
         $validator = Validator::make($request->all(), [
             'unit_number' => 'sometimes|string|max:50',
+            'unit_type' => ['sometimes', Rule::in(['residential', 'office', 'shop', 'warehouse', 'other'])],
             'floor_number' => 'sometimes|integer|min:1',
             'unit_details' => 'sometimes|array',
             'unit_details.numberOfRooms' => 'sometimes|integer|min:0',
             'unit_details.numberOfToilets' => 'sometimes|numeric|min:0',
+            'unit_details.squareFeet' => 'nullable|numeric|min:0',
             'financial' => 'sometimes|array',
             'financial.rentAmount' => 'sometimes|numeric|min:0',
             'financial.depositAmount' => 'sometimes|numeric|min:0',

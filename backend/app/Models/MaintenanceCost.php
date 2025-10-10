@@ -12,7 +12,8 @@ class MaintenanceCost extends Model
         'repair_cost',
         'currency',
         'description',
-        'attached_bills',
+        // New separate column
+        'bill_file_paths',
         'repair_date',
         'repair_provider',
         'status',
@@ -21,7 +22,6 @@ class MaintenanceCost extends Model
 
     protected $casts = [
         'repair_cost' => 'decimal:2',
-        'attached_bills' => 'array',
         'repair_date' => 'date',
     ];
 

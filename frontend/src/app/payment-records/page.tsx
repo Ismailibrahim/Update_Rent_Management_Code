@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Receipt, Search, Eye, FileText } from 'lucide-react';
+import { Receipt, Search, Eye, FileText, Trash2 } from 'lucide-react';
 import { paymentRecordsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -75,6 +75,21 @@ export default function PaymentRecordsPage() {
       toast.error('Failed to fetch payment records');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeletePaymentRecord = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this payment record? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await paymentRecordsAPI.delete(id);
+      toast.success('Payment record deleted successfully');
+      fetchPaymentRecords(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting payment record:', error);
+      toast.error('Failed to delete payment record');
     }
   };
 
@@ -282,6 +297,15 @@ export default function PaymentRecordsPage() {
                             title="View Invoice"
                           >
                             <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeletePaymentRecord(record.id)}
+                            className="text-red-600 hover:text-red-700"
+                            title="Delete Payment Record"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </td>

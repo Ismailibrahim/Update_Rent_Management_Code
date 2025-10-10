@@ -27,15 +27,14 @@ class Property extends Model
         'year_built',
         'description',
         'status',
-        'photos',
-        'amenities',
+        // New separate columns
+        'photo_paths',
+        'amenity_list',
         'assigned_manager_id',
         'is_active',
     ];
 
     protected $casts = [
-        'photos' => 'array',
-        'amenities' => 'array',
         'is_active' => 'boolean',
         'number_of_floors' => 'integer',
         'number_of_rental_units' => 'integer',
@@ -50,8 +49,6 @@ class Property extends Model
         'country' => 'Maldives',
         'status' => 'vacant',
         'is_active' => true,
-        'photos' => '[]',
-        'amenities' => '[]',
     ];
 
     // Relationships
@@ -87,6 +84,22 @@ class Property extends Model
         return $query->where('status', 'occupied');
     }
 
+    // Search scopes for new columns
+    public function scopeByAmenity($query, $amenity)
+    {
+        return $query->where('amenity_list', 'like', "%{$amenity}%");
+    }
+
+    public function scopeSearch($query, $search)
+    {
+        return $query->where(function($q) use ($search) {
+            $q->where('name', 'like', "%{$search}%")
+              ->orWhere('city', 'like', "%{$search}%")
+              ->orWhere('island', 'like', "%{$search}%")
+              ->orWhere('amenity_list', 'like', "%{$search}%");
+        });
+    }
+
     // Method to update property status based on rental unit occupancy
     public function updateStatusBasedOnUnits()
     {
@@ -98,7 +111,7 @@ class Property extends Model
         } elseif ($occupiedUnits === $totalUnits) {
             $this->update(['status' => 'occupied']);
         } elseif ($occupiedUnits > 0) {
-            $this->update(['status' => 'partially_occupied']);
+            $this->update(['status' => 'occupied']); // Changed from 'partially_occupied' to 'occupied'
         } else {
             $this->update(['status' => 'vacant']);
         }
@@ -117,7 +130,7 @@ class Property extends Model
         } elseif ($occupiedUnits === $totalUnits) {
             return 'occupied';
         } elseif ($occupiedUnits > 0) {
-            return 'partially_occupied';
+            return 'occupied'; // Changed from 'partially_occupied' to 'occupied'
         } else {
             return 'vacant';
         }

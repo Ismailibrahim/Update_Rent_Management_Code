@@ -33,15 +33,11 @@ interface RentalUnit {
   property_id: number;
   unit_number: string;
   floor_number: number;
-  unit_details: {
-    numberOfRooms: number;
-    numberOfToilets: number;
-  };
-  financial: {
-    rentAmount: number;
-    depositAmount: number;
-    currency: string;
-  };
+  number_of_rooms: number;
+  number_of_toilets: number;
+  rent_amount: number;
+  deposit_amount: number;
+  currency: string;
   status: string;
   tenant_id?: number;
   notes?: string;
@@ -341,12 +337,12 @@ export default function PropertyDetailsPage() {
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               <div className="text-sm text-gray-900">
-                                {unit.unit_details.numberOfRooms}/{unit.unit_details.numberOfToilets}
+                                {unit.number_of_rooms}/{unit.number_of_toilets}
                               </div>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">
                               <div className="text-sm font-medium text-gray-900">
-                                {unit.financial.currency} {unit.financial.rentAmount?.toLocaleString()}
+                                {unit.currency} {unit.rent_amount?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                               </div>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap">

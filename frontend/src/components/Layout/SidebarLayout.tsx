@@ -111,18 +111,20 @@ export default function SidebarLayout({ children }: SidebarProps) {
 
   // Auto-expand groups that contain the active link
   useEffect(() => {
-    const newExpandedGroups = new Set(expandedGroups);
-    
-    // Find which group contains the current active link
-    navigationGroups.forEach(group => {
-      const hasActiveItem = group.items.some(item => pathname === item.href);
-      if (hasActiveItem) {
-        newExpandedGroups.add(group.name);
-      }
+    setExpandedGroups(prevExpandedGroups => {
+      const newExpandedGroups = new Set(prevExpandedGroups);
+      
+      // Find which group contains the current active link
+      navigationGroups.forEach(group => {
+        const hasActiveItem = group.items.some(item => pathname === item.href);
+        if (hasActiveItem) {
+          newExpandedGroups.add(group.name);
+        }
+      });
+      
+      return newExpandedGroups;
     });
-    
-    setExpandedGroups(newExpandedGroups);
-  }, [pathname, expandedGroups]);
+  }, [pathname]);
 
   const toggleGroup = (groupName: string) => {
     const newExpandedGroups = new Set(expandedGroups);

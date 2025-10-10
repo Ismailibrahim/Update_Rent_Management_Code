@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class RentInvoiceController extends Controller
@@ -248,9 +249,47 @@ class RentInvoiceController extends Controller
 
             $generatedInvoices = [];
             $errors = [];
+            $skippedTenants = [];
 
             foreach ($occupiedUnits as $unit) {
                 try {
+                    // Check if tenant has an active lease for the selected month/year
+                    $tenant = $unit->tenant;
+                    $selectedMonthStart = Carbon::create($year, $month, 1);
+                    $selectedMonthEnd = Carbon::create($year, $month, 1)->endOfMonth();
+                    
+                    // Skip if tenant doesn't have lease dates set
+                    if (!$tenant->lease_start_date || !$tenant->lease_end_date) {
+                        $skippedTenants[] = [
+                            'tenant_name' => $tenant->full_name,
+                            'unit_number' => $unit->unit_number,
+                            'reason' => 'No lease dates set'
+                        ];
+                        continue;
+                    }
+                    
+                    // Skip if lease starts after the selected month
+                    if ($tenant->lease_start_date > $selectedMonthEnd) {
+                        $skippedTenants[] = [
+                            'tenant_name' => $tenant->full_name,
+                            'unit_number' => $unit->unit_number,
+                            'reason' => 'Lease starts after selected month',
+                            'lease_start_date' => $tenant->lease_start_date->format('Y-m-d')
+                        ];
+                        continue;
+                    }
+                    
+                    // Skip if lease ends before the selected month
+                    if ($tenant->lease_end_date < $selectedMonthStart) {
+                        $skippedTenants[] = [
+                            'tenant_name' => $tenant->full_name,
+                            'unit_number' => $unit->unit_number,
+                            'reason' => 'Lease ended before selected month',
+                            'lease_end_date' => $tenant->lease_end_date->format('Y-m-d')
+                        ];
+                        continue;
+                    }
+
                     // Check if invoice already exists for this month/year
                     $existingInvoice = RentInvoice::where('tenant_id', $unit->tenant_id)
                         ->where('rental_unit_id', $unit->id)
@@ -259,7 +298,7 @@ class RentInvoiceController extends Controller
                         ->first();
 
                     if ($existingInvoice) {
-                        $errors[] = "Invoice already exists for {$unit->tenant->personal_info['firstName']} {$unit->tenant->personal_info['lastName']} - Unit {$unit->unit_number}";
+                        $errors[] = "Invoice already exists for {$unit->tenant->full_name} - Unit {$unit->unit_number}";
                         continue;
                     }
 
@@ -267,7 +306,17 @@ class RentInvoiceController extends Controller
                     $invoiceNumber = 'INV-' . $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT) . '-' . $unit->id . '-' . uniqid();
                     $invoiceDate = Carbon::create($year, $month, 1)->toDateString();
                     $dueDate = Carbon::create($year, $month, 1)->addDays($dueDateOffset)->toDateString();
-                    $rentAmount = $unit->financial['rentAmount'] ?? 0;
+                    $rentAmount = $unit->rent_amount ?? 0;
+                    
+                    // Debug logging
+                    Log::info('Invoice Generation Debug', [
+                        'unit_id' => $unit->id,
+                        'unit_number' => $unit->unit_number,
+                        'financial_data' => $unit->financial,
+                        'rent_amount_attribute' => $unit->rent_amount,
+                        'rent_amount' => $rentAmount,
+                        'tenant_name' => $tenant->full_name
+                    ]);
 
                     $invoice = RentInvoice::create([
                         'invoice_number' => $invoiceNumber,
@@ -279,7 +328,7 @@ class RentInvoiceController extends Controller
                         'rent_amount' => $rentAmount,
                         'late_fee' => 0,
                         'total_amount' => $rentAmount,
-                        'currency' => $unit->financial['currency'] ?? 'MVR',
+                        'currency' => $unit->currency ?? 'MVR',
                         'status' => 'pending',
                         'notes' => "Monthly rent for {$unit->property->name} - Unit {$unit->unit_number}",
                     ]);
@@ -298,6 +347,8 @@ class RentInvoiceController extends Controller
                 'message' => 'Monthly rent invoices generated successfully',
                 'generated_count' => count($generatedInvoices),
                 'invoices' => $generatedInvoices,
+                'skipped_tenants' => $skippedTenants,
+                'skipped_count' => count($skippedTenants),
                 'errors' => $errors
             ]);
 
@@ -315,12 +366,42 @@ class RentInvoiceController extends Controller
      */
     public function markAsPaid(Request $request, RentInvoice $rentInvoice): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'payment_details' => 'nullable|array',
-            'notes' => 'nullable|string',
+        // Debug: Log the incoming request data
+        Log::info('Mark as Paid Request Data:', [
+            'invoice_id' => $rentInvoice->id,
+            'request_data' => $request->all(),
+            'files' => $request->allFiles(),
+            'file_keys' => array_keys($request->allFiles()),
+            'has_files' => !empty($request->allFiles()),
         ]);
 
+        // Get all file keys from the request
+        $fileKeys = array_keys($request->allFiles());
+        
+        $validator = Validator::make($request->all(), [
+            'payment_type' => 'required|string',
+            'payment_mode' => 'required|string',
+            'total_amount' => 'required|numeric|min:0',
+            'reference_number' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'payment_date' => 'nullable|date',
+        ]);
+        
+        // Add validation rules for each file (optional)
+        foreach ($fileKeys as $key) {
+            $validator->addRules([$key => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120']);
+        }
+        
+        // Remove the requirement for at least one file
+        // Payment slips are now optional
+
         if ($validator->fails()) {
+            Log::error('Validation failed for mark as paid:', [
+                'invoice_id' => $rentInvoice->id,
+                'errors' => $validator->errors()->toArray(),
+                'request_data' => $request->all(),
+            ]);
+            
             return response()->json([
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
@@ -328,7 +409,30 @@ class RentInvoiceController extends Controller
         }
 
         try {
-            $rentInvoice->markAsPaid($request->payment_details);
+            $paymentDetails = [
+                'payment_type' => $request->payment_type,
+                'payment_mode' => $request->payment_mode,
+                'total_amount' => $request->total_amount,
+                'reference_number' => $request->reference_number,
+                'notes' => $request->notes,
+                'payment_date' => $request->payment_date ?? now()->toDateString(),
+            ];
+
+            // Handle multiple file uploads (optional)
+            $paymentSlipPaths = [];
+            $allFiles = $request->allFiles();
+            
+            if (!empty($allFiles)) {
+                foreach ($allFiles as $key => $file) {
+                    $fileName = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+                    $filePath = $file->storeAs('payment-slips', $fileName, 'public');
+                    $paymentSlipPaths[] = $filePath;
+                }
+                
+                $paymentDetails['payment_slip_paths'] = $paymentSlipPaths;
+            }
+
+            $rentInvoice->markAsPaid($paymentDetails);
             
             if ($request->notes) {
                 $rentInvoice->update(['notes' => $request->notes]);
@@ -347,6 +451,90 @@ class RentInvoiceController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Get payment slip files
+     */
+    public function getPaymentSlip(RentInvoice $rentInvoice)
+    {
+        if (!$rentInvoice->payment_slip_paths || empty($rentInvoice->payment_slip_paths)) {
+            return response()->json([
+                'message' => 'No payment slips found for this invoice'
+            ], 404);
+        }
+
+        // Return the first payment slip file
+        $firstFilePath = $rentInvoice->payment_slip_paths[0];
+        $filePath = storage_path('app/public/' . $firstFilePath);
+        
+        if (!file_exists($filePath)) {
+            return response()->json([
+                'message' => 'Payment slip file not found'
+            ], 404);
+        }
+
+        return response()->file($filePath);
+    }
+
+    /**
+     * Get all payment slip files for an invoice
+     */
+    public function getAllPaymentSlips(RentInvoice $rentInvoice)
+    {
+        if (!$rentInvoice->payment_slip_paths || empty($rentInvoice->payment_slip_paths)) {
+            return response()->json([
+                'message' => 'No payment slips found for this invoice'
+            ], 404);
+        }
+
+        $files = [];
+        foreach ($rentInvoice->payment_slip_paths as $index => $filePath) {
+            $fullPath = storage_path('app/public/' . $filePath);
+            if (file_exists($fullPath)) {
+                $files[] = [
+                    'index' => $index,
+                    'filename' => basename($filePath),
+                    'url' => url('/api/rent-invoices/' . $rentInvoice->id . '/payment-slip/' . $index)
+                ];
+            }
+        }
+
+        return response()->json([
+            'invoice_id' => $rentInvoice->id,
+            'invoice_number' => $rentInvoice->invoice_number,
+            'files' => $files
+        ]);
+    }
+
+    /**
+     * Get specific payment slip file by index
+     */
+    public function getPaymentSlipByIndex(RentInvoice $rentInvoice, $index)
+    {
+        if (!$rentInvoice->payment_slip_paths || empty($rentInvoice->payment_slip_paths)) {
+            return response()->json([
+                'message' => 'No payment slips found for this invoice'
+            ], 404);
+        }
+
+        $fileIndex = (int) $index;
+        if ($fileIndex < 0 || $fileIndex >= count($rentInvoice->payment_slip_paths)) {
+            return response()->json([
+                'message' => 'Invalid file index'
+            ], 404);
+        }
+
+        $filePath = $rentInvoice->payment_slip_paths[$fileIndex];
+        $fullPath = storage_path('app/public/' . $filePath);
+        
+        if (!file_exists($fullPath)) {
+            return response()->json([
+                'message' => 'Payment slip file not found'
+            ], 404);
+        }
+
+        return response()->file($fullPath);
     }
 
     /**

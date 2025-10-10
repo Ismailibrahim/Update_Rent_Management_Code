@@ -29,14 +29,11 @@ interface Asset {
 
 interface Tenant {
   id: number;
-  personal_info: {
-    firstName: string;
-    lastName: string;
-  };
-  contact_info?: {
-    email: string;
-    phone: string;
-  };
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  full_name?: string;
 }
 
 export default function EditRentalUnitPage() {
@@ -57,16 +54,13 @@ export default function EditRentalUnitPage() {
     unit_number: '',
     unit_type: '',
     floor_number: '',
-    unit_details: {
-      numberOfRooms: '',
-      numberOfToilets: '',
-      squareFeet: ''
-    },
-    financial: {
-      rentAmount: '',
-      depositAmount: '',
-      currency: 'MVR'
-    },
+    // New separate columns
+    rent_amount: '',
+    deposit_amount: '',
+    currency: 'MVR',
+    number_of_rooms: '',
+    number_of_toilets: '',
+    square_feet: '',
     status: 'available',
     tenant_id: '',
     notes: ''
@@ -82,16 +76,13 @@ export default function EditRentalUnitPage() {
         unit_number: unit.unit_number,
         unit_type: unit.unit_type || '',
         floor_number: unit.floor_number.toString(),
-        unit_details: {
-          numberOfRooms: unit.unit_details.numberOfRooms.toString(),
-          numberOfToilets: unit.unit_details.numberOfToilets.toString(),
-          squareFeet: typeof unit.unit_details.squareFeet === 'number' ? String(unit.unit_details.squareFeet) : ''
-        },
-        financial: {
-          rentAmount: unit.financial.rentAmount.toString(),
-          depositAmount: unit.financial.depositAmount.toString(),
-          currency: unit.financial.currency
-        },
+        // New separate columns
+        rent_amount: unit.rent_amount.toString(),
+        deposit_amount: unit.deposit_amount ? unit.deposit_amount.toString() : '',
+        currency: unit.currency,
+        number_of_rooms: unit.number_of_rooms.toString(),
+        number_of_toilets: unit.number_of_toilets.toString(),
+        square_feet: unit.square_feet ? unit.square_feet.toString() : '',
         status: unit.status,
         tenant_id: unit.tenant_id ? unit.tenant_id.toString() : '',
         notes: unit.notes || ''
@@ -218,16 +209,13 @@ export default function EditRentalUnitPage() {
         property_id: parseInt(formData.property_id),
         unit_type: formData.unit_type,
         floor_number: parseInt(formData.floor_number),
-        unit_details: {
-          numberOfRooms: parseInt(formData.unit_details.numberOfRooms),
-          numberOfToilets: parseFloat(formData.unit_details.numberOfToilets),
-          squareFeet: formData.unit_details.squareFeet ? parseFloat(formData.unit_details.squareFeet) : undefined
-        },
-        financial: {
-          rentAmount: parseFloat(formData.financial.rentAmount),
-          depositAmount: parseFloat(formData.financial.depositAmount),
-          currency: formData.financial.currency
-        },
+        // New separate columns
+        rent_amount: parseFloat(formData.rent_amount),
+        deposit_amount: formData.deposit_amount ? parseFloat(formData.deposit_amount) : undefined,
+        currency: formData.currency,
+        number_of_rooms: parseInt(formData.number_of_rooms),
+        number_of_toilets: parseInt(formData.number_of_toilets),
+        square_feet: formData.square_feet ? parseFloat(formData.square_feet) : undefined,
         tenant_id: formData.tenant_id ? parseInt(formData.tenant_id) : undefined
       };
 
@@ -446,10 +434,10 @@ export default function EditRentalUnitPage() {
                     Currency *
                   </label>
                   <select
-                    value={formData.financial.currency}
+                    value={formData.currency}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      financial: { ...prev.financial, currency: e.target.value }
+                      currency: e.target.value
                     }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
@@ -469,10 +457,10 @@ export default function EditRentalUnitPage() {
                   <Input
                     type="number"
                     placeholder="Number of rooms"
-                    value={formData.unit_details.numberOfRooms}
+                    value={formData.number_of_rooms}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      unit_details: { ...prev.unit_details, numberOfRooms: e.target.value }
+                      number_of_rooms: e.target.value
                     }))}
                     min="0"
                     required
@@ -486,10 +474,10 @@ export default function EditRentalUnitPage() {
                   <Input
                     type="number"
                     placeholder="Number of toilets"
-                    value={formData.unit_details.numberOfToilets}
+                    value={formData.number_of_toilets}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      unit_details: { ...prev.unit_details, numberOfToilets: e.target.value }
+                      number_of_toilets: e.target.value
                     }))}
                     min="0"
                     step="0.5"
@@ -504,10 +492,10 @@ export default function EditRentalUnitPage() {
                   <Input
                     type="number"
                     placeholder="Square feet"
-                    value={formData.unit_details.squareFeet}
+                    value={formData.square_feet}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      unit_details: { ...prev.unit_details, squareFeet: e.target.value }
+                      square_feet: e.target.value
                     }))}
                     min="0"
                     step="0.01"
@@ -523,10 +511,10 @@ export default function EditRentalUnitPage() {
                   <Input
                     type="number"
                     placeholder="Monthly rent amount"
-                    value={formData.financial.rentAmount}
+                    value={formData.rent_amount}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      financial: { ...prev.financial, rentAmount: e.target.value }
+                      rent_amount: e.target.value
                     }))}
                     min="0"
                     step="0.01"
@@ -541,10 +529,10 @@ export default function EditRentalUnitPage() {
                   <Input
                     type="number"
                     placeholder="Deposit amount"
-                    value={formData.financial.depositAmount}
+                    value={formData.deposit_amount}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
-                      financial: { ...prev.financial, depositAmount: e.target.value }
+                      deposit_amount: e.target.value
                     }))}
                     min="0"
                     step="0.01"
@@ -585,8 +573,8 @@ export default function EditRentalUnitPage() {
                     <option value="">No tenant assigned</option>
                     {tenants.map((tenant) => (
                       <option key={tenant.id} value={tenant.id.toString()}>
-                        {tenant.personal_info.firstName} {tenant.personal_info.lastName}
-                        {tenant.contact_info?.phone && ` - ${tenant.contact_info.phone}`}
+                        {tenant.full_name || `${tenant.first_name} ${tenant.last_name}`}
+                        {tenant.phone && ` - ${tenant.phone}`}
                       </option>
                     ))}
                   </select>

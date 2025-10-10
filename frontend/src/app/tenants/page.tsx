@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Users, Plus, Search, Edit, Trash2, Eye, Phone, Mail, Home, DollarSign, Building } from 'lucide-react';
+import { Users, Plus, Search, Edit, Trash2, Eye, Phone, Mail, Home, Building } from 'lucide-react';
 import { tenantsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -14,10 +14,9 @@ interface RentalUnit {
   id: number;
   unit_number: string;
   floor_number: number;
-  financial: {
-    rentAmount: number;
-    currency: string;
-  };
+  // New separate columns
+  rent_amount: number | string;
+  currency: string;
   property: {
     id: number;
     name: string;
@@ -27,42 +26,47 @@ interface RentalUnit {
 
 interface Tenant {
   id: number;
-  personal_info: {
-    firstName: string;
-    lastName: string;
-    dateOfBirth?: string;
-    gender?: string;
-    nationality?: string;
-    idNumber?: string;
-  };
-  contact_info: {
-    email: string;
-    phone: string;
-    address?: string;
-  };
-  emergency_contact?: {
-    name?: string;
-    phone?: string;
-    relationship?: string;
-  };
-  employment_info?: {
-    employer?: string;
-    position?: string;
-    salary?: string;
-    workPhone?: string;
-  };
-  financial_info?: {
-    bankName?: string;
-    accountNumber?: string;
-    creditScore?: string;
-  };
+  // Tenant type
+  tenant_type?: 'individual' | 'company';
+  // New separate columns
+  first_name: string;
+  last_name: string;
+  date_of_birth?: string;
+  national_id?: string;
+  nationality?: string;
+  gender?: string;
+  email: string;
+  phone: string;
+  address?: string;
+  city?: string;
+  postal_code?: string;
+  emergency_contact_name?: string;
+  emergency_contact_phone?: string;
+  emergency_contact_relationship?: string;
+  employment_company?: string;
+  employment_position?: string;
+  employment_salary?: number;
+  employment_phone?: string;
+  bank_name?: string;
+  account_number?: string;
+  account_holder_name?: string;
   rental_units?: RentalUnit[];
   status: string;
   notes?: string;
   lease_start_date?: string;
   lease_end_date?: string;
+  // Company-specific fields
+  company_name?: string;
+  company_address?: string;
+  company_registration_number?: string;
+  company_gst_tin?: string;
+  company_telephone?: string;
+  company_email?: string;
+  documents?: string[] | string;
   created_at: string;
   updated_at: string;
+  // Computed properties
+  full_name?: string;
 }
 
 export default function TenantsPage() {
@@ -89,12 +93,14 @@ export default function TenantsPage() {
   };
 
   const filteredTenants = tenants.filter(tenant => {
-    const fullName = `${tenant.personal_info.firstName} ${tenant.personal_info.lastName}`.toLowerCase();
-    const email = tenant.contact_info.email.toLowerCase();
-    const phone = tenant.contact_info.phone;
-    const idNumber = tenant.personal_info.idNumber || '';
+    const fullName = `${tenant.first_name} ${tenant.last_name}`.toLowerCase();
+    const companyName = tenant.company_name?.toLowerCase() || '';
+    const email = tenant.email.toLowerCase();
+    const phone = tenant.phone;
+    const idNumber = tenant.national_id || '';
     
     return fullName.includes(searchTerm.toLowerCase()) ||
+           companyName.includes(searchTerm.toLowerCase()) ||
            email.includes(searchTerm.toLowerCase()) ||
            phone.includes(searchTerm) ||
            idNumber.includes(searchTerm);
@@ -119,16 +125,40 @@ export default function TenantsPage() {
 
   const calculateTotalRent = (rentalUnits: RentalUnit[] = []) => {
     return rentalUnits.reduce((total, unit) => {
-      return total + (unit.financial?.rentAmount || 0);
+      const rentAmount = typeof unit.rent_amount === 'string' 
+        ? parseFloat(unit.rent_amount) 
+        : unit.rent_amount;
+      
+      // Handle undefined, null, or NaN values
+      if (rentAmount === undefined || rentAmount === null || isNaN(rentAmount)) {
+        return total;
+      }
+      return total + rentAmount;
     }, 0);
   };
 
-  const formatCurrency = (amount: number, currency: string = 'MVR') => {
+  const formatCurrency = (amount: number | undefined | null, currency: string = 'MVR') => {
+    // Handle undefined, null, or NaN values
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      return currency === 'MVR' ? 'MVR 0' : '$0';
+    }
+    
+    // Ensure currency is defined and default to MVR
+    const safeCurrency = currency || 'MVR';
+    
+    // Handle MVR specifically without using Intl.NumberFormat
+    if (safeCurrency === 'MVR') {
+      const formattedAmount = Math.round(amount).toLocaleString('en-US');
+      return `MVR ${formattedAmount}`;
+    }
+    
+    // For other currencies, use proper Intl.NumberFormat
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency === 'MVR' ? 'USD' : currency, // Fallback to USD for MVR
+      currency: safeCurrency,
       minimumFractionDigits: 0,
-    }).format(amount).replace('$', currency === 'MVR' ? 'MVR ' : '$');
+      maximumFractionDigits: 0,
+    }).format(amount);
   };
 
   return (
@@ -179,11 +209,10 @@ export default function TenantsPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center">
-                <DollarSign className="h-8 w-8 text-green-500" />
                 <div className="ml-3">
                   <p className="text-sm font-medium text-gray-600">Total Monthly Rent</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(tenants.reduce((total, tenant) => total + calculateTotalRent(tenant.rental_units), 0))}
+                    {formatCurrency(tenants.reduce((total, tenant) => total + calculateTotalRent(tenant.rental_units), 0), 'MVR')}
                   </p>
                 </div>
               </div>
@@ -218,6 +247,9 @@ export default function TenantsPage() {
                         Tenant
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Type
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Contact
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -243,22 +275,33 @@ export default function TenantsPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
                             <div className="text-sm font-medium text-gray-900">
-                              {tenant.personal_info.firstName} {tenant.personal_info.lastName}
+                              {tenant.tenant_type === 'company' ? tenant.company_name : `${tenant.first_name} ${tenant.last_name}`}
                             </div>
-                            <div className="text-sm text-gray-500">
-                              ID: {tenant.personal_info.idNumber || 'N/A'}
-                            </div>
+                            {tenant.tenant_type !== 'company' && (
+                              <div className="text-sm text-gray-500">
+                                ID: {tenant.national_id || 'N/A'}
+                              </div>
+                            )}
                           </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            tenant.tenant_type === 'company' 
+                              ? 'bg-blue-100 text-blue-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {tenant.tenant_type === 'company' ? 'Company' : 'Individual'}
+                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="space-y-1">
                             <div className="flex items-center text-sm text-gray-600">
                               <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                              {tenant.contact_info.email}
+                              {tenant.email}
                             </div>
                             <div className="flex items-center text-sm text-gray-600">
                               <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                              {tenant.contact_info.phone}
+                              {tenant.phone}
                             </div>
                           </div>
                         </td>
@@ -284,9 +327,8 @@ export default function TenantsPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           {tenant.rental_units && tenant.rental_units.length > 0 ? (
                             <div className="flex items-center">
-                              <DollarSign className="h-4 w-4 mr-1 text-green-500" />
                               <span className="text-sm font-medium text-green-600">
-                                {formatCurrency(calculateTotalRent(tenant.rental_units), tenant.rental_units[0]?.financial?.currency)}
+                                {formatCurrency(calculateTotalRent(tenant.rental_units), tenant.rental_units[0]?.currency)}
                               </span>
                             </div>
                           ) : (
@@ -326,7 +368,12 @@ export default function TenantsPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center space-x-2">
-                            <Button variant="outline" size="sm" title="View Details">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              title="View Details"
+                              onClick={() => router.push(`/tenants/${tenant.id}`)}
+                            >
                               <Eye className="h-4 w-4" />
                             </Button>
                             <Button 

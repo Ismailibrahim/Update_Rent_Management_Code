@@ -14,9 +14,15 @@ class RentalUnit extends Model
     protected $fillable = [
         'property_id',
         'unit_number',
+        'unit_type',
         'floor_number',
-        'unit_details',
-        'financial',
+        // New separate columns
+        'rent_amount',
+        'deposit_amount',
+        'currency',
+        'number_of_rooms',
+        'number_of_toilets',
+        'square_feet',
         'status',
         'tenant_id',
         'move_in_date',
@@ -28,23 +34,23 @@ class RentalUnit extends Model
     ];
 
     protected $casts = [
-        'unit_details' => 'array',
-        'financial' => 'array',
-        'amenities' => 'array',
-        'photos' => 'array',
+        // New column casts
+        'rent_amount' => 'decimal:2',
+        'deposit_amount' => 'decimal:2',
+        'square_feet' => 'decimal:2',
         'is_active' => 'boolean',
         'floor_number' => 'integer',
         'property_id' => 'integer',
         'tenant_id' => 'integer',
-        'move_in_date' => 'date',
-        'lease_end_date' => 'date',
+        'move_in_date' => 'date:Y-m-d',
+        'lease_end_date' => 'date:Y-m-d',
+        'amenities' => 'array',
+        'photos' => 'array',
     ];
 
     protected $attributes = [
         'status' => 'available',
         'is_active' => true,
-        'unit_details' => '[]',
-        'financial' => '[]',
         'amenities' => '[]',
         'photos' => '[]',
     ];
@@ -85,29 +91,65 @@ class RentalUnit extends Model
         return $query->where('status', 'occupied');
     }
 
-    // Accessors
+    // Search scopes for new columns
+    public function scopeByRentRange($query, $minRent, $maxRent)
+    {
+        return $query->whereBetween('rent_amount', [$minRent, $maxRent]);
+    }
+
+    public function scopeByRooms($query, $rooms)
+    {
+        return $query->where('number_of_rooms', $rooms);
+    }
+
+    public function scopeByToilets($query, $toilets)
+    {
+        return $query->where('number_of_toilets', $toilets);
+    }
+
+    public function scopeBySquareFeetRange($query, $minSqft, $maxSqft)
+    {
+        return $query->whereBetween('square_feet', [$minSqft, $maxSqft]);
+    }
+
+    public function scopeSearch($query, $search)
+    {
+        return $query->where(function($q) use ($search) {
+            $q->where('unit_number', 'like', "%{$search}%")
+              ->orWhere('rent_amount', 'like', "%{$search}%")
+              ->orWhere('number_of_rooms', 'like', "%{$search}%")
+              ->orWhere('number_of_toilets', 'like', "%{$search}%");
+        });
+    }
+
+    // Accessors - Now using only new columns
     public function getRentAmountAttribute()
     {
-        return $this->financial['rentAmount'] ?? 0;
+        return $this->attributes['rent_amount'] ?? 0;
     }
 
     public function getDepositAmountAttribute()
     {
-        return $this->financial['depositAmount'] ?? 0;
+        return $this->attributes['deposit_amount'] ?? 0;
     }
 
     public function getCurrencyAttribute()
     {
-        return $this->financial['currency'] ?? 'MVR';
+        return $this->attributes['currency'] ?? 'MVR';
     }
 
     public function getNumberOfRoomsAttribute()
     {
-        return $this->unit_details['numberOfRooms'] ?? 0;
+        return $this->attributes['number_of_rooms'] ?? 0;
     }
 
     public function getNumberOfToiletsAttribute()
     {
-        return $this->unit_details['numberOfToilets'] ?? 0;
+        return $this->attributes['number_of_toilets'] ?? 0;
+    }
+
+    public function getSquareFeetAttribute()
+    {
+        return $this->attributes['square_feet'] ?? 0;
     }
 }

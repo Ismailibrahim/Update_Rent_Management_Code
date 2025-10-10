@@ -14,20 +14,18 @@ interface RentalUnit {
   id: number;
   unit_number: string;
   floor_number: number;
-  financial: {
-    rentAmount: number;
-    currency: string;
-  };
+  // New separate columns
+  rent_amount: number;
+  currency: string;
   property: {
     id: number;
     name: string;
   };
   tenant: {
     id: number;
-    personal_info: {
-      firstName: string;
-      lastName: string;
-    };
+    first_name: string;
+    last_name: string;
+    full_name?: string;
   };
   status: string;
 }
@@ -114,12 +112,13 @@ export default function MonthlyRentPage() {
       style: 'currency',
       currency: currency === 'MVR' ? 'USD' : currency,
       minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(amount).replace('$', currency === 'MVR' ? 'MVR ' : '$');
   };
 
   const calculateTotalRent = () => {
     return occupiedUnits.reduce((total, unit) => {
-      return total + (unit.financial?.rentAmount || 0);
+      return total + (unit.rent_amount || 0);
     }, 0);
   };
 
@@ -307,13 +306,12 @@ export default function MonthlyRentPage() {
                       {generationResult.invoices.map((invoice, index) => {
                         const invoiceData = invoice as Record<string, unknown>;
                         const tenant = invoiceData.tenant as Record<string, unknown>;
-                        const personalInfo = tenant?.personal_info as Record<string, unknown>;
                         const property = invoiceData.property as Record<string, unknown>;
                         const rentalUnit = invoiceData.rental_unit as Record<string, unknown>;
                         
                         return (
                           <div key={index} className="text-sm text-green-700">
-                            • {String(invoiceData.invoice_number)} - {String(personalInfo?.firstName)} {String(personalInfo?.lastName)} 
+                            • {String(invoiceData.invoice_number)} - {String(tenant?.full_name || `${tenant?.first_name} ${tenant?.last_name}`)} 
                             ({String(property?.name)} - Unit {String(rentalUnit?.unit_number)}) - {formatCurrency(invoiceData.total_amount as number, invoiceData.currency as string)}
                           </div>
                         );
@@ -362,10 +360,7 @@ export default function MonthlyRentPage() {
                     {occupiedUnits.map((unit) => (
                       <tr key={unit.id}>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {unit.tenant?.personal_info ? 
-                            `${unit.tenant.personal_info.firstName} ${unit.tenant.personal_info.lastName}` : 
-                            'No Tenant'
-                          }
+                          {unit.tenant?.full_name || 'No Tenant'}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">
                           {unit.property.name}
@@ -374,7 +369,7 @@ export default function MonthlyRentPage() {
                           Unit {unit.unit_number}
                         </td>
                         <td className="px-4 py-3 text-sm font-medium text-green-600">
-                          {formatCurrency(unit.financial?.rentAmount || 0, unit.financial?.currency)}
+                          {formatCurrency(unit.rent_amount || 0, unit.currency)}
                         </td>
                       </tr>
                     ))}

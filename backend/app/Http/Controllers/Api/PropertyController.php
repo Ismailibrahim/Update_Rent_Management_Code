@@ -19,11 +19,18 @@ class PropertyController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
+            Log::info('Properties index request', [
+                'user_id' => $request->user()?->id,
+                'user_role' => $request->user()?->role?->name,
+                'request_params' => $request->all()
+            ]);
+            
             $query = Property::with(['assignedManager', 'rentalUnits']);
 
             // Role-based filtering
-            if ($request->user()->role->name === 'property_manager') {
-                $query->where('assigned_manager_id', $request->user()->id);
+            $user = $request->user();
+            if ($user && $user->role && $user->role->name === 'property_manager') {
+                $query->where('assigned_manager_id', $user->id);
             }
 
             // Search filter
@@ -99,6 +106,12 @@ class PropertyController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Properties index error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()?->id
+            ]);
+            
             return response()->json([
                 'message' => 'Failed to fetch properties',
                 'error' => $e->getMessage()
@@ -121,8 +134,8 @@ class PropertyController extends Controller
             'country' => 'nullable|string|max:100',
             'number_of_floors' => 'required|integer|min:1',
             'number_of_rental_units' => 'required|integer|min:1',
-            'bedrooms' => 'nullable|integer|min:0',
-            'bathrooms' => 'nullable|integer|min:0',
+            'bedrooms' => 'required|integer|min:1',
+            'bathrooms' => 'required|integer|min:1',
             'square_feet' => 'nullable|integer|min:0',
             'year_built' => 'nullable|integer|min:1800|max:' . date('Y'),
             'description' => 'nullable|string',
@@ -202,8 +215,8 @@ class PropertyController extends Controller
             'country' => 'nullable|string|max:100',
             'number_of_floors' => 'sometimes|integer|min:1',
             'number_of_rental_units' => 'sometimes|integer|min:1',
-            'bedrooms' => 'nullable|integer|min:0',
-            'bathrooms' => 'nullable|integer|min:0',
+            'bedrooms' => 'sometimes|integer|min:1',
+            'bathrooms' => 'sometimes|integer|min:1',
             'square_feet' => 'nullable|integer|min:0',
             'year_built' => 'nullable|integer|min:1800|max:' . date('Y'),
             'description' => 'nullable|string',

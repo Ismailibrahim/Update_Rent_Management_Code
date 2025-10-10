@@ -11,37 +11,57 @@ class Tenant extends Model
     use HasFactory;
 
     protected $fillable = [
-        'personal_info',
-        'contact_info',
-        'emergency_contact',
-        'employment_info',
-        'financial_info',
-        'documents',
+        // Tenant type
+        'tenant_type',
+        // New separate columns
+        'first_name',
+        'last_name',
+        'date_of_birth',
+        'national_id',
+        'nationality',
+        'gender',
+        'email',
+        'phone',
+        'address',
+        'city',
+        'postal_code',
+        'emergency_contact_name',
+        'emergency_contact_phone',
+        'emergency_contact_relationship',
+        'employment_company',
+        'employment_position',
+        'employment_salary',
+        'employment_phone',
+        'bank_name',
+        'account_number',
+        'account_holder_name',
         'status',
         'notes',
         'lease_start_date',
         'lease_end_date',
+        // Company-specific fields
+        'company_name',
+        'company_address',
+        'company_registration_number',
+        'company_gst_tin',
+        'company_telephone',
+        'company_email',
+        'documents',
     ];
 
     protected $casts = [
-        'personal_info' => 'array',
-        'contact_info' => 'array',
-        'emergency_contact' => 'array',
-        'employment_info' => 'array',
-        'financial_info' => 'array',
+        // New column casts
+        'date_of_birth' => 'date:Y-m-d',
+        'employment_salary' => 'decimal:2',
+        'lease_start_date' => 'date:Y-m-d',
+        'lease_end_date' => 'date:Y-m-d',
         'documents' => 'array',
-        'lease_start_date' => 'date',
-        'lease_end_date' => 'date',
     ];
+
+    protected $appends = ['full_name'];
 
     protected $attributes = [
         'status' => 'active',
-        'personal_info' => '{}',
-        'contact_info' => '{}',
-        'emergency_contact' => '{}',
-        'employment_info' => '{}',
-        'financial_info' => '{}',
-        'documents' => '[]',
     ];
 
     // Relationships
@@ -50,30 +70,33 @@ class Tenant extends Model
         return $this->hasMany(RentalUnit::class);
     }
 
-    // Accessors
+    // Accessors - Now using only new columns
     public function getFirstNameAttribute()
     {
-        return $this->personal_info['firstName'] ?? '';
+        return $this->attributes['first_name'] ?? '';
     }
 
     public function getLastNameAttribute()
     {
-        return $this->personal_info['lastName'] ?? '';
+        return $this->attributes['last_name'] ?? '';
     }
 
     public function getFullNameAttribute()
     {
+        if ($this->tenant_type === 'company') {
+            return $this->company_name ?: trim($this->first_name . ' ' . $this->last_name);
+        }
         return trim($this->first_name . ' ' . $this->last_name);
     }
 
     public function getEmailAttribute()
     {
-        return $this->contact_info['email'] ?? '';
+        return $this->attributes['email'] ?? '';
     }
 
     public function getPhoneAttribute()
     {
-        return $this->contact_info['phone'] ?? '';
+        return $this->attributes['phone'] ?? '';
     }
 
     // Scopes
@@ -85,5 +108,32 @@ class Tenant extends Model
     public function scopeInactive($query)
     {
         return $query->where('status', 'inactive');
+    }
+
+    // Search scopes for new columns
+    public function scopeSearch($query, $search)
+    {
+        return $query->where(function($q) use ($search) {
+            $q->where('first_name', 'like', "%{$search}%")
+              ->orWhere('last_name', 'like', "%{$search}%")
+              ->orWhere('email', 'like', "%{$search}%")
+              ->orWhere('phone', 'like', "%{$search}%")
+              ->orWhere('national_id', 'like', "%{$search}%");
+        });
+    }
+
+    public function scopeByEmail($query, $email)
+    {
+        return $query->where('email', $email);
+    }
+
+    public function scopeByPhone($query, $phone)
+    {
+        return $query->where('phone', $phone);
+    }
+
+    public function scopeByNationalId($query, $nationalId)
+    {
+        return $query->where('national_id', $nationalId);
     }
 }
