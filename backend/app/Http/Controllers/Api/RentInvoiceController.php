@@ -25,7 +25,8 @@ class RentInvoiceController extends Controller
 
             // Status filter
             if ($request->has('status') && $request->status) {
-                $query->where('status', $request->status);
+                $statuses = explode(',', $request->status);
+                $query->whereIn('status', $statuses);
             }
 
             // Month filter
@@ -41,6 +42,11 @@ class RentInvoiceController extends Controller
             // Tenant filter
             if ($request->has('tenant_id') && $request->tenant_id) {
                 $query->where('tenant_id', $request->tenant_id);
+            }
+
+            // Rental unit filter
+            if ($request->has('rental_unit_id') && $request->rental_unit_id) {
+                $query->where('rental_unit_id', $request->rental_unit_id);
             }
 
             $invoices = $query->orderBy('invoice_date', 'desc')->get();

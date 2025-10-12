@@ -119,6 +119,11 @@ interface RentalUnit {
   photos?: string[];
   notes?: string;
   is_active?: boolean;
+  property?: {
+    id: number;
+    name: string;
+    address: string;
+  };
 }
 
 export interface Tenant {
@@ -128,6 +133,7 @@ export interface Tenant {
   // New separate columns
   first_name: string;
   last_name: string;
+  full_name: string; // Added this computed property
   date_of_birth?: string;
   national_id?: string;
   nationality?: string;
@@ -467,6 +473,42 @@ interface MaintenanceCost {
   updated_at: string;
 }
 
+export interface TenantLedger {
+  ledger_id: number;
+  tenant_id: number;
+  payment_type_id: number;
+  transaction_date: string;
+  description: string;
+  reference_no?: string;
+  debit_amount: number;
+  credit_amount: number;
+  balance: number;
+  payment_method?: string;
+  transfer_reference_no?: string;
+  remarks?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  tenant?: {
+    id: number;
+    full_name: string;
+    email: string;
+    phone: string;
+    rentalUnits?: RentalUnit[];
+  };
+  payment_type?: {
+    id: number;
+    name: string;
+    description?: string;
+  };
+  rental_unit?: {
+    unit_number: string;
+    property?: {
+      name: string;
+    };
+  };
+}
+
 export const maintenanceCostsAPI = {
   getAll: (params?: Record<string, unknown>) => api.get('/maintenance-costs', { params }),
   getById: (id: number) => api.get(`/maintenance-costs/${id}`),
@@ -592,6 +634,17 @@ export const rentalUnitTypesAPI = {
 export const dashboardAPI = {
   getStatistics: () => api.get('/dashboard/statistics'),
   getRecentActivity: () => api.get('/dashboard/recent-activity'),
+};
+
+export const tenantLedgerAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/tenant-ledgers', { params }),
+  getById: (id: number) => api.get(`/tenant-ledgers/${id}`),
+  create: (data: Partial<TenantLedger>) => api.post('/tenant-ledgers', data),
+  update: (id: number, data: Partial<TenantLedger>) => api.put(`/tenant-ledgers/${id}`, data),
+  delete: (id: number) => api.delete(`/tenant-ledgers/${id}`),
+  getTenantBalance: (tenantId: number) => api.get(`/tenant-ledgers/tenant/${tenantId}/balance`),
+  getTenantSummary: (tenantId: number, params?: Record<string, unknown>) => api.get(`/tenant-ledgers/tenant/${tenantId}/summary`, { params }),
+  getAllTenantBalances: (params?: Record<string, unknown>) => api.get('/tenant-ledgers/balances/all', { params }),
 };
 
 export default api;

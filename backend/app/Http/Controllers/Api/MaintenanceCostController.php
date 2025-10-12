@@ -94,7 +94,7 @@ class MaintenanceCostController extends Controller
                 'repair_cost' => $request->repair_cost,
                 'currency' => $request->currency ?? 'MVR',
                 'description' => $request->description,
-                'attached_bills' => $attachedBills,
+                'bill_file_paths' => implode(',', $attachedBills),
                 'repair_date' => $request->repair_date,
                 'repair_provider' => $request->repair_provider,
                 'status' => 'draft', // Set as draft initially - only visible after Done button
@@ -253,15 +253,15 @@ class MaintenanceCostController extends Controller
 
             // Handle new file uploads (only for FormData requests)
             if (!$isJson && $request->hasFile('bills')) {
-                $attachedBills = $maintenanceCost->attached_bills ?? [];
+                $existingBills = $maintenanceCost->bill_file_paths ? explode(',', $maintenanceCost->bill_file_paths) : [];
                 
                 foreach ($request->file('bills') as $file) {
                     $filename = time() . '_' . $file->getClientOriginalName();
                     $path = $file->storeAs('maintenance_bills', $filename, 'public');
-                    $attachedBills[] = $path;
+                    $existingBills[] = $path;
                 }
                 
-                $updateData['attached_bills'] = $attachedBills;
+                $updateData['bill_file_paths'] = implode(',', $existingBills);
             }
 
             $maintenanceCost->update($updateData);
@@ -294,9 +294,10 @@ class MaintenanceCostController extends Controller
     {
         try {
             // Delete attached files
-            if ($maintenanceCost->attached_bills) {
-                foreach ($maintenanceCost->attached_bills as $bill) {
-                    Storage::disk('public')->delete($bill);
+            if ($maintenanceCost->bill_file_paths) {
+                $billPaths = explode(',', $maintenanceCost->bill_file_paths);
+                foreach ($billPaths as $bill) {
+                    Storage::disk('public')->delete(trim($bill));
                 }
             }
 

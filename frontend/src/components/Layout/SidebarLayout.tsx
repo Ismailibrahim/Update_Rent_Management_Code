@@ -29,7 +29,9 @@ import {
   UserCheck,
   ClipboardList,
   TrendingUp,
-  UserCog
+  UserCog,
+  BookOpen,
+  Calculator
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -65,6 +67,8 @@ const navigationGroups: NavigationGroup[] = [
     icon: ClipboardList,
     items: [
       { name: 'Rent Invoices', href: '/rent-invoices', icon: Receipt },
+      { name: 'Tenant Ledger', href: '/tenant-ledger', icon: BookOpen },
+      { name: 'Tenant Balances', href: '/tenant-balances', icon: Calculator },
       { name: 'Payment Types', href: '/payment-types', icon: CreditCard },
       { name: 'Payment Modes', href: '/payment-modes', icon: CreditCard },
       { name: 'Payment Records', href: '/payment-records', icon: FileText },

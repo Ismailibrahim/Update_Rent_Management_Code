@@ -58,6 +58,10 @@ export default function RentInvoicesPage() {
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString());
   
+  // Multi-selection state
+  const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
+  
   // Generation modal state
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -110,6 +114,15 @@ export default function RentInvoicesPage() {
     fetchPaymentTypesAndModes();
   }, [fetchInvoices]);
 
+  // Auto-refresh invoices every 30 seconds to catch status updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchInvoices();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [fetchInvoices]);
+
   const fetchPaymentTypesAndModes = async () => {
     try {
       const [typesResponse, modesResponse] = await Promise.all([
@@ -159,6 +172,109 @@ export default function RentInvoicesPage() {
     setPaymentSlips([]);
     setPaymentSlipPreviews([]);
     setShowPaymentModal(true);
+  };
+
+  // Multi-selection handlers
+  const handleSelectInvoice = (invoiceId: number) => {
+    setSelectedInvoices(prev => {
+      const newSelection = prev.includes(invoiceId) 
+        ? prev.filter(id => id !== invoiceId)
+        : [...prev, invoiceId];
+      
+      setShowBulkActions(newSelection.length > 0);
+      return newSelection;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allIds = invoices.map(invoice => invoice.id);
+    setSelectedInvoices(allIds);
+    setShowBulkActions(true);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedInvoices([]);
+    setShowBulkActions(false);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedInvoices.length === 0) return;
+    
+    if (!confirm(`Are you sure you want to delete ${selectedInvoices.length} invoices?`)) return;
+
+    try {
+      await Promise.all(selectedInvoices.map(id => rentInvoicesAPI.delete(id)));
+      toast.success(`${selectedInvoices.length} invoices deleted successfully`);
+      setSelectedInvoices([]);
+      setShowBulkActions(false);
+      fetchInvoices();
+    } catch (error: any) {
+      console.error('Error deleting invoices:', error);
+      toast.error('Failed to delete some invoices');
+    }
+  };
+
+  const handleBulkMarkAsPaid = async () => {
+    if (selectedInvoices.length === 0) return;
+    
+    const selectedInvoiceData = invoices.filter(invoice => 
+      selectedInvoices.includes(invoice.id)
+    );
+    
+    if (!confirm(`Mark ${selectedInvoices.length} invoices as paid?`)) return;
+
+    try {
+      await Promise.all(selectedInvoiceData.map(invoice => 
+        rentInvoicesAPI.markAsPaid(invoice.id, {
+          payment_type: '1',
+          payment_mode: '1',
+          reference_number: `BULK-${Date.now()}`,
+          notes: 'Bulk payment processing'
+        })
+      ));
+      toast.success(`${selectedInvoices.length} invoices marked as paid`);
+      setSelectedInvoices([]);
+      setShowBulkActions(false);
+      fetchInvoices();
+    } catch (error: any) {
+      console.error('Error marking invoices as paid:', error);
+      toast.error('Failed to mark some invoices as paid');
+    }
+  };
+
+  const handleBulkExport = () => {
+    if (selectedInvoices.length === 0) return;
+    
+    const selectedData = invoices.filter(invoice => 
+      selectedInvoices.includes(invoice.id)
+    );
+    
+    // Create CSV content
+    const headers = ['ID', 'Invoice Number', 'Tenant', 'Property', 'Unit', 'Amount', 'Status', 'Due Date'];
+    const csvContent = [
+      headers.join(','),
+      ...selectedData.map(invoice => [
+        invoice.id,
+        invoice.invoice_number,
+        invoice.tenant?.full_name || 'N/A',
+        invoice.property?.name || 'N/A',
+        invoice.rental_unit?.unit_number || 'N/A',
+        invoice.total_amount,
+        invoice.status,
+        new Date(invoice.due_date).toLocaleDateString()
+      ].join(','))
+    ].join('\n');
+    
+    // Download CSV
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rent-invoices-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    
+    toast.success(`Exported ${selectedInvoices.length} invoices to CSV`);
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -375,13 +491,24 @@ export default function RentInvoicesPage() {
               Manage rent invoices and payment status
             </p>
           </div>
-          <Button 
-            onClick={() => setShowGenerateModal(true)}
-            className="flex items-center"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Generate Monthly Invoices
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={fetchInvoices}
+              variant="outline"
+              className="flex items-center"
+              disabled={loading}
+            >
+              <Search className="h-4 w-4 mr-2" />
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <Button 
+              onClick={() => setShowGenerateModal(true)}
+              className="flex items-center"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Generate Monthly Invoices
+            </Button>
+          </div>
         </div>
 
         {/* Statistics Cards */}
@@ -526,6 +653,52 @@ export default function RentInvoicesPage() {
         ) : (
           <Card className="w-full">
             <CardContent className="p-0">
+              {/* Bulk Actions */}
+              {showBulkActions && (
+                <div className="p-4 bg-blue-50 border-b border-blue-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <span className="text-sm font-medium text-blue-800">
+                        {selectedInvoices.length} invoice{selectedInvoices.length !== 1 ? 's' : ''} selected
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDeselectAll}
+                        className="text-blue-600 border-blue-300 hover:bg-blue-100"
+                      >
+                        Deselect All
+                      </Button>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBulkExport}
+                        className="text-green-600 border-green-300 hover:bg-green-100"
+                      >
+                        Export CSV
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBulkMarkAsPaid}
+                        className="text-blue-600 border-blue-300 hover:bg-blue-100"
+                      >
+                        Mark as Paid
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleBulkDelete}
+                        className="text-red-600 border-red-300 hover:bg-red-100"
+                      >
+                        Delete Selected
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div>
                 <table className="w-full table-auto">
                   <colgroup>
@@ -539,6 +712,14 @@ export default function RentInvoicesPage() {
                   </colgroup>
                   <thead className="bg-gray-50 border-b">
                     <tr>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase w-12">
+                        <input
+                          type="checkbox"
+                          checked={selectedInvoices.length === invoices.length && invoices.length > 0}
+                          onChange={selectedInvoices.length === invoices.length ? handleDeselectAll : handleSelectAll}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tenant</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
@@ -551,6 +732,14 @@ export default function RentInvoicesPage() {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredInvoices.map((invoice) => (
                       <tr key={invoice.id} className="hover:bg-gray-50">
+                        <td className="px-2 py-2 align-top">
+                          <input
+                            type="checkbox"
+                            checked={selectedInvoices.includes(invoice.id)}
+                            onChange={() => handleSelectInvoice(invoice.id)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                        </td>
                         <td className="px-2 py-2 align-top">
                           <div>
                             <div className="text-sm font-medium text-gray-900 truncate">

@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\RentInvoiceController;
 use App\Http\Controllers\Api\MaintenanceCostController;
 use App\Http\Controllers\Api\RentalUnitTypeController;
+use App\Http\Controllers\TenantLedgerController;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +36,7 @@ use App\Http\Controllers\Api\RentalUnitTypeController;
 Route::get('/test', function () {
     return response()->json(['message' => 'API is working', 'timestamp' => now()]);
 });
+
 
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
@@ -114,4 +116,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Rental Unit Type routes
     Route::apiResource('rental-unit-types', RentalUnitTypeController::class);
+
+    // Tenant Ledger routes
+    Route::apiResource('tenant-ledgers', TenantLedgerController::class);
+    Route::get('/tenant-ledgers/tenant/{tenantId}/balance', [TenantLedgerController::class, 'getTenantBalance']);
+    Route::get('/tenant-ledgers/tenant/{tenantId}/summary', [TenantLedgerController::class, 'getTenantSummary']);
+    Route::get('/tenant-ledgers/balances/all', [TenantLedgerController::class, 'getAllTenantBalances']);
 });

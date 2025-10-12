@@ -70,6 +70,11 @@ class Tenant extends Model
         return $this->hasMany(RentalUnit::class);
     }
 
+    public function ledgerEntries(): HasMany
+    {
+        return $this->hasMany(TenantLedger::class, 'tenant_id');
+    }
+
     // Accessors - Now using only new columns
     public function getFirstNameAttribute()
     {
