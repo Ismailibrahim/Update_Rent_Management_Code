@@ -43,7 +43,7 @@ export default function TenantLedgerPage() {
   useEffect(() => {
     console.log('useEffect triggered - filters:', filters, 'pagination:', pagination.current_page);
     loadData();
-  }, [filters, pagination.current_page]);
+  }, [filters, pagination.current_page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     setLoading(true);
@@ -70,7 +70,7 @@ export default function TenantLedgerPage() {
       const params = {
         page: pagination.current_page,
         per_page: pagination.per_page,
-        ...Object.fromEntries(Object.entries(filters).filter(([_, value]) => value !== '')),
+        ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '')),
       };
 
       console.log('Loading ledger entries with params:', params);
@@ -94,17 +94,18 @@ export default function TenantLedgerPage() {
           total: meta.total || 0,
         }));
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error loading data:', error);
-      console.error('Error details:', error.response?.data);
+      const axiosError = error as { response?: { status?: number; data?: unknown } };
+      console.error('Error details:', axiosError.response?.data);
       
       // Set empty array to prevent map error
       setLedgerEntries([]);
       
       // Show appropriate error message
-      if (error.response?.status === 401) {
+      if (axiosError.response?.status === 401) {
         toast.error('Please log in to access ledger entries');
-      } else if (error.response?.status === 500) {
+      } else if (axiosError.response?.status === 500) {
         toast.error('Server error. Please try again later.');
       } else {
         toast.error('Failed to load ledger entries');
@@ -126,9 +127,10 @@ export default function TenantLedgerPage() {
       await tenantLedgerAPI.delete(id);
       toast.success('Ledger entry deleted successfully');
       loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting ledger entry:', error);
-      toast.error(error.response?.data?.message || 'Failed to delete ledger entry');
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosError.response?.data?.message || 'Failed to delete ledger entry');
     }
   };
 
@@ -170,7 +172,7 @@ export default function TenantLedgerPage() {
       setSelectedEntries([]);
       setShowBulkActions(false);
       loadData();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting ledger entries:', error);
       toast.error('Failed to delete some ledger entries');
     }
@@ -251,32 +253,7 @@ export default function TenantLedgerPage() {
     return 'No Unit Assigned';
   };
 
-  const getRentalUnitNumber = (entry: TenantLedger) => {
-    if (entry.tenant?.rentalUnits && entry.tenant.rentalUnits.length > 0) {
-      // Find the occupied unit
-      const occupiedUnit = entry.tenant.rentalUnits.find(unit => unit.status === 'occupied');
-      if (occupiedUnit) {
-        return occupiedUnit.unit_number || 'N/A';
-      }
-      // If no occupied unit, return the first unit
-      return entry.tenant.rentalUnits[0].unit_number || 'N/A';
-    }
-    return 'N/A';
-  };
-
-  const getTransactionTypeIcon = (entry: TenantLedger) => {
-    if (entry.debit_amount > 0) {
-      return <TrendingUp className="h-4 w-4 text-red-500" />;
-    } else {
-      return <TrendingDown className="h-4 w-4 text-green-500" />;
-    }
-  };
-
-  const getBalanceColor = (balance: number) => {
-    if (balance > 0) return 'text-red-600 font-semibold';
-    if (balance < 0) return 'text-green-600 font-semibold';
-    return 'text-gray-600';
-  };
+  // Removed unused functions: getRentalUnitNumber, getTransactionTypeIcon, getBalanceColor
 
   const isPaidEntry = (entry: TenantLedger) => {
     // Check if this entry represents a paid invoice
@@ -358,10 +335,10 @@ export default function TenantLedgerPage() {
     const uniqueTenantIds = new Set(ledgerEntries.map(entry => entry.tenant_id).filter(id => id != null));
     const uniqueTenants = uniqueTenantIds.size;
     
-    // Calculate balances with proper validation
-    const balances = ledgerEntries
-      .map(entry => Number(entry.balance) || 0)
-      .filter(balance => !isNaN(balance));
+    // Calculate balances with proper validation (removed unused variable)
+    // const balances = ledgerEntries
+    //   .map(entry => Number(entry.balance) || 0)
+    //   .filter(balance => !isNaN(balance));
     
     // Calculate final balance per tenant (sum of debits minus credits per tenant)
     // Only include specific units: Huvandhugadhakoalhige Units 201 & 301, Park Lane Unit 102
@@ -766,10 +743,8 @@ export default function TenantLedgerPage() {
                           {formatDate(entry.transaction_date)}
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-900 truncate max-w-32">
-                          <span title={entry.tenant?.full_name || 
-                           (entry.tenant ? `${entry.tenant.first_name} ${entry.tenant.last_name}` : 'N/A')}>
-                            {entry.tenant?.full_name || 
-                             (entry.tenant ? `${entry.tenant.first_name} ${entry.tenant.last_name}` : 'N/A')}
+                          <span title={entry.tenant?.full_name || 'N/A'}>
+                            {entry.tenant?.full_name || 'N/A'}
                           </span>
                         </td>
                         <td className="px-3 py-3 text-xs text-gray-900 max-w-48">

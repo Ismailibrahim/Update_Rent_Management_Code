@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { tenantLedgerAPI, Tenant } from '@/services/api';
+import { tenantLedgerAPI } from '@/services/api';
 import { Card } from '@/components/UI/Card';
-import { Button } from '@/components/UI/Button';
 import { Input } from '@/components/UI/Input';
 import { Select } from '@/components/UI/Select';
 import { DollarSign, TrendingUp, TrendingDown, Users, AlertCircle } from 'lucide-react';
@@ -31,13 +30,13 @@ export default function TenantBalanceSummary() {
 
   useEffect(() => {
     loadTenantBalances();
-  }, [filters]);
+  }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadTenantBalances = async () => {
     try {
       setLoading(true);
       const params = Object.fromEntries(
-        Object.entries(filters).filter(([_, value]) => value !== '')
+        Object.entries(filters).filter(([, value]) => value !== '')
       );
       
       const response = await tenantLedgerAPI.getAllTenantBalances(params);

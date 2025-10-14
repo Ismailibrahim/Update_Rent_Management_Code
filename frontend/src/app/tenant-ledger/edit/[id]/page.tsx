@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, TenantLedger, Tenant, PaymentType } from '@/services/api';
+import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, Tenant, PaymentType } from '@/services/api';
 import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
 import { Input } from '@/components/UI/Input';
@@ -52,7 +52,7 @@ export default function EditTenantLedgerPage() {
 
   useEffect(() => {
     loadData();
-  }, [ledgerId]);
+  }, [ledgerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     setLoading(true);
@@ -123,10 +123,11 @@ export default function EditTenantLedgerPage() {
       await tenantLedgerAPI.update(Number(ledgerId), submitData);
       toast.success('Ledger entry updated successfully');
       router.push('/tenant-ledger');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error updating ledger entry:', error);
-      console.error('Error response:', error.response);
-      toast.error(error.response?.data?.message || 'Failed to update ledger entry');
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      console.error('Error response:', axiosError.response);
+      toast.error(axiosError.response?.data?.message || 'Failed to update ledger entry');
     } finally {
       setSaving(false);
     }

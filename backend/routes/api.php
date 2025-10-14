@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\RentInvoiceController;
 use App\Http\Controllers\Api\MaintenanceCostController;
+use App\Http\Controllers\Api\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\RentalUnitTypeController;
 use App\Http\Controllers\TenantLedgerController;
 
@@ -101,6 +102,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Maintenance Cost routes
     Route::apiResource('maintenance-costs', MaintenanceCostController::class);
     Route::get('/maintenance-costs/rental-unit-asset/{rentalUnitAssetId}', [MaintenanceCostController::class, 'getByRentalUnitAsset']);
+
+    // Maintenance Invoice routes
+    Route::apiResource('maintenance-invoices', MaintenanceInvoiceController::class);
 
     // User routes
     Route::apiResource('users', UserController::class);

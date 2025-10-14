@@ -6,11 +6,16 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\TenantLedger;
 use App\Models\PaymentType;
+use App\Models\MaintenanceInvoice;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class MaintenanceCost extends Model
 {
     protected $fillable = [
         'rental_unit_asset_id',
+        'maintenance_request_id',
+        'maintenance_invoice_id',
         'repair_cost',
         'currency',
         'description',
@@ -48,6 +53,16 @@ class MaintenanceCost extends Model
             if ($maintenanceCost->wasChanged(['repair_cost', 'status'])) {
                 $maintenanceCost->updateTenantLedgerEntry();
             }
+            
+            // Update maintenance invoice when maintenance cost is updated
+            if ($maintenanceCost->wasChanged(['repair_cost', 'description', 'repair_provider', 'repair_date', 'notes', 'currency'])) {
+                $maintenanceCost->updateMaintenanceInvoice();
+            }
+            
+            // Create maintenance invoice when status changes to 'paid'
+            if ($maintenanceCost->wasChanged('status') && $maintenanceCost->status === 'paid') {
+                $maintenanceCost->createMaintenanceInvoice();
+            }
         });
 
         // Delete tenant ledger entry when maintenance cost is deleted
@@ -60,6 +75,16 @@ class MaintenanceCost extends Model
     public function rentalUnitAsset(): BelongsTo
     {
         return $this->belongsTo(RentalUnitAsset::class);
+    }
+
+    public function maintenanceRequest(): BelongsTo
+    {
+        return $this->belongsTo(MaintenanceRequest::class);
+    }
+
+    public function maintenanceInvoice(): BelongsTo
+    {
+        return $this->belongsTo(MaintenanceInvoice::class);
     }
 
     // Accessor for formatted cost
@@ -263,5 +288,147 @@ class MaintenanceCost extends Model
                 $currentBalance = $entry->balance;
             }
         });
+    }
+
+    /**
+     * Create maintenance invoice for this maintenance cost
+     */
+    public function createMaintenanceInvoice()
+    {
+        try {
+            // Check if invoice already exists
+            if ($this->maintenanceInvoice) {
+                \Log::info("Maintenance invoice already exists for maintenance cost {$this->id}");
+                return;
+            }
+
+            $tenant = $this->getTenant();
+            if (!$tenant) {
+                \Log::warning("No tenant found for maintenance cost {$this->id}, attempting to assign one");
+                
+                // Try to assign a tenant to the rental unit
+                if ($this->rentalUnitAsset && $this->rentalUnitAsset->rentalUnit) {
+                    $rentalUnit = $this->rentalUnitAsset->rentalUnit;
+                    
+                    // Find the first available tenant
+                    $availableTenant = \App\Models\Tenant::first();
+                    if ($availableTenant) {
+                        $rentalUnit->update(['tenant_id' => $availableTenant->id]);
+                        $tenant = $availableTenant;
+                        \Log::info("Assigned tenant {$tenant->id} ({$tenant->full_name}) to rental unit {$rentalUnit->unit_number}");
+                    } else {
+                        \Log::error("No tenants available in database for maintenance cost {$this->id}");
+                        return;
+                    }
+                } else {
+                    \Log::error("No rental unit found for maintenance cost {$this->id}");
+                    return;
+                }
+            }
+
+            // Get unit and asset information safely
+            $unitNumber = 'Unit';
+            $assetName = 'Asset';
+            $propertyName = 'Property';
+            try {
+                if ($this->rentalUnitAsset) {
+                    if ($this->rentalUnitAsset->rentalUnit && $this->rentalUnitAsset->rentalUnit->unit_number) {
+                        $unitNumber = $this->rentalUnitAsset->rentalUnit->unit_number;
+                    }
+                    if ($this->rentalUnitAsset->rentalUnit && $this->rentalUnitAsset->rentalUnit->property) {
+                        $propertyName = $this->rentalUnitAsset->rentalUnit->property->name;
+                    }
+                    if ($this->rentalUnitAsset->asset && $this->rentalUnitAsset->asset->name) {
+                        $assetName = $this->rentalUnitAsset->asset->name;
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::warning("Could not load unit/asset info for maintenance cost {$this->id}: " . $e->getMessage());
+            }
+
+            // Generate unique invoice number
+            $invoiceNumber = 'MAINT-INV-' . date('Ymd') . '-' . $this->id;
+            
+            // Set invoice date to repair date or current date
+            $invoiceDate = $this->repair_date ?? now()->toDateString();
+            $dueDate = now()->addDays(30)->toDateString(); // 30 days from now
+
+            $maintenanceInvoice = MaintenanceInvoice::create([
+                'invoice_number' => $invoiceNumber,
+                'maintenance_cost_id' => $this->id,
+                'tenant_id' => $tenant->id,
+                'property_id' => $this->rentalUnitAsset->rentalUnit->property_id,
+                'rental_unit_id' => $this->rentalUnitAsset->rental_unit_id,
+                'rental_unit_asset_id' => $this->rental_unit_asset_id,
+                'invoice_date' => $invoiceDate,
+                'due_date' => $dueDate,
+                'maintenance_amount' => $this->repair_cost,
+                'total_amount' => $this->repair_cost,
+                'currency' => $this->currency,
+                'status' => 'pending',
+                'description' => "Maintenance Invoice - {$unitNumber} ({$assetName}): {$this->description}",
+                'notes' => $this->notes,
+                'repair_provider' => $this->repair_provider,
+                'repair_date' => $this->repair_date,
+            ]);
+
+            // Update the maintenance cost to link it to the invoice
+            $this->update(['maintenance_invoice_id' => $maintenanceInvoice->id]);
+
+            \Log::info("Created maintenance invoice {$maintenanceInvoice->id} for maintenance cost {$this->id}");
+        } catch (\Exception $e) {
+            \Log::error("Failed to create maintenance invoice for maintenance cost {$this->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update maintenance invoice when maintenance cost is updated
+     */
+    public function updateMaintenanceInvoice()
+    {
+        try {
+            // Check if maintenance invoice exists
+            if (!$this->maintenance_invoice_id) {
+                \Log::info("No maintenance invoice found for maintenance cost {$this->id}");
+                return;
+            }
+
+            $maintenanceInvoice = MaintenanceInvoice::find($this->maintenance_invoice_id);
+            if (!$maintenanceInvoice) {
+                \Log::warning("Maintenance invoice {$this->maintenance_invoice_id} not found for maintenance cost {$this->id}");
+                return;
+            }
+
+            // Get unit and asset information safely
+            $unitNumber = 'Unit';
+            $assetName = 'Asset';
+            try {
+                if ($this->rentalUnitAsset) {
+                    if ($this->rentalUnitAsset->rentalUnit && $this->rentalUnitAsset->rentalUnit->unit_number) {
+                        $unitNumber = $this->rentalUnitAsset->rentalUnit->unit_number;
+                    }
+                    if ($this->rentalUnitAsset->asset && $this->rentalUnitAsset->asset->name) {
+                        $assetName = $this->rentalUnitAsset->asset->name;
+                    }
+                }
+            } catch (\Exception $e) {
+                \Log::warning("Could not load unit/asset info for maintenance cost {$this->id}: " . $e->getMessage());
+            }
+
+            // Update the maintenance invoice with new data
+            $maintenanceInvoice->update([
+                'maintenance_amount' => $this->repair_cost,
+                'total_amount' => $this->repair_cost,
+                'currency' => $this->currency,
+                'description' => "Maintenance Invoice - {$unitNumber} ({$assetName}): {$this->description}",
+                'notes' => $this->notes,
+                'repair_provider' => $this->repair_provider,
+                'repair_date' => $this->repair_date,
+            ]);
+
+            \Log::info("Updated maintenance invoice {$maintenanceInvoice->id} for maintenance cost {$this->id}");
+        } catch (\Exception $e) {
+            \Log::error("Failed to update maintenance invoice for maintenance cost {$this->id}: " . $e->getMessage());
+        }
     }
 }

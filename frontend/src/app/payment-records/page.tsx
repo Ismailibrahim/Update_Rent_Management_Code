@@ -60,6 +60,10 @@ export default function PaymentRecordsPage() {
   const [tenantFilter, setTenantFilter] = useState('');
   const [showViewInvoiceModal, setShowViewInvoiceModal] = useState(false);
   const [selectedPaymentRecord, setSelectedPaymentRecord] = useState<PaymentRecord | null>(null);
+  
+  // Multi-selection state
+  const [selectedRecords, setSelectedRecords] = useState<number[]>([]);
+  const [showBulkActions, setShowBulkActions] = useState(false);
 
   useEffect(() => {
     fetchPaymentRecords();
@@ -90,6 +94,46 @@ export default function PaymentRecordsPage() {
     } catch (error) {
       console.error('Error deleting payment record:', error);
       toast.error('Failed to delete payment record');
+    }
+  };
+
+  // Multi-selection handlers
+  const handleSelectRecord = (id: number) => {
+    setSelectedRecords(prev => {
+      const newSelection = prev.includes(id) 
+        ? prev.filter(recordId => recordId !== id)
+        : [...prev, id];
+      
+      setShowBulkActions(newSelection.length > 0);
+      return newSelection;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allIds = filteredPaymentRecords.map(record => record.id);
+    setSelectedRecords(allIds);
+    setShowBulkActions(true);
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedRecords([]);
+    setShowBulkActions(false);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedRecords.length === 0) return;
+    
+    if (!confirm(`Are you sure you want to delete ${selectedRecords.length} payment records? This action cannot be undone.`)) return;
+
+    try {
+      await Promise.all(selectedRecords.map(id => paymentRecordsAPI.delete(id)));
+      toast.success(`${selectedRecords.length} payment records deleted successfully`);
+      setSelectedRecords([]);
+      setShowBulkActions(false);
+      fetchPaymentRecords();
+    } catch (error) {
+      console.error('Error deleting payment records:', error);
+      toast.error('Failed to delete some payment records');
     }
   };
 
@@ -221,6 +265,39 @@ export default function PaymentRecordsPage() {
           </div>
         </div>
 
+        {/* Bulk Actions */}
+        {showBulkActions && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm font-medium text-blue-800">
+                    {selectedRecords.length} record{selectedRecords.length !== 1 ? 's' : ''} selected
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDeselectAll}
+                    className="text-blue-600 border-blue-300 hover:bg-blue-100"
+                  >
+                    Deselect All
+                  </Button>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkDelete}
+                    className="text-red-600 border-red-300 hover:bg-red-100"
+                  >
+                    Delete Selected
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Payment Records Table */}
         <Card className="bg-white border border-gray-200">
           <CardHeader>
@@ -236,6 +313,14 @@ export default function PaymentRecordsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 w-12">
+                      <input
+                        type="checkbox"
+                        checked={selectedRecords.length === filteredPaymentRecords.length && filteredPaymentRecords.length > 0}
+                        onChange={selectedRecords.length === filteredPaymentRecords.length ? handleDeselectAll : handleSelectAll}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                    </th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Tenant</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Property</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Unit</th>
@@ -250,6 +335,14 @@ export default function PaymentRecordsPage() {
                 <tbody>
                   {filteredPaymentRecords.map((record) => (
                     <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedRecords.includes(record.id)}
+                          onChange={() => handleSelectRecord(record.id)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="font-medium text-gray-900">{record.tenant?.name || 'N/A'}</div>
                       </td>

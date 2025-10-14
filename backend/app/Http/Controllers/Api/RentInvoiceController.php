@@ -99,7 +99,8 @@ class RentInvoiceController extends Controller
             }
 
             // Generate invoice number
-            $invoiceNumber = 'INV-' . date('Y') . '-' . str_pad(RentInvoice::count() + 1, 6, '0', STR_PAD_LEFT);
+            $shortDate = date('ymd'); // Format: YYMMDD (e.g., 251012 for 2025-10-12)
+            $invoiceNumber = 'INV-' . $shortDate . '-' . $rentalUnit->id;
 
             // Calculate total amount
             $rentAmount = $request->rent_amount;
@@ -309,7 +310,8 @@ class RentInvoiceController extends Controller
                     }
 
                     // Generate unique invoice number
-                    $invoiceNumber = 'INV-' . $year . '-' . str_pad($month, 2, '0', STR_PAD_LEFT) . '-' . $unit->id . '-' . uniqid();
+                    $shortDate = date('ymd', strtotime("$year-$month-01")); // Format: YYMMDD
+                    $invoiceNumber = 'INV-' . $shortDate . '-' . $unit->id;
                     $invoiceDate = Carbon::create($year, $month, 1)->toDateString();
                     $dueDate = Carbon::create($year, $month, 1)->addDays($dueDateOffset)->toDateString();
                     $rentAmount = $unit->rent_amount ?? 0;

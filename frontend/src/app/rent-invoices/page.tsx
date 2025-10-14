@@ -7,7 +7,7 @@ import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Select } from '../../components/UI/Select';
 import { FileText, Search, Trash2, Eye, User, Building, CheckCircle, Clock, AlertCircle, Plus, Upload, FileImage, Receipt } from 'lucide-react';
-import { rentInvoicesAPI, paymentTypesAPI, paymentModesAPI } from '../../services/api';
+import { rentInvoicesAPI, paymentTypesAPI, paymentModesAPI, RentInvoice } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 
@@ -18,37 +18,7 @@ interface PaymentDetails {
   notes?: string;
 }
 
-interface RentInvoice {
-  id: number;
-  invoice_number: string;
-  tenant_id: number;
-  property_id: number;
-  rental_unit_id: number;
-  invoice_date: string;
-  due_date: string;
-  rent_amount: number;
-  late_fee: number;
-  total_amount: number;
-  currency: string;
-  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
-  paid_date?: string;
-  notes?: string;
-  payment_details?: PaymentDetails;
-  payment_slip_files?: string;
-  tenant: {
-    first_name: string;
-    last_name: string;
-    full_name?: string;
-  };
-  property: {
-    name: string;
-  };
-  rental_unit: {
-    unit_number: string;
-  };
-  created_at: string;
-  updated_at: string;
-}
+// RentInvoice interface is now imported from @/services/api
 
 export default function RentInvoicesPage() {
   const [invoices, setInvoices] = useState<RentInvoice[]>([]);
@@ -100,10 +70,10 @@ export default function RentInvoicesPage() {
       if (yearFilter) params.year = parseInt(yearFilter);
       
       const response = await rentInvoicesAPI.getAll(params);
-      setInvoices(response.data.invoices || []);
+      setInvoices(response.data?.invoices || []);
     } catch (error) {
       console.error('Error fetching invoices:', error);
-      toast.error('Failed to fetch rent invoices');
+      toast.error('Failed to fetch invoices');
     } finally {
       setLoading(false);
     }
@@ -208,7 +178,7 @@ export default function RentInvoicesPage() {
       setSelectedInvoices([]);
       setShowBulkActions(false);
       fetchInvoices();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting invoices:', error);
       toast.error('Failed to delete some invoices');
     }
@@ -236,7 +206,7 @@ export default function RentInvoicesPage() {
       setSelectedInvoices([]);
       setShowBulkActions(false);
       fetchInvoices();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error marking invoices as paid:', error);
       toast.error('Failed to mark some invoices as paid');
     }
@@ -388,7 +358,7 @@ export default function RentInvoicesPage() {
       }
 
       if (response.data.generated_count > 0) {
-        let message = `Successfully generated ${response.data.generated_count} rent invoices`;
+        let message = `Successfully generated ${response.data.generated_count} invoices`;
         
         // Add information about skipped tenants if any
         if (response.data.skipped_count > 0) {
@@ -399,7 +369,7 @@ export default function RentInvoicesPage() {
         setShowGenerateModal(false);
         fetchInvoices(); // Refresh the invoices list
       } else {
-        let message = 'No Rent Invoice Pending - All invoices for the selected period have already been generated';
+        let message = 'No Invoice Pending - All invoices for the selected period have already been generated';
         
         // Add information about skipped tenants if any
         if (response.data.skipped_count > 0) {
@@ -417,8 +387,8 @@ export default function RentInvoicesPage() {
       console.error('Error generating invoices:', error);
       const errorMessage = error && typeof error === 'object' && 'response' in error 
         ? (error as { response?: { data?: { message?: string } } }).response?.data?.message 
-        : 'Failed to generate rent invoices';
-      toast.error(errorMessage || 'Failed to generate rent invoices');
+        : 'Failed to generate invoices';
+      toast.error(errorMessage || 'Failed to generate invoices');
     } finally {
       setGenerating(false);
     }
@@ -506,7 +476,7 @@ export default function RentInvoicesPage() {
               className="flex items-center"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Generate Monthly Invoices
+              Generate Monthly Rent Invoices
             </Button>
           </div>
         </div>
@@ -762,7 +732,7 @@ export default function RentInvoicesPage() {
                           <div className="flex items-center">
                             <Building className="h-4 w-4 mr-2 text-gray-400 flex-shrink-0" />
                             <span className="text-sm text-gray-600 whitespace-nowrap truncate">
-                              {invoice.property.name} - Unit {invoice.rental_unit.unit_number}
+                              {invoice.property?.name || 'Unknown'} - Unit {invoice.rental_unit?.unit_number || 'Unknown'}
                             </span>
                           </div>
                         </td>
@@ -770,7 +740,7 @@ export default function RentInvoicesPage() {
                           <div className="text-sm font-medium text-green-600">
                             {formatCurrency(invoice.total_amount, invoice.currency)}
                           </div>
-                          {invoice.late_fee > 0 && (
+                          {invoice.late_fee && invoice.late_fee > 0 && (
                             <div className="text-xs text-red-500">
                               +{formatCurrency(invoice.late_fee, invoice.currency)} late fee
                             </div>
@@ -856,12 +826,12 @@ export default function RentInvoicesPage() {
             <FileText className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No invoices found</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || statusFilter || monthFilter ? 'Try adjusting your search filters.' : 'Get started by generating monthly rent invoices.'}
+              {searchTerm || statusFilter || monthFilter ? 'Try adjusting your search filters.' : 'Get started by generating monthly invoices.'}
             </p>
             <div className="mt-6">
               <Button onClick={() => setShowGenerateModal(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Generate Monthly Invoices
+                Generate Monthly Rent Invoices
               </Button>
             </div>
           </div>
@@ -987,7 +957,7 @@ export default function RentInvoicesPage() {
                   ) : (
                     <>
                       <FileText className="h-4 w-4 mr-2" />
-                      Generate Invoices
+                      Generate Rent Invoices
                     </>
                   )}
                 </Button>
@@ -1358,7 +1328,7 @@ export default function RentInvoicesPage() {
                       <div className="flex justify-between">
                         <span className="text-sm font-medium text-gray-600">Rent Amount:</span>
                         <span className="text-sm text-gray-900">
-                          {selectedInvoice.currency} {selectedInvoice.rent_amount?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          {selectedInvoice.currency} {selectedInvoice.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </span>
                       </div>
                       

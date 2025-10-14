@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class MaintenanceRequest extends Model
 {
@@ -58,6 +59,14 @@ class MaintenanceRequest extends Model
     }
 
     /**
+     * Get the maintenance costs associated with this request.
+     */
+    public function maintenanceCosts(): HasMany
+    {
+        return $this->hasMany(MaintenanceCost::class);
+    }
+
+    /**
      * Scope a query to only include pending maintenance requests.
      */
     public function scopePending($query)
@@ -79,6 +88,14 @@ class MaintenanceRequest extends Model
     public function scopeCompleted($query)
     {
         return $query->where('status', 'completed');
+    }
+
+    /**
+     * Scope a query to only include repaired maintenance requests.
+     */
+    public function scopeRepaired($query)
+    {
+        return $query->where('status', 'repaired');
     }
 
     /**

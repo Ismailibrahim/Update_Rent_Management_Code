@@ -81,7 +81,7 @@ export default function MonthlyRentPage() {
       setGenerationResult(response.data);
       
       if (response.data.generated_count > 0) {
-        toast.success(`Successfully generated ${response.data.generated_count} rent invoices`);
+        toast.success(`Successfully generated ${response.data.generated_count} invoices`);
       }
       
       if (response.data.errors.length > 0) {
@@ -92,8 +92,8 @@ export default function MonthlyRentPage() {
       console.error('Error generating invoices:', error);
       const errorMessage = error && typeof error === 'object' && 'response' in error 
         ? (error as { response?: { data?: { message?: string } } }).response?.data?.message 
-        : 'Failed to generate rent invoices';
-      toast.error(errorMessage || 'Failed to generate rent invoices');
+        : 'Failed to generate invoices';
+      toast.error(errorMessage || 'Failed to generate invoices');
     } finally {
       setGenerating(false);
     }
@@ -130,7 +130,7 @@ export default function MonthlyRentPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Monthly Rent Generation</h1>
             <p className="mt-2 text-gray-600">
-              Generate rent invoices for all occupied rental units
+              Generate invoices for all occupied rental units
             </p>
           </div>
         </div>
@@ -183,7 +183,7 @@ export default function MonthlyRentPage() {
           <CardHeader>
             <CardTitle className="flex items-center">
               <FileText className="h-5 w-5 mr-2" />
-              Generate Rent Invoices
+              Generate Invoices
             </CardTitle>
             <CardDescription>
               Configure the invoice generation parameters
@@ -329,7 +329,7 @@ export default function MonthlyRentPage() {
           <CardHeader>
             <CardTitle>Occupied Rental Units</CardTitle>
             <CardDescription>
-              Units that will receive rent invoices
+              Units that will receive invoices
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Wrench, RefreshCw } from 'lucide-react';
-import { rentalUnitsAPI, maintenanceCostsAPI } from '../../services/api';
+import { rentalUnitsAPI, maintenanceCostsAPI, maintenanceRequestsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 
@@ -34,6 +34,10 @@ interface Asset {
       id: number;
       name: string;
     };
+    tenant?: {
+      id: number;
+      full_name?: string;
+    } | null;
   };
   updated_at: string;
 }
@@ -210,18 +214,56 @@ export default function MaintenancePage() {
       if (costResponse.data?.maintenance_costs?.length > 0) {
         // Find the most recent cost record
         const recentCost = costResponse.data.maintenance_costs[0];
-        await maintenanceCostsAPI.update(recentCost.id, { status: 'paid' });
-        console.log('✅ Maintenance cost status updated to paid');
+        
+        // Create a maintenance request first
+        console.log('Creating maintenance request...');
+        const maintenanceRequestResponse = await maintenanceRequestsAPI.create({
+          title: `Maintenance for ${asset.name}`,
+          description: `Maintenance completed for ${asset.name} in ${asset.rental_unit?.property?.name || 'Unknown Property'} - Unit ${asset.rental_unit?.unit_number || 'Unknown'}`,
+          property_id: asset.rental_unit?.property?.id || 1,
+          rental_unit_id: asset.rental_unit_id,
+          tenant_id: asset.rental_unit?.tenant?.id || undefined,
+          priority: 'medium',
+          status: 'repaired', // Set to repaired status
+          request_date: new Date().toISOString().split('T')[0],
+          completed_date: new Date().toISOString().split('T')[0],
+          actual_cost: recentCost.repair_cost,
+        });
+        
+        if (maintenanceRequestResponse.data?.maintenance_request?.id) {
+          const maintenanceRequestId = maintenanceRequestResponse.data.maintenance_request.id;
+          
+          // Update the maintenance cost to link it to the maintenance request
+          await maintenanceCostsAPI.update(recentCost.id, { 
+            status: 'paid',
+            maintenance_request_id: maintenanceRequestId
+          });
+          console.log('✅ Maintenance cost linked to maintenance request');
+        } else {
+          // Fallback: just update the cost status
+          await maintenanceCostsAPI.update(recentCost.id, { status: 'paid' });
+          console.log('✅ Maintenance cost status updated to paid (no request created)');
+        }
       }
       
-      console.log('Updating asset status to working...');
-      await rentalUnitsAPI.updateAssetStatus(asset.rental_unit_id, asset.asset_id, { 
-        status: 'working',
-        quantity: quantity
-      });
+      console.log('Updating asset status to repaired...');
+      try {
+        await rentalUnitsAPI.updateAssetStatus(asset.rental_unit_id, asset.asset_id, { 
+          status: 'repaired',
+          quantity: quantity
+        });
+      } catch (error: unknown) {
+        console.error('❌ Error updating asset status:', error);
+        if (error && typeof error === 'object' && 'response' in error) {
+          const axiosError = error as { response?: { data?: unknown; status?: number } };
+          console.error('❌ Error response:', axiosError.response?.data);
+          console.error('❌ Error status:', axiosError.response?.status);
+        }
+        throw error; // Re-throw to maintain existing error handling
+      }
       
       console.log('✅ Asset status updated successfully');
-      toast.success(`${asset.name} (Qty: ${quantity}) status updated to working`);
+      toast.success(`${asset.name} (Qty: ${quantity}) maintenance completed and marked as repaired`);
       fetchMaintenanceAssets(); // Refresh the list
       console.log('=== MARK ASSET AS WORKING END (SUCCESS) ===');
     } catch (error) {
@@ -426,8 +468,12 @@ export default function MaintenancePage() {
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-1 text-xs rounded-full bg-orange-100 text-orange-800">
-                          {asset.status}
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          asset.status === 'repaired' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-orange-100 text-orange-800'
+                        }`}>
+                          {asset.status === 'repaired' ? 'Repaired' : 'Maintenance'}
                         </span>
                       </td>
                       <td className="py-3 px-4">
@@ -451,63 +497,65 @@ export default function MaintenancePage() {
                           >
                             Cost Details
                           </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async (e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              console.log('🔴 DONE BUTTON CLICKED for asset:', asset.id);
-                              
-                              // Direct API check - only allow if cost details were added AFTER asset was put into maintenance
-                              try {
-                                console.log('🔍 DEBUG: Checking cost details via API for asset ID:', asset.id);
-                                console.log('🔍 DEBUG: Asset details:', asset);
-                                console.log('🔍 DEBUG: Asset updated_at:', asset.updated_at);
+                          {asset.status === 'maintenance' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                console.log('🔴 DONE BUTTON CLICKED for asset:', asset.id);
                                 
-                                const response = await maintenanceCostsAPI.getByRentalUnitAsset(asset.id);
-                                console.log('🔍 DEBUG: Full API response:', response);
-                                console.log('🔍 DEBUG: Response data:', response.data);
-                                console.log('🔍 DEBUG: Maintenance costs array:', response.data?.maintenance_costs);
-                                console.log('🔍 DEBUG: Array length:', response.data?.maintenance_costs?.length);
-                                
-                                if (!response.data || !response.data.maintenance_costs || response.data.maintenance_costs.length === 0) {
-                                  console.log('🚫 BLOCKED: No cost details found');
+                                // Direct API check - only allow if cost details were added AFTER asset was put into maintenance
+                                try {
+                                  console.log('🔍 DEBUG: Checking cost details via API for asset ID:', asset.id);
+                                  console.log('🔍 DEBUG: Asset details:', asset);
+                                  console.log('🔍 DEBUG: Asset updated_at:', asset.updated_at);
+                                  
+                                  const response = await maintenanceCostsAPI.getByRentalUnitAsset(asset.id);
+                                  console.log('🔍 DEBUG: Full API response:', response);
+                                  console.log('🔍 DEBUG: Response data:', response.data);
+                                  console.log('🔍 DEBUG: Maintenance costs array:', response.data?.maintenance_costs);
+                                  console.log('🔍 DEBUG: Array length:', response.data?.maintenance_costs?.length);
+                                  
+                                  if (!response.data || !response.data.maintenance_costs || response.data.maintenance_costs.length === 0) {
+                                    console.log('🚫 BLOCKED: No cost details found');
+                                    toast.error('Please fill out cost details first. Click &quot;Cost Details&quot; button to record maintenance costs before marking as done.');
+                                    return;
+                                  }
+                                  
+                                  // Check if any cost details were created AFTER the asset was put into maintenance
+                                  const assetMaintenanceDate = new Date(asset.updated_at);
+                                  const recentCosts = response.data.maintenance_costs.filter((cost: { created_at: string }) => {
+                                    const costDate = new Date(cost.created_at);
+                                    const isRecent = costDate >= assetMaintenanceDate;
+                                    console.log('🔍 DEBUG: Cost created_at:', cost.created_at, 'Asset updated_at:', asset.updated_at, 'Is recent:', isRecent);
+                                    return isRecent;
+                                  });
+                                  
+                                  console.log('🔍 DEBUG: Recent costs count:', recentCosts.length);
+                                  
+                                  if (recentCosts.length === 0) {
+                                    console.log('🚫 BLOCKED: No recent cost details found (all costs are older than maintenance date)');
+                                    toast.error('Please add fresh cost details for this maintenance cycle. Click &quot;Cost Details&quot; button to record new maintenance costs.');
+                                    return;
+                                  }
+                                  
+                                  console.log('✅ Recent cost details found, proceeding...');
+                                  markAssetAsWorking(asset);
+                                } catch (error) {
+                                  console.log('🚫 BLOCKED: Error checking cost details:', error);
+                                  console.log('🚫 DEBUG: Error details:', error);
                                   toast.error('Please fill out cost details first. Click &quot;Cost Details&quot; button to record maintenance costs before marking as done.');
                                   return;
                                 }
-                                
-                                // Check if any cost details were created AFTER the asset was put into maintenance
-                                const assetMaintenanceDate = new Date(asset.updated_at);
-                                const recentCosts = response.data.maintenance_costs.filter((cost: { created_at: string }) => {
-                                  const costDate = new Date(cost.created_at);
-                                  const isRecent = costDate >= assetMaintenanceDate;
-                                  console.log('🔍 DEBUG: Cost created_at:', cost.created_at, 'Asset updated_at:', asset.updated_at, 'Is recent:', isRecent);
-                                  return isRecent;
-                                });
-                                
-                                console.log('🔍 DEBUG: Recent costs count:', recentCosts.length);
-                                
-                                if (recentCosts.length === 0) {
-                                  console.log('🚫 BLOCKED: No recent cost details found (all costs are older than maintenance date)');
-                                  toast.error('Please add fresh cost details for this maintenance cycle. Click &quot;Cost Details&quot; button to record new maintenance costs.');
-                                  return;
-                                }
-                                
-                                console.log('✅ Recent cost details found, proceeding...');
-                                markAssetAsWorking(asset);
-                              } catch (error) {
-                                console.log('🚫 BLOCKED: Error checking cost details:', error);
-                                console.log('🚫 DEBUG: Error details:', error);
-                                toast.error('Please fill out cost details first. Click &quot;Cost Details&quot; button to record maintenance costs before marking as done.');
-                                return;
-                              }
-                            }}
-                            className="text-green-600 hover:text-green-700 border-green-200"
-                            title="Mark as done"
-                          >
-                            Done
-                          </Button>
+                              }}
+                              className="text-green-600 hover:text-green-700 border-green-200"
+                              title="Mark as done"
+                            >
+                              Done
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

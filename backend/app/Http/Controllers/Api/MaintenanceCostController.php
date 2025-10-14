@@ -58,6 +58,7 @@ class MaintenanceCostController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'rental_unit_asset_id' => 'required|exists:rental_unit_assets,id',
+            'maintenance_request_id' => 'nullable|exists:maintenance_requests,id',
             'repair_cost' => 'required|numeric|min:0',
             'currency' => 'nullable|string|max:3',
             'description' => 'nullable|string|max:1000',
@@ -91,6 +92,7 @@ class MaintenanceCostController extends Controller
 
             $maintenanceCost = MaintenanceCost::create([
                 'rental_unit_asset_id' => $request->rental_unit_asset_id,
+                'maintenance_request_id' => $request->maintenance_request_id,
                 'repair_cost' => $request->repair_cost,
                 'currency' => $request->currency ?? 'MVR',
                 'description' => $request->description,
@@ -146,6 +148,7 @@ class MaintenanceCostController extends Controller
     public function update(Request $request, MaintenanceCost $maintenanceCost): JsonResponse
     {
         $validator = Validator::make($request->all(), [
+            'maintenance_request_id' => 'nullable|exists:maintenance_requests,id',
             'repair_cost' => 'sometimes|numeric|min:0',
             'currency' => 'nullable|string|max:3',
             'description' => 'nullable|string|max:1000',
@@ -172,7 +175,7 @@ class MaintenanceCostController extends Controller
             if ($isJson) {
                 // Handle JSON request
                 $updateData = $request->only([
-                    'repair_cost', 'currency', 'description', 'repair_date', 
+                    'maintenance_request_id', 'repair_cost', 'currency', 'description', 'repair_date', 
                     'repair_provider', 'status', 'notes'
                 ]);
                 
@@ -183,6 +186,12 @@ class MaintenanceCostController extends Controller
             } else {
                 // Handle FormData request using $_POST directly
                 $updateData = [];
+                
+                // Get maintenance_request_id
+                $maintenanceRequestId = $_POST['maintenance_request_id'] ?? null;
+                if ($maintenanceRequestId !== null && $maintenanceRequestId !== '') {
+                    $updateData['maintenance_request_id'] = $maintenanceRequestId;
+                }
                 
                 // Get repair_cost
                 $repairCost = $_POST['repair_cost'] ?? null;

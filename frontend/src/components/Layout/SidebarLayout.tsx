@@ -22,7 +22,6 @@ import {
   HomeIcon,
   Shield,
   Receipt,
-  DollarSign,
   ChevronDown,
   ChevronRight,
   Building,
@@ -66,7 +65,8 @@ const navigationGroups: NavigationGroup[] = [
     name: 'Financial Management',
     icon: ClipboardList,
     items: [
-      { name: 'Rent Invoices', href: '/rent-invoices', icon: Receipt },
+        { name: 'Invoices', href: '/invoices', icon: Receipt },
+        { name: 'Rent Invoices', href: '/rent-invoices', icon: Receipt },
       { name: 'Tenant Ledger', href: '/tenant-ledger', icon: BookOpen },
       { name: 'Tenant Balances', href: '/tenant-balances', icon: Calculator },
       { name: 'Payment Types', href: '/payment-types', icon: CreditCard },
@@ -79,7 +79,6 @@ const navigationGroups: NavigationGroup[] = [
     icon: Wrench,
     items: [
       { name: 'Maintenance', href: '/maintenance', icon: Wrench },
-      { name: 'Maintenance Costs', href: '/maintenance-cost', icon: DollarSign },
     ]
   },
   {

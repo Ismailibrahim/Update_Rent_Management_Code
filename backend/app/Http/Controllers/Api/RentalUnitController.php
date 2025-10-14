@@ -606,7 +606,7 @@ class RentalUnitController extends Controller
     public function updateAssetStatus(Request $request, RentalUnit $rentalUnit, $assetId): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'status' => ['required', Rule::in(['working', 'maintenance'])],
+            'status' => ['required', Rule::in(['working', 'maintenance', 'repaired'])],
             'maintenance_notes' => 'nullable|string|max:1000',
             'quantity' => 'nullable|integer|min:1',
         ]);
@@ -666,7 +666,7 @@ class RentalUnitController extends Controller
     {
         try {
             $maintenanceAssets = RentalUnitAsset::with(['asset', 'rentalUnit.property', 'maintenanceCosts'])
-                ->where('status', 'maintenance')
+                ->whereIn('status', ['maintenance', 'repaired'])
                 ->where('is_active', true)
                 ->orderBy('updated_at', 'desc')
                 ->get();

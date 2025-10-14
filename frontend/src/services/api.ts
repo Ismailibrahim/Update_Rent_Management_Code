@@ -98,7 +98,7 @@ interface RentalUnitType {
   updated_at: string;
 }
 
-interface RentalUnit {
+export interface RentalUnit {
   id: number;
   property_id: number;
   unit_number: string;
@@ -133,7 +133,6 @@ export interface Tenant {
   // New separate columns
   first_name: string;
   last_name: string;
-  full_name: string; // Added this computed property
   date_of_birth?: string;
   national_id?: string;
   nationality?: string;
@@ -198,7 +197,7 @@ interface Currency {
   decimal_separator: string;
 }
 
-interface PaymentType {
+export interface PaymentType {
   id: number;
   name: string;
   code: string;
@@ -441,9 +440,10 @@ export const maintenanceAPI = {
   delete: (id: number) => api.delete(`/maintenance/${id}`),
 };
 
-interface MaintenanceCost {
+export interface MaintenanceCost {
   id: number;
   rental_unit_asset_id: number;
+  maintenance_request_id?: number;
   repair_cost: number;
   currency: string;
   description?: string;
@@ -471,6 +471,55 @@ interface MaintenanceCost {
   };
   created_at: string;
   updated_at: string;
+}
+
+export interface RentInvoice {
+  id: number;
+  tenant_id: number;
+  rental_unit_id: number;
+  invoice_number: string;
+  invoice_date: string;
+  due_date: string;
+  total_amount: number;
+  late_fee?: number;
+  currency: string;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  paid_date?: string;
+  payment_method?: string;
+  payment_reference?: string;
+  payment_notes?: string;
+  payment_bank?: string;
+  payment_account?: string;
+  payment_slip_paths?: string[];
+  payment_slip_files?: string;
+  payment_details?: {
+    payment_method?: string;
+    payment_reference?: string;
+    payment_notes?: string;
+    payment_bank?: string;
+    payment_account?: string;
+  };
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+  tenant?: {
+    id: number;
+    full_name: string;
+    email: string;
+    phone: string;
+  };
+  rental_unit?: {
+    id: number;
+    unit_number: string;
+    property?: {
+      id: number;
+      name: string;
+    };
+  };
+  property?: {
+    id: number;
+    name: string;
+  };
 }
 
 export interface TenantLedger {
@@ -645,6 +694,64 @@ export const tenantLedgerAPI = {
   getTenantBalance: (tenantId: number) => api.get(`/tenant-ledgers/tenant/${tenantId}/balance`),
   getTenantSummary: (tenantId: number, params?: Record<string, unknown>) => api.get(`/tenant-ledgers/tenant/${tenantId}/summary`, { params }),
   getAllTenantBalances: (params?: Record<string, unknown>) => api.get('/tenant-ledgers/balances/all', { params }),
+};
+
+export const maintenanceRequestsAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/maintenance', { params }),
+  getById: (id: number) => api.get(`/maintenance/${id}`),
+  create: (data: Partial<MaintenanceRequest>) => api.post('/maintenance', data),
+  update: (id: number, data: Partial<MaintenanceRequest>) => api.put(`/maintenance/${id}`, data),
+  delete: (id: number) => api.delete(`/maintenance/${id}`),
+};
+
+export interface RentalUnitAsset {
+  id: number;
+  rental_unit_id: number;
+  asset_id: number;
+  quantity: number;
+  status: string;
+  asset?: {
+    id: number;
+    name: string;
+    brand?: string;
+    category: string;
+  };
+  rental_unit?: RentalUnit;
+}
+
+export interface MaintenanceInvoice {
+  id: number;
+  invoice_number: string;
+  maintenance_cost_id: number;
+  tenant_id: number;
+  property_id: number;
+  rental_unit_id: number;
+  rental_unit_asset_id: number;
+  invoice_date: string;
+  due_date: string;
+  maintenance_amount: number;
+  total_amount: number;
+  currency: string;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  paid_date?: string;
+  description?: string;
+  notes?: string;
+  repair_provider?: string;
+  repair_date?: string;
+  created_at: string;
+  updated_at: string;
+  tenant?: Tenant;
+  property?: Property;
+  rental_unit?: RentalUnit;
+  rental_unit_asset?: RentalUnitAsset;
+  maintenance_cost?: MaintenanceCost;
+}
+
+export const maintenanceInvoicesAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/maintenance-invoices', { params }),
+  getById: (id: number) => api.get(`/maintenance-invoices/${id}`),
+  update: (id: number, data: Partial<MaintenanceInvoice>) => api.put(`/maintenance-invoices/${id}`, data),
+  delete: (id: number) => api.delete(`/maintenance-invoices/${id}`),
 };
 
 export default api;

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, rentInvoicesAPI, maintenanceCostsAPI, rentalUnitsAPI, TenantLedger, Tenant, PaymentType } from '@/services/api';
+import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, rentInvoicesAPI, maintenanceCostsAPI, rentalUnitsAPI, Tenant, PaymentType, RentInvoice, MaintenanceCost, RentalUnit } from '@/services/api';
 import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
 import { Input } from '@/components/UI/Input';
@@ -13,67 +13,9 @@ import toast from 'react-hot-toast';
 import { useRouter } from 'next/navigation';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
 
-interface MaintenanceCost {
-  id: number;
-  rental_unit_asset_id: number;
-  repair_cost: number;
-  currency: string;
-  description?: string;
-  attached_bills?: string[];
-  repair_date?: string;
-  repair_provider?: string;
-  status: string;
-  notes?: string;
-  rental_unit_asset?: {
-    id: number;
-    asset: {
-      id: number;
-      name: string;
-      brand?: string;
-      category: string;
-    };
-    rental_unit: {
-      id: number;
-      unit_number: string;
-      property: {
-        id: number;
-        name: string;
-      };
-    };
-  };
-  created_at: string;
-  updated_at: string;
-}
+// MaintenanceCost interface is now imported from @/services/api
 
-interface RentInvoice {
-  id: number;
-  invoice_number: string;
-  tenant_id: number;
-  property_id: number;
-  rental_unit_id: number;
-  invoice_date: string;
-  due_date: string;
-  rent_amount: number;
-  late_fee: number;
-  total_amount: number;
-  currency: string;
-  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
-  paid_date?: string;
-  notes?: string;
-  tenant: {
-    first_name: string;
-    last_name: string;
-    full_name?: string;
-  };
-  property: {
-    name: string;
-  };
-  rental_unit: {
-    unit_number: string;
-  };
-  created_at: string;
-  updated_at: string;
-}
+// RentInvoice interface is now imported from @/services/api
 
 interface TenantLedgerFormData {
   tenant_id: number;
@@ -93,7 +35,7 @@ export default function NewTenantLedgerPage() {
   const router = useRouter();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
-  const [rentalUnits, setRentalUnits] = useState<any[]>([]);
+  const [rentalUnits, setRentalUnits] = useState<RentalUnit[]>([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState<RentInvoice[]>([]);
   const [unpaidMaintenanceCosts, setUnpaidMaintenanceCosts] = useState<MaintenanceCost[]>([]);
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
@@ -143,9 +85,10 @@ export default function NewTenantLedgerPage() {
 
       setTenants(tenantsData);
       setPaymentTypes(paymentTypesData);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error loading data:', error);
-      console.error('Error details:', error.response?.data);
+      const axiosError = error as { response?: { data?: unknown } };
+      console.error('Error details:', axiosError.response?.data);
       toast.error('Failed to load form data');
     } finally {
       setLoading(false);
@@ -188,7 +131,7 @@ export default function NewTenantLedgerPage() {
       
       if (invoiceType === 'rent') {
         // Fetch only rent invoices
-        const params: any = { 
+        const params: Record<string, unknown> = { 
           tenant_id: tenantId, 
           status: 'pending,overdue' 
         };
@@ -234,9 +177,10 @@ export default function NewTenantLedgerPage() {
       setSelectedInvoices([]); // Reset selected invoices
       setSelectedMaintenanceCosts([]); // Reset selected maintenance costs
       // Don't unlock payment type here - it should remain locked when selected from popup
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error fetching unpaid invoices:', error);
-      console.error('Error details:', error.response?.data);
+      const axiosError = error as { response?: { data?: unknown } };
+      console.error('Error details:', axiosError.response?.data);
       toast.error('Failed to load unpaid invoices');
       setUnpaidInvoices([]);
       setUnpaidMaintenanceCosts([]);
@@ -506,7 +450,7 @@ export default function NewTenantLedgerPage() {
     
     const selectedMaintenanceNumbers = selectedMaintenanceCosts.map(id => {
       const cost = unpaidMaintenanceCosts.find(c => c.id === id);
-      return `MC-${cost?.id}`;
+      return `INV-${new Date(cost?.created_at || Date.now()).toISOString().slice(2, 8).replace(/-/g, '')}-1`;
     }).filter(Boolean).join(', ');
 
     console.log('Updating form with selected invoices:', selectedInvoices);
@@ -535,7 +479,7 @@ export default function NewTenantLedgerPage() {
     console.log('useEffect triggered - selectedInvoices changed:', selectedInvoices);
     console.log('useEffect triggered - selectedMaintenanceCosts changed:', selectedMaintenanceCosts);
     updateFormFromSelectedInvoices();
-  }, [selectedInvoices, selectedMaintenanceCosts]);
+  }, [selectedInvoices, selectedMaintenanceCosts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug form data changes
   useEffect(() => {
@@ -645,15 +589,16 @@ export default function NewTenantLedgerPage() {
       }
       
       router.push('/tenant-ledger');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error saving ledger entry:', error);
-      console.error('Error response:', error.response);
-      console.error('Error response data:', error.response?.data);
-      console.error('Error response status:', error.response?.status);
+      const axiosError = error as { response?: { status?: number; data?: { message?: string; errors?: Record<string, string[]> } } };
+      console.error('Error response:', axiosError.response);
+      console.error('Error response data:', axiosError.response?.data);
+      console.error('Error response status:', axiosError.response?.status);
       
-      if (error.response?.status === 422) {
+      if (axiosError.response?.status === 422) {
         // Handle validation errors
-        const errors = error.response.data?.errors;
+        const errors = axiosError.response?.data?.errors;
         console.error('Validation errors:', errors);
         if (errors) {
           const errorMessages = Object.values(errors).flat();
@@ -661,10 +606,10 @@ export default function NewTenantLedgerPage() {
           toast.error(`Validation failed: ${errorMessages.join(', ')}`);
         } else {
           console.error('No specific errors found, showing general message');
-          toast.error(error.response.data?.message || 'Validation failed');
+          toast.error(axiosError.response?.data?.message || 'Validation failed');
         }
       } else {
-        toast.error(error.response?.data?.message || 'Failed to save ledger entry');
+        toast.error(axiosError.response?.data?.message || 'Failed to save ledger entry');
       }
     } finally {
       setSaving(false);
@@ -1018,12 +963,12 @@ export default function NewTenantLedgerPage() {
                           The payment type will be automatically set based on your selection.
                         </div>
                         
-                        {/* Rent Invoices Section */}
+                        {/* Invoices Section */}
                         {currentInvoiceType === 'rent' && (
                           <div className="space-y-3">
                             {unpaidInvoices.length > 0 ? (
                               <div>
-                                {/* Select All Rent Invoices */}
+                                {/* Select All Invoices */}
                         <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                           <div className="flex items-center space-x-3">
                             <input
@@ -1040,9 +985,9 @@ export default function NewTenantLedgerPage() {
                                         Select All Rent Invoices ({unpaidInvoices.length})
                               </div>
                               <div className="text-sm text-gray-500">
-                                        {isAllRentSelected ? 'All rent invoices selected' : 
+                                        {isAllRentSelected ? 'All invoices selected' : 
                                          isPartiallyRentSelected ? `${selectedInvoices.length} of ${unpaidInvoices.length} selected` :
-                                         'Click to select all rent invoices'}
+                                         'Click to select all invoices'}
                               </div>
                             </div>
                             <div className="ml-auto text-right">
@@ -1050,7 +995,7 @@ export default function NewTenantLedgerPage() {
                                         Total: {unpaidInvoices.length > 0 ? unpaidInvoices[0].currency : 'MVR'} {unpaidInvoices.reduce((sum, inv) => sum + Number(inv.total_amount), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                               <div className="text-sm text-gray-500">
-                                {selectedInvoices.length > 0 ? `Selected: ${selectedInvoices.length} invoices` : 'No invoices selected'}
+                                {selectedInvoices.length > 0 ? `Selected: ${selectedInvoices.length} rent invoices` : 'No rent invoices selected'}
                               </div>
                             </div>
                           </div>
@@ -1117,8 +1062,8 @@ export default function NewTenantLedgerPage() {
                             ) : (
                               <div className="text-center py-8 text-gray-500">
                                 <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-400" />
-                                <p className="text-lg font-medium">No unpaid rent invoices</p>
-                                <p className="text-sm">This tenant has no pending rent invoices.</p>
+                        <p className="text-lg font-medium">No unpaid rent invoices</p>
+                        <p className="text-sm">This tenant has no pending rent invoices.</p>
                               </div>
                             )}
                           </div>
@@ -1322,7 +1267,6 @@ export default function NewTenantLedgerPage() {
                     
                     let borderColor = 'border-gray-200 hover:border-gray-300';
                     let hoverBg = 'hover:bg-gray-50';
-                    let textColor = 'text-gray-900';
                     
                     if (isMaintenance) {
                       borderColor = 'border-green-200 hover:border-green-300';
@@ -1330,7 +1274,7 @@ export default function NewTenantLedgerPage() {
                     } else if (isAdvanceRent) {
                       borderColor = 'border-blue-200 hover:border-blue-300';
                       hoverBg = 'hover:bg-blue-50';
-                      textColor = 'text-blue-900';
+                      // textColor = 'text-blue-900';
                     }
                     
                     return (
