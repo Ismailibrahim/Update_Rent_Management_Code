@@ -561,6 +561,7 @@ export interface TenantLedger {
 export const maintenanceCostsAPI = {
   getAll: (params?: Record<string, unknown>) => api.get('/maintenance-costs', { params }),
   getById: (id: number) => api.get(`/maintenance-costs/${id}`),
+  delete: (id: number) => api.delete(`/maintenance-costs/${id}`),
   create: (data: Partial<MaintenanceCost>, files?: File[]) => {
     const formData = new FormData();
     

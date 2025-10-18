@@ -424,11 +424,16 @@ class TenantLedgerController extends Controller
             $isRentPayment = str_contains($paymentTypeName, 'rent') || 
                            str_contains($paymentTypeName, 'payment') ||
                            str_contains($paymentTypeName, 'advance');
+            
+            $isMaintenancePayment = str_contains($paymentTypeName, 'maintenance') ||
+                                  str_contains($paymentTypeName, 'repair') ||
+                                  str_contains($paymentTypeName, 'fix') ||
+                                  str_contains($paymentTypeName, 'service');
 
-            Log::info("Payment type check for ledger entry {$ledgerEntry->ledger_id}: {$paymentTypeName}, isRentPayment: " . ($isRentPayment ? 'true' : 'false'));
+            Log::info("Payment type check for ledger entry {$ledgerEntry->ledger_id}: {$paymentTypeName}, isRentPayment: " . ($isRentPayment ? 'true' : 'false') . ", isMaintenancePayment: " . ($isMaintenancePayment ? 'true' : 'false'));
 
-            if (!$isRentPayment) {
-                Log::info("Skipping - not a rent payment for ledger entry {$ledgerEntry->ledger_id}");
+            if (!$isRentPayment && !$isMaintenancePayment) {
+                Log::info("Skipping - not a rent or maintenance payment for ledger entry {$ledgerEntry->ledger_id}");
                 return;
             }
 
@@ -436,13 +441,33 @@ class TenantLedgerController extends Controller
             if ($ledgerEntry->reference_no) {
                 Log::info("Looking for invoice with reference: {$ledgerEntry->reference_no}, tenant_id: {$ledgerEntry->tenant_id}");
                 
-                $invoice = RentInvoice::where('invoice_number', $ledgerEntry->reference_no)
-                    ->where('tenant_id', $ledgerEntry->tenant_id)
-                    ->where('status', '!=', 'paid')
-                    ->first();
+                $invoice = null;
+                $invoiceType = null;
+                
+                // First try to find a rent invoice
+                if ($isRentPayment) {
+                    $invoice = RentInvoice::where('invoice_number', $ledgerEntry->reference_no)
+                        ->where('tenant_id', $ledgerEntry->tenant_id)
+                        ->where('status', '!=', 'paid')
+                        ->first();
+                    if ($invoice) {
+                        $invoiceType = 'rent';
+                    }
+                }
+                
+                // If no rent invoice found and this is a maintenance payment, try maintenance invoice
+                if (!$invoice && $isMaintenancePayment) {
+                    $invoice = \App\Models\MaintenanceInvoice::where('invoice_number', $ledgerEntry->reference_no)
+                        ->where('tenant_id', $ledgerEntry->tenant_id)
+                        ->where('status', '!=', 'paid')
+                        ->first();
+                    if ($invoice) {
+                        $invoiceType = 'maintenance';
+                    }
+                }
 
                 if ($invoice) {
-                    Log::info("Found invoice: {$invoice->invoice_number}, amount: {$invoice->total_amount}, status: {$invoice->status}");
+                    Log::info("Found {$invoiceType} invoice: {$invoice->invoice_number}, amount: {$invoice->total_amount}, status: {$invoice->status}");
                     
                     // Check if the payment amount matches the invoice amount
                     if (abs($invoice->total_amount - $ledgerEntry->credit_amount) < 0.01) {
@@ -457,9 +482,9 @@ class TenantLedgerController extends Controller
 
                         $invoice->markAsPaid($paymentDetails);
                         
-                        Log::info("Invoice {$invoice->invoice_number} marked as paid via ledger entry {$ledgerEntry->ledger_id}");
+                        Log::info("{$invoiceType} invoice {$invoice->invoice_number} marked as paid via ledger entry {$ledgerEntry->ledger_id}");
                     } else {
-                        Log::warning("Payment amount mismatch for invoice {$invoice->invoice_number}. Invoice: {$invoice->total_amount}, Payment: {$ledgerEntry->credit_amount}");
+                        Log::warning("Payment amount mismatch for {$invoiceType} invoice {$invoice->invoice_number}. Invoice: {$invoice->total_amount}, Payment: {$ledgerEntry->credit_amount}");
                     }
                 } else {
                     Log::info("No unpaid invoice found with reference number: {$ledgerEntry->reference_no}");

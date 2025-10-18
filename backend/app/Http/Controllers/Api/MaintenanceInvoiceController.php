@@ -35,15 +35,22 @@ class MaintenanceInvoiceController extends Controller
             }
 
             if ($request->has('status')) {
-                $query->where('status', $request->get('status'));
+                $status = $request->get('status');
+                if (strpos($status, ',') !== false) {
+                    // Handle comma-separated statuses
+                    $statuses = array_map('trim', explode(',', $status));
+                    $query->whereIn('status', $statuses);
+                } else {
+                    $query->where('status', $status);
+                }
             }
 
             if ($request->has('tenant_id')) {
                 $query->where('tenant_id', $request->get('tenant_id'));
             }
 
-            if ($request->has('property_id')) {
-                $query->where('property_id', $request->get('property_id'));
+            if ($request->has('rental_unit_id')) {
+                $query->where('rental_unit_id', $request->get('rental_unit_id'));
             }
 
             $maintenanceInvoices = $query->orderBy('created_at', 'desc')->get();

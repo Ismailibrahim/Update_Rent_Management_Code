@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
-import { Wrench, RefreshCw } from 'lucide-react';
+import { Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { rentalUnitsAPI, maintenanceCostsAPI, maintenanceRequestsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -68,6 +68,73 @@ export default function MaintenancePage() {
     notes: '',
     bills: [] as File[]
   });
+  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
+  const allSelected = maintenanceAssets.length > 0 && selectedAssetIds.length === maintenanceAssets.length;
+  const partiallySelected = selectedAssetIds.length > 0 && selectedAssetIds.length < maintenanceAssets.length;
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedAssetIds(maintenanceAssets.map(a => a.id));
+    } else {
+      setSelectedAssetIds([]);
+    }
+  };
+
+  const toggleSelectOne = (assetId: number, checked: boolean) => {
+    setSelectedAssetIds(prev => {
+      if (checked) {
+        return prev.includes(assetId) ? prev : [...prev, assetId];
+      }
+      return prev.filter(id => id !== assetId);
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedAssetIds.length === 0) {
+      toast.error('No items selected');
+      return;
+    }
+    // Confirm
+    if (!confirm(`Delete maintenance records for ${selectedAssetIds.length} item(s)? This will remove maintenance costs, requests, and reset asset status to working.`)) return;
+
+    try {
+      const selectedAssets = maintenanceAssets.filter(a => selectedAssetIds.includes(a.id));
+      
+      // Delete maintenance costs and requests
+      const deletions = [];
+      const requestDeletions = [];
+      
+      for (const asset of selectedAssets) {
+        if (asset.maintenance_cost?.id) {
+          deletions.push(maintenanceCostsAPI.delete(asset.maintenance_cost.id));
+        }
+        if (asset.maintenance_cost?.maintenance_request_id) {
+          requestDeletions.push(maintenanceRequestsAPI.delete(asset.maintenance_cost.maintenance_request_id as unknown as number));
+        }
+      }
+
+      // Update asset status back to "working"
+      const assetUpdates = selectedAssets.map(asset => 
+        rentalUnitsAPI.updateAssetStatus(asset.rental_unit_id, asset.asset_id, {
+          status: 'working',
+          quantity: asset.quantity || 1
+        })
+      );
+
+      if (deletions.length === 0 && requestDeletions.length === 0 && assetUpdates.length === 0) {
+        toast('No maintenance records to delete for selected items');
+        return;
+      }
+
+      await Promise.all([...deletions, ...requestDeletions, ...assetUpdates]);
+      toast.success('Selected maintenance records deleted and assets reset to working');
+      setSelectedAssetIds([]);
+      fetchMaintenanceAssets();
+    } catch (e) {
+      console.error('Bulk delete failed', e);
+      toast.error('Failed to delete selected items');
+    }
+  };
 
   useEffect(() => {
     fetchMaintenanceAssets();
@@ -373,6 +440,15 @@ export default function MaintenancePage() {
           </div>
           <div className="flex space-x-3">
             <Button 
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={selectedAssetIds.length === 0}
+              className="flex items-center"
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Selected ({selectedAssetIds.length})
+            </Button>
+            <Button 
               variant="outline" 
               onClick={() => {
                 fetchMaintenanceAssets();
@@ -398,6 +474,15 @@ export default function MaintenancePage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(input) => { if (input) input.indeterminate = partiallySelected; }}
+                        onChange={(e) => toggleSelectAll(e.target.checked)}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                    </th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Asset Name</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Brand</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Category</th>
@@ -413,6 +498,14 @@ export default function MaintenancePage() {
                 <tbody>
                   {maintenanceAssets.map((asset) => (
                     <tr key={asset.id} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedAssetIds.includes(asset.id)}
+                          onChange={(e) => toggleSelectOne(asset.id, e.target.checked)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="font-medium text-gray-900">{asset.name}</div>
                       </td>

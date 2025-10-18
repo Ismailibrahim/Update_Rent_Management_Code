@@ -688,6 +688,7 @@ class RentalUnitController extends Controller
                     'quantity' => $assignment->quantity,
                     'maintenance_cost' => $maintenanceCost ? [
                         'id' => $maintenanceCost->id,
+                        'maintenance_request_id' => $maintenanceCost->maintenance_request_id,
                         'repair_cost' => $maintenanceCost->repair_cost,
                         'currency' => $maintenanceCost->currency,
                         'repair_date' => $maintenanceCost->repair_date,

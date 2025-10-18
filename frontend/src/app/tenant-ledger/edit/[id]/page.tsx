@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, Tenant, PaymentType } from '@/services/api';
+import { safeToISODate } from '@/utils/date';
 import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
 import { Input } from '@/components/UI/Input';
@@ -71,10 +72,14 @@ export default function EditTenantLedgerPage() {
       
       // Populate form with existing data
       const ledger = ledgerRes.data;
+      
+      // Safe date handling using utility function
+      const transactionDate = safeToISODate(ledger.transaction_date);
+      
       setFormData({
         tenant_id: ledger.tenant_id,
         payment_type_id: ledger.payment_type_id,
-        transaction_date: new Date(ledger.transaction_date).toISOString().slice(0, 10), // Changed to date only
+        transaction_date: transactionDate,
         description: ledger.description,
         reference_no: ledger.reference_no || '',
         debit_amount: ledger.debit_amount,

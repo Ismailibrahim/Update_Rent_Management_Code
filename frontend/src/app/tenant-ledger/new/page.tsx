@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, rentInvoicesAPI, maintenanceCostsAPI, rentalUnitsAPI, Tenant, PaymentType, RentInvoice, MaintenanceCost, RentalUnit } from '@/services/api';
+import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, rentInvoicesAPI, maintenanceCostsAPI, maintenanceInvoicesAPI, rentalUnitsAPI, Tenant, PaymentType, RentInvoice, MaintenanceCost, MaintenanceInvoice, RentalUnit } from '@/services/api';
 import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
 import { Input } from '@/components/UI/Input';
@@ -38,8 +38,10 @@ export default function NewTenantLedgerPage() {
   const [rentalUnits, setRentalUnits] = useState<RentalUnit[]>([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState<RentInvoice[]>([]);
   const [unpaidMaintenanceCosts, setUnpaidMaintenanceCosts] = useState<MaintenanceCost[]>([]);
+  const [unpaidMaintenanceInvoices, setUnpaidMaintenanceInvoices] = useState<MaintenanceInvoice[]>([]);
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
   const [selectedMaintenanceCosts, setSelectedMaintenanceCosts] = useState<number[]>([]);
+  const [selectedMaintenanceInvoices, setSelectedMaintenanceInvoices] = useState<number[]>([]);
   const [currentInvoiceType, setCurrentInvoiceType] = useState<'rent' | 'maintenance' | null>(null);
   const [paymentTypeLocked, setPaymentTypeLocked] = useState(false);
   const [showInvoiceTypeModal, setShowInvoiceTypeModal] = useState(false);
@@ -151,31 +153,32 @@ export default function NewTenantLedgerPage() {
         setUnpaidMaintenanceCosts([]); // Clear maintenance costs
         setCurrentInvoiceType('rent');
       } else {
-        // Fetch only maintenance costs
-        const maintenanceResponse = await maintenanceCostsAPI.getAll({
-          // Note: This might need to be adjusted based on your API structure
-          // You might need to fetch by rental unit or property instead
-        });
+        // Fetch only maintenance invoices
+        const params: Record<string, unknown> = { 
+          tenant_id: tenantId, 
+          status: 'pending,overdue' 
+        };
         
-        console.log('Maintenance costs response:', maintenanceResponse.data);
-        const maintenanceCosts = maintenanceResponse.data.maintenance_costs || [];
+        // Add rental unit filter if provided
+        if (rentalUnitId) {
+          params.rental_unit_id = rentalUnitId;
+        }
         
-        // Filter maintenance costs for this tenant (you might need to adjust this logic)
-        const tenantMaintenanceCosts = maintenanceCosts.filter((cost: MaintenanceCost) => {
-          // This logic might need adjustment based on your data structure
-          return cost.rental_unit_asset?.rental_unit?.property?.id && 
-                 cost.status === 'pending' || cost.status === 'unpaid';
-        });
+        const maintenanceResponse = await maintenanceInvoicesAPI.getAll(params);
         
-        console.log('Maintenance costs found:', tenantMaintenanceCosts.length);
+        console.log('Maintenance invoices response:', maintenanceResponse.data);
+        const maintenanceInvoices = maintenanceResponse.data.maintenance_invoices || [];
+        console.log('Maintenance invoices found:', maintenanceInvoices.length);
         
-        setUnpaidMaintenanceCosts(tenantMaintenanceCosts);
+        setUnpaidMaintenanceInvoices(maintenanceInvoices);
+        setUnpaidMaintenanceCosts([]); // Clear old maintenance costs
         setUnpaidInvoices([]); // Clear rent invoices
         setCurrentInvoiceType('maintenance');
       }
       
       setSelectedInvoices([]); // Reset selected invoices
       setSelectedMaintenanceCosts([]); // Reset selected maintenance costs
+      setSelectedMaintenanceInvoices([]); // Reset selected maintenance invoices
       // Don't unlock payment type here - it should remain locked when selected from popup
     } catch (error: unknown) {
       console.error('Error fetching unpaid invoices:', error);
@@ -184,6 +187,7 @@ export default function NewTenantLedgerPage() {
       toast.error('Failed to load unpaid invoices');
       setUnpaidInvoices([]);
       setUnpaidMaintenanceCosts([]);
+      setUnpaidMaintenanceInvoices([]);
     }
   };
 
@@ -196,16 +200,28 @@ export default function NewTenantLedgerPage() {
       setSelectedRentalUnitId(null);
       console.log('Fetching rental units for tenant:', tenantId);
       fetchRentalUnits(tenantId);
+      
+      // Show payment types dropdown when tenant is selected
+      console.log('Payment types available:', paymentTypes.length);
+      console.log('Payment types should now be visible');
+
+      // NEW: Immediately show the payment type selection modal after tenant selection
+      // This allows choosing payment type upfront (without waiting for rental unit selection)
+      setShowInvoiceTypeModal(true);
     } else {
       console.log('Clearing invoices and unlocking payment type');
       setRentalUnits([]);
       setUnpaidInvoices([]);
       setUnpaidMaintenanceCosts([]);
+      setUnpaidMaintenanceInvoices([]);
       setSelectedInvoices([]);
       setSelectedMaintenanceCosts([]);
+      setSelectedMaintenanceInvoices([]);
       setCurrentInvoiceType(null);
       setPaymentTypeLocked(false); // Only unlock when tenant is cleared
       setPendingTenantId(null);
+      // Clear payment type when tenant is cleared
+      setFormData(prev => ({ ...prev, payment_type_id: 0 }));
     }
   };
 
@@ -218,6 +234,69 @@ export default function NewTenantLedgerPage() {
       setShowInvoiceTypeModal(true);
     } else {
       console.log('Cannot show modal - rentalUnitId:', rentalUnitId, 'pendingTenantId:', pendingTenantId);
+    }
+  };
+
+  const handlePaymentTypeChange = (paymentTypeId: number) => {
+    console.log('Payment type changed to:', paymentTypeId);
+    setFormData(prev => ({ ...prev, payment_type_id: paymentTypeId }));
+    
+    if (paymentTypeId > 0 && formData.tenant_id > 0) {
+      const selectedPaymentType = paymentTypes.find(type => type.id === paymentTypeId);
+      console.log('Selected payment type:', selectedPaymentType);
+      
+      if (selectedPaymentType) {
+        setPaymentTypeLocked(true);
+        console.log('Payment type locked:', true, 'Payment type ID:', paymentTypeId);
+        
+        // Determine invoice type based on payment type name
+        const paymentTypeName = selectedPaymentType.name.toLowerCase();
+        let invoiceType: 'rent' | 'maintenance' | null = null;
+        
+        // Check if it's an advance rent payment
+        if (paymentTypeName.includes('advance') && paymentTypeName.includes('rent')) {
+          invoiceType = null;
+          console.log('Advance rent payment detected - no invoices will be shown');
+        }
+        // Only show maintenance costs for maintenance/repair related payment types
+        else if (paymentTypeName.includes('maintenance') || 
+            paymentTypeName.includes('repair') || 
+            paymentTypeName.includes('fix') ||
+            paymentTypeName.includes('service')) {
+          invoiceType = 'maintenance';
+        }
+        // For all other payment types (rent, late fee, security deposit, utilities, etc.), show rent invoices
+        else {
+          invoiceType = 'rent';
+        }
+        
+        console.log('Payment type:', paymentTypeName, '-> Invoice type:', invoiceType);
+        
+        // Only fetch invoices if invoiceType is not null
+        if (invoiceType) {
+          // Fetch invoices for ALL rental units of the selected tenant (no specific rental unit filter)
+          fetchUnpaidInvoices(formData.tenant_id, invoiceType, undefined);
+        } else {
+          // Clear any existing invoices for advance payments
+          setUnpaidInvoices([]);
+          setUnpaidMaintenanceCosts([]);
+          setUnpaidMaintenanceInvoices([]);
+          setSelectedInvoices([]);
+          setSelectedMaintenanceCosts([]);
+          setSelectedMaintenanceInvoices([]);
+          setCurrentInvoiceType(null);
+        }
+      }
+    } else {
+      // Clear everything when payment type is cleared
+      setUnpaidInvoices([]);
+      setUnpaidMaintenanceCosts([]);
+      setUnpaidMaintenanceInvoices([]);
+      setSelectedInvoices([]);
+      setSelectedMaintenanceCosts([]);
+      setSelectedMaintenanceInvoices([]);
+      setCurrentInvoiceType(null);
+      setPaymentTypeLocked(false);
     }
   };
 
@@ -258,13 +337,16 @@ export default function NewTenantLedgerPage() {
       
       // Only fetch invoices if invoiceType is not null
       if (invoiceType) {
-        fetchUnpaidInvoices(pendingTenantId, invoiceType, selectedRentalUnitId || undefined);
+        // Fetch invoices for ALL rental units of the selected tenant (no specific rental unit filter)
+        fetchUnpaidInvoices(pendingTenantId, invoiceType, undefined);
       } else {
         // Clear any existing invoices for advance payments
         setUnpaidInvoices([]);
         setUnpaidMaintenanceCosts([]);
+        setUnpaidMaintenanceInvoices([]);
         setSelectedInvoices([]);
         setSelectedMaintenanceCosts([]);
+        setSelectedMaintenanceInvoices([]);
         setCurrentInvoiceType(null);
       }
     }
@@ -285,7 +367,7 @@ export default function NewTenantLedgerPage() {
       invoiceId, 
       checked, 
       invoiceType,
-      currentSelection: invoiceType === 'rent' ? selectedInvoices : selectedMaintenanceCosts,
+      currentSelection: invoiceType === 'rent' ? selectedInvoices : selectedMaintenanceInvoices,
       paymentTypeLocked,
       currentPaymentType: formData.payment_type_id,
       paymentTypeName: paymentTypes.find(type => type.id === formData.payment_type_id)?.name,
@@ -312,20 +394,20 @@ export default function NewTenantLedgerPage() {
       }
     });
     } else {
-      setSelectedMaintenanceCosts(prev => {
+      setSelectedMaintenanceInvoices(prev => {
         console.log('Previous maintenance selection:', prev);
         
         if (checked) {
           if (prev.includes(invoiceId)) {
-            console.log('Maintenance cost already selected, not adding:', invoiceId);
+            console.log('Maintenance invoice already selected, not adding:', invoiceId);
             return prev;
           }
           const newSelection = [...prev, invoiceId];
-          console.log('Adding maintenance cost to selection:', { invoiceId, newSelection });
+          console.log('Adding maintenance invoice to selection:', { invoiceId, newSelection });
           return newSelection;
         } else {
           const newSelection = prev.filter(id => id !== invoiceId);
-          console.log('Removing maintenance cost from selection:', { invoiceId, newSelection });
+          console.log('Removing maintenance invoice from selection:', { invoiceId, newSelection });
           return newSelection;
         }
       });
@@ -392,9 +474,9 @@ export default function NewTenantLedgerPage() {
       }
     } else {
       if (checked) {
-        const allMaintenanceIds = unpaidMaintenanceCosts.map(cost => cost.id);
-        setSelectedMaintenanceCosts(allMaintenanceIds);
-        console.log('Selected all maintenance costs:', allMaintenanceIds);
+        const allMaintenanceIds = unpaidMaintenanceInvoices.map(invoice => invoice.id);
+        setSelectedMaintenanceInvoices(allMaintenanceIds);
+        console.log('Selected all maintenance invoices:', allMaintenanceIds);
         
         // Auto-select maintenance payment type
         const maintenancePaymentType = paymentTypes.find(type => type.name.toLowerCase().includes('maintenance'));
@@ -404,8 +486,8 @@ export default function NewTenantLedgerPage() {
           setPaymentTypeLocked(true);
         }
       } else {
-        setSelectedMaintenanceCosts([]);
-        console.log('Deselected all maintenance costs');
+        setSelectedMaintenanceInvoices([]);
+        console.log('Deselected all maintenance invoices');
         
         // Don't reset currentInvoiceType - it should remain as selected from popup
         // Keep payment type locked when set from popup
@@ -416,8 +498,6 @@ export default function NewTenantLedgerPage() {
 
   const isAllRentSelected = unpaidInvoices.length > 0 && selectedInvoices.length === unpaidInvoices.length;
   const isPartiallyRentSelected = selectedInvoices.length > 0 && selectedInvoices.length < unpaidInvoices.length;
-  const isAllMaintenanceSelected = unpaidMaintenanceCosts.length > 0 && selectedMaintenanceCosts.length === unpaidMaintenanceCosts.length;
-  const isPartiallyMaintenanceSelected = selectedMaintenanceCosts.length > 0 && selectedMaintenanceCosts.length < unpaidMaintenanceCosts.length;
 
   // Helper function to check if current payment type is advance rent
   const isAdvanceRentPayment = () => {
@@ -433,9 +513,9 @@ export default function NewTenantLedgerPage() {
       return total + Number(invoice?.total_amount || 0);
     }, 0);
     
-    const maintenanceTotal = selectedMaintenanceCosts.reduce((total, costId) => {
-      const cost = unpaidMaintenanceCosts.find(c => c.id === costId);
-      return total + Number(cost?.repair_cost || 0);
+    const maintenanceTotal = selectedMaintenanceInvoices.reduce((total, invoiceId) => {
+      const invoice = unpaidMaintenanceInvoices.find(inv => inv.id === invoiceId);
+      return total + Number(invoice?.total_amount || 0);
     }, 0);
     
     return rentTotal + maintenanceTotal;
@@ -448,13 +528,13 @@ export default function NewTenantLedgerPage() {
       return invoice?.invoice_number;
     }).filter(Boolean).join(', ');
     
-    const selectedMaintenanceNumbers = selectedMaintenanceCosts.map(id => {
-      const cost = unpaidMaintenanceCosts.find(c => c.id === id);
-      return `INV-${new Date(cost?.created_at || Date.now()).toISOString().slice(2, 8).replace(/-/g, '')}-1`;
+    const selectedMaintenanceNumbers = selectedMaintenanceInvoices.map(id => {
+      const invoice = unpaidMaintenanceInvoices.find(inv => inv.id === id);
+      return invoice?.invoice_number;
     }).filter(Boolean).join(', ');
 
     console.log('Updating form with selected invoices:', selectedInvoices);
-    console.log('Updating form with selected maintenance costs:', selectedMaintenanceCosts);
+    console.log('Updating form with selected maintenance invoices:', selectedMaintenanceInvoices);
     console.log('Total amount calculated:', totalAmount);
     console.log('Selected invoice numbers:', selectedInvoiceNumbers);
     console.log('Selected maintenance numbers:', selectedMaintenanceNumbers);
@@ -477,9 +557,9 @@ export default function NewTenantLedgerPage() {
   // Update form when selected invoices change
   useEffect(() => {
     console.log('useEffect triggered - selectedInvoices changed:', selectedInvoices);
-    console.log('useEffect triggered - selectedMaintenanceCosts changed:', selectedMaintenanceCosts);
+    console.log('useEffect triggered - selectedMaintenanceInvoices changed:', selectedMaintenanceInvoices);
     updateFormFromSelectedInvoices();
-  }, [selectedInvoices, selectedMaintenanceCosts]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedInvoices, selectedMaintenanceInvoices]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debug form data changes
   useEffect(() => {
@@ -697,7 +777,8 @@ export default function NewTenantLedgerPage() {
                     </Select>
                   </div>
 
-                  {formData.tenant_id > 0 && rentalUnits.length > 0 && (
+                  {/* Rental Unit selection is now hidden - invoices are fetched for all units of the tenant */}
+                  {false && formData.tenant_id > 0 && rentalUnits.length > 0 && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Rental Unit *
@@ -726,42 +807,33 @@ export default function NewTenantLedgerPage() {
                     </div>
                   )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Payment Type *
-                      {paymentTypeLocked && (
-                        <span className="text-blue-600 text-xs ml-2">(Locked - Auto-selected)</span>
-                      )}
-                    </label>
-                    <Select
-                      value={formData.payment_type_id}
-                      onChange={(e) => {
-                        console.log('Payment type onChange triggered:', { 
-                          paymentTypeLocked, 
-                          newValue: e.target.value,
-                          currentValue: formData.payment_type_id 
-                        });
-                        if (!paymentTypeLocked) {
-                          setFormData(prev => ({ ...prev, payment_type_id: Number(e.target.value) }));
-                        } else {
-                          console.log('Payment type change blocked - field is locked');
-                        }
-                      }}
-                      required
-                      disabled={paymentTypeLocked}
-                      className={paymentTypeLocked ? 'bg-gray-100 border-gray-300 cursor-not-allowed' : ''}
-                    >
-                      <option value={0}>Select Payment Type ({paymentTypes.length} available)</option>
-                      {paymentTypes.map(type => {
-                        console.log('Rendering payment type:', type);
-                        return (
-                          <option key={type.id} value={type.id}>
-                            {type.name}
-                          </option>
-                        );
-                      })}
-                    </Select>
-                  </div>
+                  {formData.tenant_id > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Payment Type *
+                        {paymentTypeLocked && (
+                          <span className="text-blue-600 text-xs ml-2">(Locked - Auto-selected)</span>
+                        )}
+                      </label>
+                      <Select
+                        value={formData.payment_type_id}
+                        onChange={(e) => handlePaymentTypeChange(Number(e.target.value))}
+                        required
+                        disabled={paymentTypeLocked}
+                        className={paymentTypeLocked ? 'bg-gray-100 border-gray-300 cursor-not-allowed' : ''}
+                      >
+                        <option value={0}>Select Payment Type ({paymentTypes.length} available)</option>
+                        {paymentTypes.map(type => {
+                          console.log('Rendering payment type:', type);
+                          return (
+                            <option key={type.id} value={type.id}>
+                              {type.name}
+                            </option>
+                          );
+                        })}
+                      </Select>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -947,14 +1019,7 @@ export default function NewTenantLedgerPage() {
               <Card className="p-6">
                 <FormSection title={`Unpaid ${currentInvoiceType === 'rent' ? 'Rent Invoices' : 'Maintenance Costs'}`}>
                   <div className="space-y-4">
-                    <div className="text-sm text-gray-500 mb-2">
-                      Debug: Tenant ID: {formData.tenant_id}, Payment Type: {paymentTypes.find(type => type.id === formData.payment_type_id)?.name}, Payment Type Locked: {paymentTypeLocked ? 'YES' : 'NO'}, Invoice Type: {currentInvoiceType}, 
-                      {currentInvoiceType === 'rent' ? `Rent Invoices: ${unpaidInvoices.length}` : `Maintenance Costs: ${unpaidMaintenanceCosts.length}`}, 
-                      Selected: {currentInvoiceType === 'rent' ? selectedInvoices.length : selectedMaintenanceCosts.length}, 
-                      Credit Amount: {formData.credit_amount > 0 ? formData.credit_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}, 
-                      Reference: {formData.reference_no || 'None'}, 
-                      Total Selected: {calculateTotalAmount().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
+                    {/* Debug status removed */}
                     
                     {currentInvoiceType && (
                       <div>
@@ -992,7 +1057,10 @@ export default function NewTenantLedgerPage() {
                             </div>
                             <div className="ml-auto text-right">
                               <div className="font-medium text-gray-900">
-                                        Total: {unpaidInvoices.length > 0 ? unpaidInvoices[0].currency : 'MVR'} {unpaidInvoices.reduce((sum, inv) => sum + Number(inv.total_amount), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                Selected Total: {unpaidInvoices.length > 0 ? unpaidInvoices[0].currency : 'MVR'} {selectedInvoices.reduce((sum, id) => {
+                                  const inv = unpaidInvoices.find(inv => inv.id === id);
+                                  return sum + Number(inv?.total_amount || 0);
+                                }, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </div>
                               <div className="text-sm text-gray-500">
                                 {selectedInvoices.length > 0 ? `Selected: ${selectedInvoices.length} rent invoices` : 'No rent invoices selected'}
@@ -1037,10 +1105,13 @@ export default function NewTenantLedgerPage() {
                                     </div>
                                   </div>
                                 </div>
-                                <div className="text-right">
-                                  <div className="font-medium text-gray-900">
-                                    {invoice.currency} {Number(invoice.total_amount).toLocaleString()}
-                                  </div>
+                                    <div className="text-right">
+                                      <div className="font-medium text-gray-900">
+                                        {invoice.currency} {Number(invoice.total_amount).toLocaleString()}
+                                      </div>
+                                      {selectedInvoices.includes(invoice.id) && (
+                                        <div className="text-xs text-blue-600">Included in total</div>
+                                      )}
                                   <div className="flex items-center space-x-1">
                                     {invoice.status === 'overdue' ? (
                                       <AlertCircle className="h-4 w-4 text-red-500" />
@@ -1069,91 +1140,114 @@ export default function NewTenantLedgerPage() {
                           </div>
                         )}
                         
-                        {/* Maintenance Costs Section */}
+                        {/* Maintenance Invoices Section */}
                         {currentInvoiceType === 'maintenance' && (
                           <div className="space-y-3">
-                            {unpaidMaintenanceCosts.length > 0 ? (
+                            {unpaidMaintenanceInvoices.length > 0 ? (
                               <div>
-                                {/* Select All Maintenance Costs */}
+                                {/* Select All Maintenance Invoices */}
                                 <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                                   <div className="flex items-center space-x-3">
                                     <input
                                       type="checkbox"
-                                      checked={isAllMaintenanceSelected}
+                                      checked={unpaidMaintenanceInvoices.length > 0 && selectedMaintenanceInvoices.length === unpaidMaintenanceInvoices.length}
                                       ref={(input) => {
-                                        if (input) input.indeterminate = isPartiallyMaintenanceSelected;
+                                        if (input) input.indeterminate = selectedMaintenanceInvoices.length > 0 && selectedMaintenanceInvoices.length < unpaidMaintenanceInvoices.length;
                                       }}
-                                      onChange={(e) => handleSelectAll(e.target.checked, 'maintenance')}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          setSelectedMaintenanceInvoices(unpaidMaintenanceInvoices.map(invoice => invoice.id));
+                                        } else {
+                                          setSelectedMaintenanceInvoices([]);
+                                        }
+                                      }}
                                       className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                                     />
                                     <div>
                                       <div className="font-medium text-gray-900">
-                                        Select All Maintenance Costs ({unpaidMaintenanceCosts.length})
+                                        Select All Maintenance Invoices ({unpaidMaintenanceInvoices.length})
                                       </div>
                                       <div className="text-sm text-gray-500">
-                                        {isAllMaintenanceSelected ? 'All maintenance costs selected' : 
-                                         isPartiallyMaintenanceSelected ? `${selectedMaintenanceCosts.length} of ${unpaidMaintenanceCosts.length} selected` :
-                                         'Click to select all maintenance costs'}
+                                        {selectedMaintenanceInvoices.length === unpaidMaintenanceInvoices.length ? 'All maintenance invoices selected' : 
+                                         selectedMaintenanceInvoices.length > 0 ? `${selectedMaintenanceInvoices.length} of ${unpaidMaintenanceInvoices.length} selected` :
+                                         'Click to select all maintenance invoices'}
                                       </div>
                                     </div>
                                     <div className="ml-auto text-right">
                                       <div className="font-medium text-gray-900">
-                                        Total: {unpaidMaintenanceCosts.length > 0 ? unpaidMaintenanceCosts[0].currency : 'MVR'} {unpaidMaintenanceCosts.reduce((sum, cost) => sum + Number(cost.repair_cost), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        Selected Total: {unpaidMaintenanceInvoices.length > 0 ? unpaidMaintenanceInvoices[0].currency : 'MVR'} {selectedMaintenanceInvoices.reduce((sum, id) => {
+                                          const invoice = unpaidMaintenanceInvoices.find(inv => inv.id === id);
+                                          return sum + Number(invoice?.total_amount || 0);
+                                        }, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                       </div>
                                       <div className="text-sm text-gray-500">
-                                        {selectedMaintenanceCosts.length > 0 ? `Selected: ${selectedMaintenanceCosts.length} costs` : 'No costs selected'}
+                                        {selectedMaintenanceInvoices.length > 0 ? `Selected: ${selectedMaintenanceInvoices.length} invoices` : 'No invoices selected'}
                                       </div>
                                     </div>
                                   </div>
                                 </div>
                                 
                                 <div className="space-y-3 max-h-64 overflow-y-auto">
-                                  {unpaidMaintenanceCosts.map((cost) => (
+                                  {unpaidMaintenanceInvoices.map((invoice) => (
                                     <div
-                                      key={cost.id}
+                                      key={invoice.id}
                                       className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                                        selectedMaintenanceCosts.includes(cost.id)
+                                        selectedMaintenanceInvoices.includes(invoice.id)
                                           ? 'border-green-500 bg-green-50'
                                           : 'border-gray-200 hover:border-gray-300'
                                       }`}
-                                      onClick={() => handleInvoiceSelect(cost.id, !selectedMaintenanceCosts.includes(cost.id), 'maintenance')}
+                                      onClick={() => {
+                                        if (selectedMaintenanceInvoices.includes(invoice.id)) {
+                                          setSelectedMaintenanceInvoices(prev => prev.filter(id => id !== invoice.id));
+                                        } else {
+                                          setSelectedMaintenanceInvoices(prev => [...prev, invoice.id]);
+                                        }
+                                      }}
                                     >
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center space-x-3">
                                           <input
                                             type="checkbox"
-                                            key={`checkbox-maintenance-${cost.id}-${selectedMaintenanceCosts.includes(cost.id)}`}
-                                            checked={selectedMaintenanceCosts.includes(cost.id)}
+                                            checked={selectedMaintenanceInvoices.includes(invoice.id)}
                                             onChange={(e) => {
                                               e.stopPropagation();
-                                              console.log('Maintenance checkbox onChange triggered:', { costId: cost.id, checked: e.target.checked });
-                                              handleInvoiceSelect(cost.id, e.target.checked, 'maintenance');
+                                              if (e.target.checked) {
+                                                setSelectedMaintenanceInvoices(prev => [...prev, invoice.id]);
+                                              } else {
+                                                setSelectedMaintenanceInvoices(prev => prev.filter(id => id !== invoice.id));
+                                              }
                                             }}
                                             className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                                           />
                                           <div>
                                             <div className="font-medium text-gray-900">
-                                              MC-{cost.id}
+                                              {invoice.invoice_number}
                                             </div>
                                             <div className="text-sm text-gray-500">
-                                              {cost.rental_unit_asset?.rental_unit?.property?.name} - Unit {cost.rental_unit_asset?.rental_unit?.unit_number}
+                                              {invoice.property?.name} - Unit {invoice.rental_unit?.unit_number}
                                             </div>
                                             <div className="text-sm text-gray-500">
-                                              {cost.description}
-                                            </div>
-                                            <div className="text-sm text-gray-500">
-                                              Asset: {cost.rental_unit_asset?.asset?.name}
+                                              Due: {new Date(invoice.due_date).toLocaleDateString()}
                                             </div>
                                           </div>
                                         </div>
                                         <div className="text-right">
                                           <div className="font-medium text-gray-900">
-                                            {cost.currency} {Number(cost.repair_cost).toLocaleString()}
+                                            {invoice.currency} {Number(invoice.total_amount).toLocaleString()}
                                           </div>
+                                          {selectedMaintenanceInvoices.includes(invoice.id) && (
+                                            <div className="text-xs text-green-600">Included in total</div>
+                                          )}
                                           <div className="flex items-center space-x-1">
-                                            <Clock className="h-4 w-4 text-yellow-500" />
-                                            <span className="text-xs text-yellow-600">
-                                              {cost.status}
+                                            {invoice.status === 'overdue' ? (
+                                              <AlertCircle className="h-4 w-4 text-red-500" />
+                                            ) : (
+                                              <Clock className="h-4 w-4 text-yellow-500" />
+                                            )}
+                                            <span className={`text-xs ${
+                                              invoice.status === 'overdue' ? 'text-red-600' : 'text-yellow-600'
+                                            }`}>
+                                              {invoice.status}
                                             </span>
                                           </div>
                                         </div>
@@ -1165,31 +1259,14 @@ export default function NewTenantLedgerPage() {
                             ) : (
                               <div className="text-center py-8 text-gray-500">
                                 <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-400" />
-                                <p className="text-lg font-medium">No unpaid maintenance costs</p>
-                                <p className="text-sm">This tenant has no pending maintenance costs.</p>
+                                <p className="text-lg font-medium">No unpaid maintenance invoices</p>
+                                <p className="text-sm">This tenant has no pending maintenance invoices.</p>
                               </div>
                             )}
                           </div>
                         )}
                         
-                        {(selectedInvoices.length > 0 || selectedMaintenanceCosts.length > 0) && (
-                          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                            <div className="flex items-center space-x-2">
-                              <CheckCircle className="h-5 w-5 text-green-600" />
-                              <span className="font-medium text-green-800">
-                                Selected {selectedInvoices.length + selectedMaintenanceCosts.length} item(s)
-                              </span>
-                            </div>
-                            <div className="mt-2 text-sm text-green-700">
-                              Total Payment Amount: MVR {calculateTotalAmount().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </div>
-                            {currentInvoiceType && (
-                              <div className="mt-1 text-sm text-blue-700">
-                                Payment Type: {paymentTypes.find(type => type.id === formData.payment_type_id)?.name} (Auto-selected)
-                          </div>
-                        )}
-                          </div>
-                        )}
+                        {/* Removed duplicate summary (selected count/total/payment type) to avoid redundancy */}
                       </div>
                     )}
                   </div>

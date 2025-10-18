@@ -235,7 +235,7 @@ class MaintenanceInvoice extends Model
      */
     protected function recalculateTenantBalances(int $tenantId, string $transactionDate, int $startLedgerId)
     {
-        \DB::transaction(function () use ($tenantId, $transactionDate, $startLedgerId) {
+        DB::transaction(function () use ($tenantId, $transactionDate, $startLedgerId) {
             $entriesToRecalculate = TenantLedger::where('tenant_id', $tenantId)
                 ->where(function ($query) use ($transactionDate, $startLedgerId) {
                     $query->where('transaction_date', '>', $transactionDate)
@@ -268,5 +268,19 @@ class MaintenanceInvoice extends Model
                 $currentBalance = $entry->balance;
             }
         });
+    }
+
+    /**
+     * Mark this maintenance invoice as paid
+     */
+    public function markAsPaid(array $paymentDetails = [])
+    {
+        $this->update([
+            'status' => 'paid',
+            'paid_date' => $paymentDetails['payment_date'] ?? now()->toDateString(),
+            'notes' => $paymentDetails['notes'] ?? $this->notes,
+        ]);
+
+        Log::info("Maintenance invoice {$this->invoice_number} marked as paid");
     }
 }
