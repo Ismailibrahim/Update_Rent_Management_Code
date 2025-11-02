@@ -53,8 +53,11 @@ class PaymentModeController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|min:2|max:255|unique:payment_modes',
+            'code' => 'nullable|string|min:2|max:50|unique:payment_modes|regex:/^[a-z_]+$/',
             'description' => 'nullable|string|max:500',
             'is_active' => 'boolean',
+            'requires_reference' => 'boolean',
+            'settings' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
@@ -66,10 +69,29 @@ class PaymentModeController extends Controller
         }
 
         try {
+            // Auto-generate code if not provided
+            $code = $request->code;
+            if (empty($code)) {
+                $code = strtolower(preg_replace('/[^a-zA-Z0-9]/', '_', $request->name));
+                $code = preg_replace('/_+/', '_', $code); // Replace multiple underscores with single
+                $code = trim($code, '_'); // Remove leading/trailing underscores
+                
+                // Ensure uniqueness
+                $originalCode = $code;
+                $counter = 1;
+                while (PaymentMode::where('code', $code)->exists()) {
+                    $code = $originalCode . '_' . $counter;
+                    $counter++;
+                }
+            }
+
             $paymentMode = PaymentMode::create([
                 'name' => $request->name,
+                'code' => $code,
                 'description' => $request->description,
                 'is_active' => $request->boolean('is_active', true),
+                'requires_reference' => $request->boolean('requires_reference', false),
+                'settings' => $request->settings ?? [],
             ]);
 
             return response()->json([
@@ -112,8 +134,11 @@ class PaymentModeController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|min:2|max:255|unique:payment_modes,name,' . $paymentMode->id,
+            'code' => 'nullable|string|min:2|max:50|unique:payment_modes,code,' . $paymentMode->id . '|regex:/^[a-z_]+$/',
             'description' => 'nullable|string|max:500',
             'is_active' => 'boolean',
+            'requires_reference' => 'boolean',
+            'settings' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
@@ -125,11 +150,20 @@ class PaymentModeController extends Controller
         }
 
         try {
-            $paymentMode->update([
+            $updateData = [
                 'name' => $request->name,
                 'description' => $request->description,
                 'is_active' => $request->boolean('is_active', true),
-            ]);
+                'requires_reference' => $request->boolean('requires_reference', false),
+                'settings' => $request->settings ?? [],
+            ];
+
+            // Only update code if provided
+            if ($request->has('code') && !empty($request->code)) {
+                $updateData['code'] = $request->code;
+            }
+
+            $paymentMode->update($updateData);
 
             return response()->json([
                 'success' => true,

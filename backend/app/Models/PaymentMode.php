@@ -11,12 +11,17 @@ class PaymentMode extends Model
 
     protected $fillable = [
         'name',
+        'code',
         'description',
         'is_active',
+        'requires_reference',
+        'settings',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'requires_reference' => 'boolean',
+        'settings' => 'array',
     ];
 
     /**

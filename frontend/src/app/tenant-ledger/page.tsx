@@ -344,8 +344,8 @@ export default function TenantLedgerPage() {
     // Only include specific units: Huvandhugadhakoalhige Units 201 & 301, Park Lane Unit 102
     const tenantBalances = new Map();
     ledgerEntries.forEach(entry => {
-      // Only include specific units and skip paid entries
-      if (!isIncludedUnit(entry) || isPaidEntry(entry)) {
+      // Only include specific units, but don't skip paid entries - we need them for balance calculation
+      if (!isIncludedUnit(entry)) {
         return;
       }
       
@@ -378,12 +378,19 @@ export default function TenantLedgerPage() {
       .filter(balance => balance > 0)
       .reduce((sum, balance) => sum + balance, 0);
     
-    // Credit balance (negative final balances - tenants have credit)
-    const creditBalance = Math.abs(
-      finalBalances
-        .filter(balance => balance < 0)
-        .reduce((sum, balance) => sum + balance, 0)
-    );
+    // Credit balance (only show when credits exceed debits - actual credit)
+    const creditBalance = (() => {
+      const totalDebits = ledgerEntries.reduce((sum, entry) => {
+        const debitAmount = Number(entry.debit_amount) || 0;
+        return sum + debitAmount;
+      }, 0);
+      const totalCredits = ledgerEntries.reduce((sum, entry) => {
+        const creditAmount = Number(entry.credit_amount) || 0;
+        return sum + creditAmount;
+      }, 0);
+      // Only show credit balance if credits exceed debits (actual credit)
+      return totalCredits > totalDebits ? totalCredits - totalDebits : 0;
+    })();
 
     return {
       totalTransactions,
@@ -427,100 +434,55 @@ export default function TenantLedgerPage() {
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Total Transactions */}
-          <Card className="p-6">
+          <Card className="p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <FileText className="h-8 w-8 text-blue-600" />
+                <FileText className="h-6 w-6 text-blue-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Total Transactions</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.totalTransactions}</p>
+              <div className="ml-3">
+                <p className="text-xs font-medium text-gray-500">Total Transactions</p>
+                <p className="text-lg font-semibold text-gray-900">{stats.totalTransactions}</p>
               </div>
             </div>
           </Card>
 
-          {/* Total Debits */}
-          <Card className="p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <TrendingUp className="h-8 w-8 text-red-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Total Debits</p>
-                <p className="text-2xl font-semibold text-red-600">{formatCurrency(stats.totalDebits)}</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Total Credits */}
-          <Card className="p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <TrendingDown className="h-8 w-8 text-green-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Total Credits</p>
-                <p className="text-2xl font-semibold text-green-600">{formatCurrency(stats.totalCredits)}</p>
-              </div>
-            </div>
-          </Card>
-
-          {/* Active Tenants */}
-          <Card className="p-6">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Users className="h-8 w-8 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Active Tenants</p>
-                <p className="text-2xl font-semibold text-gray-900">{stats.uniqueTenants}</p>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Financial Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Outstanding Balance */}
-          <Card className="p-6">
+          <Card className="p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <DollarSign className="h-8 w-8 text-orange-600" />
+                <DollarSign className="h-6 w-6 text-orange-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Outstanding Balance</p>
-                <p className="text-2xl font-semibold text-orange-600">{formatCurrency(stats.outstandingBalance)}</p>
-                <p className="text-xs text-gray-400 mt-1">Amount owed by tenants</p>
+              <div className="ml-3">
+                <p className="text-xs font-medium text-gray-500">Outstanding Balance</p>
+                <p className="text-lg font-semibold text-orange-600">{formatCurrency(stats.outstandingBalance)}</p>
               </div>
             </div>
           </Card>
 
           {/* Credit Balance */}
-          <Card className="p-6">
+          <Card className="p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <CreditCard className="h-8 w-8 text-green-600" />
+                <TrendingDown className="h-6 w-6 text-green-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Credit Balance</p>
-                <p className="text-2xl font-semibold text-green-600">{formatCurrency(stats.creditBalance)}</p>
-                <p className="text-xs text-gray-400 mt-1">Tenant credits available</p>
+              <div className="ml-3">
+                <p className="text-xs font-medium text-gray-500">Credit Balance</p>
+                <p className="text-lg font-semibold text-green-600">{formatCurrency(stats.creditBalance)}</p>
               </div>
             </div>
           </Card>
 
-          {/* Average Balance */}
-          <Card className="p-6">
+          {/* Active Tenants */}
+          <Card className="p-4">
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <DollarSign className="h-8 w-8 text-blue-600" />
+                <Users className="h-6 w-6 text-purple-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Average Balance</p>
-                <p className="text-2xl font-semibold text-blue-600">{formatCurrency(stats.averageBalance)}</p>
-                <p className="text-xs text-gray-400 mt-1">Per tenant average</p>
+              <div className="ml-3">
+                <p className="text-xs font-medium text-gray-500">Active Tenants</p>
+                <p className="text-lg font-semibold text-gray-900">{stats.uniqueTenants}</p>
               </div>
             </div>
           </Card>
@@ -595,36 +557,6 @@ export default function TenantLedgerPage() {
 
         {/* Complete Table with All Fields */}
         <Card className="p-4 md:p-6">
-          {/* Balance Explanation Banner */}
-          {ledgerEntries.length > 0 && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-blue-800">Understanding Outstanding Balance</h3>
-                  <div className="mt-1 text-sm text-blue-700">
-                    <p>The <strong>Outstanding Balance</strong> shown below represents the total amount owed by tenants across all active units.</p>
-                    <p className="mt-1">
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800 mr-2">
-                        Red = Amount owed
-                      </span>
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-800">
-                        Green = Payment received
-                      </span>
-                    </p>
-                    <p className="mt-2 text-xs text-gray-600">
-                      <strong>Note:</strong> Outstanding balance includes only Huvandhugadhakoalhige Units 101, 201 & 301, and Park Lane Unit 102. Paid entries and other units are excluded from calculations.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
           {/* Bulk Actions */}
           {showBulkActions && (
             <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -812,10 +744,40 @@ export default function TenantLedgerPage() {
                         Total Outstanding Balance:
                       </td>
                       <td className="px-3 py-4 text-sm font-bold text-orange-600">
-                        {formatCurrency(stats.outstandingBalance)}
+                        {formatCurrency(
+                          ledgerEntries.reduce((sum, entry) => {
+                            const debitAmount = Number(entry.debit_amount) || 0;
+                            const creditAmount = Number(entry.credit_amount) || 0;
+                            return sum + (debitAmount - creditAmount);
+                          }, 0)
+                        )}
                       </td>
                       <td colSpan={2} className="px-3 py-4 text-xs text-gray-500">
                         Final balance owed by tenants
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colSpan={6} className="px-3 py-4 text-right text-sm font-semibold text-gray-700">
+                        Total Credit Balance:
+                      </td>
+                      <td className="px-3 py-4 text-sm font-bold text-green-600">
+                        {formatCurrency(
+                          (() => {
+                            const totalDebits = ledgerEntries.reduce((sum, entry) => {
+                              const debitAmount = Number(entry.debit_amount) || 0;
+                              return sum + debitAmount;
+                            }, 0);
+                            const totalCredits = ledgerEntries.reduce((sum, entry) => {
+                              const creditAmount = Number(entry.credit_amount) || 0;
+                              return sum + creditAmount;
+                            }, 0);
+                            // Only show credit balance if credits exceed debits (actual credit)
+                            return totalCredits > totalDebits ? totalCredits - totalDebits : 0;
+                          })()
+                        )}
+                      </td>
+                      <td colSpan={2} className="px-3 py-4 text-xs text-gray-500">
+                        Actual credit balance (advance payments, overpayments)
                       </td>
                     </tr>
                   </tfoot>

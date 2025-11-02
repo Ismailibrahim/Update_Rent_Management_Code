@@ -136,8 +136,8 @@ class PropertyController extends Controller
             'number_of_rental_units' => 'required|integer|min:1',
             'bedrooms' => 'required|integer|min:1',
             'bathrooms' => 'required|integer|min:1',
-            'square_feet' => 'nullable|integer|min:0',
-            'year_built' => 'nullable|integer|min:1800|max:' . date('Y'),
+            'square_feet' => 'nullable|numeric|min:0',
+            'year_built' => 'nullable|numeric|min:1800|max:' . date('Y'),
             'description' => 'nullable|string',
             'status' => ['nullable', Rule::in(['occupied', 'vacant', 'maintenance', 'renovation'])],
             'assigned_manager_id' => 'nullable|exists:users,id',
@@ -151,10 +151,24 @@ class PropertyController extends Controller
         }
 
         try {
+            Log::info('Property creation request', [
+                'user_id' => $request->user()?->id,
+                'user_role' => $request->user()?->role?->name,
+                'request_data' => $request->all()
+            ]);
+
             $propertyData = $request->all();
             $propertyData['assigned_manager_id'] = $propertyData['assigned_manager_id'] ?? $request->user()->id;
             $propertyData['status'] = $propertyData['status'] ?? 'vacant';
             $propertyData['country'] = $propertyData['country'] ?? 'Maldives';
+            
+            // Convert numeric strings to integers
+            if (isset($propertyData['square_feet']) && is_numeric($propertyData['square_feet'])) {
+                $propertyData['square_feet'] = (int) $propertyData['square_feet'];
+            }
+            if (isset($propertyData['year_built']) && is_numeric($propertyData['year_built'])) {
+                $propertyData['year_built'] = (int) $propertyData['year_built'];
+            }
 
             $property = Property::create($propertyData);
             $property->load('assignedManager');
@@ -165,6 +179,13 @@ class PropertyController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            Log::error('Property creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()?->id,
+                'request_data' => $request->all()
+            ]);
+            
             return response()->json([
                 'message' => 'Failed to create property',
                 'error' => $e->getMessage()
@@ -217,8 +238,8 @@ class PropertyController extends Controller
             'number_of_rental_units' => 'sometimes|integer|min:1',
             'bedrooms' => 'sometimes|integer|min:1',
             'bathrooms' => 'sometimes|integer|min:1',
-            'square_feet' => 'nullable|integer|min:0',
-            'year_built' => 'nullable|integer|min:1800|max:' . date('Y'),
+            'square_feet' => 'nullable|numeric|min:0',
+            'year_built' => 'nullable|numeric|min:1800|max:' . date('Y'),
             'description' => 'nullable|string',
             'status' => ['sometimes', Rule::in(['occupied', 'vacant', 'maintenance', 'renovation'])],
             'assigned_manager_id' => 'nullable|exists:users,id',

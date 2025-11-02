@@ -12,7 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenant_ledgers', function (Blueprint $table) {
-            //
+            $table->foreignId('rental_unit_id')->nullable()->constrained('rental_units')->onDelete('set null');
+            $table->index(['tenant_id', 'rental_unit_id']);
         });
     }
 
@@ -22,7 +23,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('tenant_ledgers', function (Blueprint $table) {
-            //
+            $table->dropIndex(['tenant_id', 'rental_unit_id']);
+            $table->dropForeign(['rental_unit_id']);
+            $table->dropColumn('rental_unit_id');
         });
     }
 };

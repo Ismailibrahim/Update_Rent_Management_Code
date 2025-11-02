@@ -43,6 +43,8 @@ class Property extends Model
         'square_feet' => 'integer',
         'year_built' => 'integer',
         'assigned_manager_id' => 'integer',
+        'photo_paths' => 'json',
+        'amenity_list' => 'json',
     ];
 
     protected $attributes = [
@@ -134,5 +136,17 @@ class Property extends Model
         } else {
             return 'vacant';
         }
+    }
+
+    // Accessor for photos
+    public function getPhotosAttribute()
+    {
+        return $this->photo_paths ?? [];
+    }
+
+    // Accessor for amenities
+    public function getAmenitiesAttribute()
+    {
+        return $this->amenity_list ?? [];
     }
 }

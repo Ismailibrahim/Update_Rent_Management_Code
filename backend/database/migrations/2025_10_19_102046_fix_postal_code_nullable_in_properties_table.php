@@ -11,9 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('tenant_ledgers', function (Blueprint $table) {
-            // This migration was intended to add unit financials but is empty
-            // Keeping it empty to maintain migration order
+        Schema::table('properties', function (Blueprint $table) {
+            // Make postal_code nullable
+            $table->string('postal_code')->nullable()->change();
         });
     }
 
@@ -22,8 +22,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('tenant_ledgers', function (Blueprint $table) {
-            // This migration was empty, so nothing to rollback
+        Schema::table('properties', function (Blueprint $table) {
+            // Revert postal_code to not nullable
+            $table->string('postal_code')->nullable(false)->change();
         });
     }
 };

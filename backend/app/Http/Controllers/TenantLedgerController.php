@@ -480,7 +480,7 @@ class TenantLedgerController extends Controller
                             'total_amount' => $ledgerEntry->credit_amount,
                         ];
 
-                        $invoice->markAsPaid($paymentDetails);
+                        $invoice->markAsPaid($paymentDetails, true); // Skip ledger entry creation since we already created it
                         
                         Log::info("{$invoiceType} invoice {$invoice->invoice_number} marked as paid via ledger entry {$ledgerEntry->ledger_id}");
                     } else {

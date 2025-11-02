@@ -160,8 +160,13 @@ class TenantLedger extends Model
                 'description' => $ledger->description
             ]);
             
-            // Calculate running balance
-            $previousBalance = static::getTenantBalance($ledger->tenant_id);
+            // Calculate running balance - get the most recent entry before this one
+            $previousEntry = static::forTenant($ledger->tenant_id)
+                ->orderByTransactionDate('desc')
+                ->orderBy('ledger_id', 'desc')
+                ->first();
+            
+            $previousBalance = $previousEntry ? $previousEntry->balance : 0.00;
             
             if ($ledger->debit_amount > 0) {
                 // Debit: tenant owes money (increase balance)
@@ -175,6 +180,14 @@ class TenantLedger extends Model
             if (!$ledger->created_by) {
                 $ledger->created_by = Auth::user()?->name ?? 'System';
             }
+            
+            // Debug: Log the balance calculation
+            Log::info('TenantLedger Balance Calculation:', [
+                'previous_balance' => $previousBalance,
+                'debit_amount' => $ledger->debit_amount,
+                'credit_amount' => $ledger->credit_amount,
+                'new_balance' => $ledger->balance
+            ]);
         });
 
         static::created(function ($ledger) {

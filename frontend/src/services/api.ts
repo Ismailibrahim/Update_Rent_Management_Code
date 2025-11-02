@@ -755,4 +755,6 @@ export const maintenanceInvoicesAPI = {
   delete: (id: number) => api.delete(`/maintenance-invoices/${id}`),
 };
 
+export { PaymentMode };
+
 export default api;

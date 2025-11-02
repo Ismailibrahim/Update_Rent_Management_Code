@@ -12,12 +12,19 @@ class PaymentType extends Model
 
     protected $fillable = [
         'name',
+        'code',
         'description',
         'is_active',
+        'is_recurring',
+        'requires_approval',
+        'settings',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_recurring' => 'boolean',
+        'requires_approval' => 'boolean',
+        'settings' => 'array',
     ];
 
     /**

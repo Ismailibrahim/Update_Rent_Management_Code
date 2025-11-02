@@ -149,7 +149,7 @@ class RentInvoice extends Model
     }
 
     // Methods
-    public function markAsPaid($paymentDetails = null)
+    public function markAsPaid($paymentDetails = null, $skipLedgerEntry = false)
     {
         $updateData = [
             'status' => 'paid',
@@ -163,6 +163,12 @@ class RentInvoice extends Model
         }
 
         $this->update($updateData);
+
+        // Skip creating ledger entry if it's already been created by the tenant ledger controller
+        if ($skipLedgerEntry) {
+            Log::info("Skipping ledger entry creation for invoice {$this->invoice_number} - already created by tenant ledger");
+            return;
+        }
 
         // Note: Tenant ledger entry is now created by the frontend/API, not here
         // This prevents duplicate ledger entries
@@ -222,8 +228,12 @@ class RentInvoice extends Model
             $paymentType = PaymentType::firstOrCreate(
                 ['name' => 'Rent Payment'],
                 [
+                    'code' => 'rent_payment',
                     'description' => 'Payment received for rent',
-                    'is_active' => true
+                    'is_active' => true,
+                    'is_recurring' => false,
+                    'requires_approval' => false,
+                    'settings' => []
                 ]
             );
 
@@ -266,8 +276,12 @@ class RentInvoice extends Model
             $paymentType = PaymentType::firstOrCreate(
                 ['name' => 'Rent'],
                 [
+                    'code' => 'rent',
                     'description' => 'Monthly rent payment',
-                    'is_active' => true
+                    'is_active' => true,
+                    'is_recurring' => true,
+                    'requires_approval' => false,
+                    'settings' => []
                 ]
             );
 

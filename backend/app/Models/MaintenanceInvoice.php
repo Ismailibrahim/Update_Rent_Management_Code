@@ -109,8 +109,12 @@ class MaintenanceInvoice extends Model
             $paymentType = PaymentType::firstOrCreate(
                 ['name' => 'Maintenance Invoice'],
                 [
+                    'code' => 'maintenance_invoice',
                     'description' => 'Maintenance repair invoices',
-                    'is_active' => true
+                    'is_active' => true,
+                    'is_recurring' => false,
+                    'requires_approval' => false,
+                    'settings' => []
                 ]
             );
 

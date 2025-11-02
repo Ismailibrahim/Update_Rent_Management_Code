@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, rentInvoicesAPI, maintenanceCostsAPI, maintenanceInvoicesAPI, rentalUnitsAPI, Tenant, PaymentType, RentInvoice, MaintenanceCost, MaintenanceInvoice, RentalUnit } from '@/services/api';
+import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, paymentModesAPI, rentInvoicesAPI, maintenanceCostsAPI, maintenanceInvoicesAPI, rentalUnitsAPI, Tenant, PaymentType, PaymentMode, RentInvoice, MaintenanceCost, MaintenanceInvoice, RentalUnit } from '@/services/api';
 import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
 import { Input } from '@/components/UI/Input';
@@ -35,6 +35,7 @@ export default function NewTenantLedgerPage() {
   const router = useRouter();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+  const [paymentModes, setPaymentModes] = useState<PaymentMode[]>([]);
   const [rentalUnits, setRentalUnits] = useState<RentalUnit[]>([]);
   const [unpaidInvoices, setUnpaidInvoices] = useState<RentInvoice[]>([]);
   const [unpaidMaintenanceCosts, setUnpaidMaintenanceCosts] = useState<MaintenanceCost[]>([]);
@@ -70,23 +71,28 @@ export default function NewTenantLedgerPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      console.log('Loading tenants and payment types...');
-      const [tenantsRes, paymentTypesRes] = await Promise.all([
+      console.log('Loading tenants, payment types, and payment modes...');
+      const [tenantsRes, paymentTypesRes, paymentModesRes] = await Promise.all([
         tenantsAPI.getAll(),
         paymentTypesAPI.getAll(),
+        paymentModesAPI.getAll(),
       ]);
 
       console.log('Tenants response:', tenantsRes.data);
       console.log('Payment types response:', paymentTypesRes.data);
+      console.log('Payment modes response:', paymentModesRes.data);
 
       const tenantsData = tenantsRes.data?.tenants || [];
       const paymentTypesData = paymentTypesRes.data?.payment_types || [];
+      const paymentModesData = paymentModesRes.data?.payment_modes || [];
 
       console.log('Tenants data:', tenantsData);
       console.log('Payment types data:', paymentTypesData);
+      console.log('Payment modes data:', paymentModesData);
 
       setTenants(tenantsData);
       setPaymentTypes(paymentTypesData);
+      setPaymentModes(paymentModesData);
     } catch (error: unknown) {
       console.error('Error loading data:', error);
       const axiosError = error as { response?: { data?: unknown } };
@@ -633,8 +639,8 @@ export default function NewTenantLedgerPage() {
             ...(formData.created_by && { created_by: formData.created_by }),
             // Credit amount for payment
             credit_amount: invoice.total_amount,
-            // Include rental unit ID for proper unit association
-            ...(selectedRentalUnitId && { rental_unit_id: selectedRentalUnitId }),
+            // Include rental unit ID for proper unit association (only if it exists)
+            ...(selectedRentalUnitId && selectedRentalUnitId > 0 && { rental_unit_id: selectedRentalUnitId }),
           };
 
           console.log('Submitting data for invoice:', invoice.invoice_number, submitData);
@@ -659,8 +665,8 @@ export default function NewTenantLedgerPage() {
             ? { debit_amount: formData.debit_amount }
             : { credit_amount: formData.credit_amount }
           ),
-          // Include rental unit ID for proper unit association
-          ...(selectedRentalUnitId && { rental_unit_id: selectedRentalUnitId }),
+          // Include rental unit ID for proper unit association (only if it exists)
+          ...(selectedRentalUnitId && selectedRentalUnitId > 0 && { rental_unit_id: selectedRentalUnitId }),
         };
 
         console.log('Submitting single entry data:', submitData);
@@ -688,6 +694,10 @@ export default function NewTenantLedgerPage() {
           console.error('No specific errors found, showing general message');
           toast.error(axiosError.response?.data?.message || 'Validation failed');
         }
+      } else if (axiosError.response?.status === 500) {
+        // Handle server errors
+        console.error('Server error details:', axiosError.response?.data);
+        toast.error(axiosError.response?.data?.message || 'Server error occurred. Please check the logs for more details.');
       } else {
         toast.error(axiosError.response?.data?.message || 'Failed to save ledger entry');
       }
@@ -975,15 +985,11 @@ export default function NewTenantLedgerPage() {
                         onChange={(e) => setFormData(prev => ({ ...prev, payment_method: e.target.value }))}
                       >
                         <option value="">Select Payment Method</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Bank Transfer">Bank Transfer</option>
-                        <option value="Check">Check</option>
-                        <option value="Credit Card">Credit Card</option>
-                        <option value="Debit Card">Debit Card</option>
-                        <option value="Online Payment">Online Payment</option>
-                        <option value="Mobile Payment">Mobile Payment</option>
-                        <option value="Money Order">Money Order</option>
-                        <option value="Other">Other</option>
+                        {paymentModes.map(mode => (
+                          <option key={mode.id} value={mode.name}>
+                            {mode.name}
+                          </option>
+                        ))}
                       </Select>
                     </div>
 

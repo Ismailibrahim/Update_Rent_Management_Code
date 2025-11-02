@@ -41,16 +41,24 @@ class BackfillRentInvoicesToLedger extends Command
         $rentPaymentType = PaymentType::firstOrCreate(
             ['name' => 'Rent'],
             [
+                'code' => 'rent',
                 'description' => 'Monthly rent payment',
-                'is_active' => true
+                'is_active' => true,
+                'is_recurring' => true,
+                'requires_approval' => false,
+                'settings' => []
             ]
         );
 
         $rentPaymentReceivedType = PaymentType::firstOrCreate(
             ['name' => 'Rent Payment'],
             [
+                'code' => 'rent_payment',
                 'description' => 'Payment received for rent',
-                'is_active' => true
+                'is_active' => true,
+                'is_recurring' => false,
+                'requires_approval' => false,
+                'settings' => []
             ]
         );
 

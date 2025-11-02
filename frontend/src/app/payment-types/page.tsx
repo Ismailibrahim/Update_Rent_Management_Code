@@ -124,9 +124,16 @@ export default function PaymentTypesPage() {
       await paymentTypesAPI.delete(id);
       toast.success('Payment type deleted successfully');
       fetchPaymentTypes();
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error deleting payment type:', error);
-      toast.error('Failed to delete payment type');
+      const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
+      
+      if (axiosError.response?.status === 422) {
+        // Handle foreign key constraint violation
+        toast.error(axiosError.response.data?.message || 'Cannot delete payment type because it is being used in ledger entries. Please deactivate it instead.');
+      } else {
+        toast.error(axiosError.response?.data?.message || 'Failed to delete payment type');
+      }
     }
   };
 

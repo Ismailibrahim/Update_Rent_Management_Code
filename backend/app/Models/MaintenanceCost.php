@@ -117,8 +117,12 @@ class MaintenanceCost extends Model
             $paymentType = PaymentType::firstOrCreate(
                 ['name' => 'Maintenance'],
                 [
+                    'code' => 'maintenance',
                     'description' => 'Maintenance and repair costs',
-                    'is_active' => true
+                    'is_active' => true,
+                    'is_recurring' => false,
+                    'requires_approval' => false,
+                    'settings' => []
                 ]
             );
 
