@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PropertyController;
 use App\Http\Controllers\Api\RentalUnitController;
@@ -36,6 +37,15 @@ use App\Http\Controllers\TenantLedgerController;
 // Public routes
 Route::get('/test', function () {
     return response()->json(['message' => 'API is working', 'timestamp' => now()]);
+});
+
+// Health check endpoint
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'healthy',
+        'timestamp' => now()->toIso8601String(),
+        'database' => DB::connection()->getPdo() ? 'connected' : 'disconnected'
+    ]);
 });
 
 

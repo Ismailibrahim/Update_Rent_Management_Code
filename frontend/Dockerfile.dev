@@ -1,0 +1,12 @@
+# Development Dockerfile for Next.js frontend
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for development (including dev dependencies)
+RUN apk add --no-cache libc6-compat
+
+# Default command (can be overridden in docker-compose)
+CMD ["npm", "run", "dev"]
+
+

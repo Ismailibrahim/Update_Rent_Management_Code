@@ -1,6 +1,19 @@
 import axios, { AxiosInstance } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+// API base URL - must be set in environment variables
+// For development, set NEXT_PUBLIC_API_URL in .env.local
+// For production, set NEXT_PUBLIC_API_URL in your deployment environment
+function getApiBaseUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:8000/api';
+  }
+  throw new Error('NEXT_PUBLIC_API_URL environment variable is required in production');
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
