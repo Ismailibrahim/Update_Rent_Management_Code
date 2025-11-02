@@ -12,7 +12,8 @@ RUN apk add --no-cache \
     oniguruma-dev \
     mysql-client \
     nodejs \
-    npm
+    npm \
+    linux-headers
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd sockets
@@ -26,16 +27,32 @@ WORKDIR /var/www/html
 # Copy composer files
 COPY composer.json composer.lock ./
 
+# Copy artisan file (needed for composer post-install scripts)
+COPY artisan ./
+
 # Install PHP dependencies (no dev dependencies in production)
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+# Skip scripts during install to avoid errors, will run them later
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-scripts
 
 # Copy application files
 COPY . .
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html/storage \
-    && chmod -R 755 /var/www/html/bootstrap/cache
+# Run composer scripts now that all files are in place
+RUN composer dump-autoload --optimize --classmap-authoritative
+
+# Set permissions - optimized: only change what needs to be writable
+# Create storage structure first
+RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache
+
+# Set ownership ONLY on storage and cache directories (skip vendor to save time)
+# These are the only directories that need to be writable by www-data
+RUN chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
+
+# Set basic ownership on app files (excluding vendor)
+# This ensures Laravel files are readable, but avoids chown on vendor (10k+ files)
+RUN chown -R www-data:www-data app bootstrap config database routes tests \
+    && chown www-data:www-data artisan composer.json composer.lock .env || true
 
 # Production stage
 FROM base AS production

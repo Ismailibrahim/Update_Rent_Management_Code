@@ -26,6 +26,7 @@ interface Asset {
     description?: string;
     repair_provider?: string;
     notes?: string;
+    maintenance_request_id?: number;
   };
   rental_unit: {
     id: number;

@@ -12,8 +12,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('rental_units', function (Blueprint $table) {
-            // Remove old JSON columns
-            $table->dropColumn(['unit_details', 'financial']);
+            // Remove old JSON columns - only drop if they exist
+            $columnsToDrop = [];
+            if (Schema::hasColumn('rental_units', 'unit_details')) {
+                $columnsToDrop[] = 'unit_details';
+            }
+            if (Schema::hasColumn('rental_units', 'financial')) {
+                $columnsToDrop[] = 'financial';
+            }
+            if (!empty($columnsToDrop)) {
+                $table->dropColumn($columnsToDrop);
+            }
         });
     }
 

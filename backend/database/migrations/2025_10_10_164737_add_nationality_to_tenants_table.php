@@ -12,7 +12,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->string('nationality')->nullable()->after('national_id');
+            // Only add nationality if it doesn't already exist
+            // The create_tenants_table migration already creates nationality
+            if (!Schema::hasColumn('tenants', 'nationality')) {
+                $table->string('nationality')->nullable()->after('national_id');
+            }
         });
     }
 

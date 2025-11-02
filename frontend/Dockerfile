@@ -42,9 +42,15 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy built application from standalone output
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Copy public directory if it exists in standalone output (Next.js puts it in .next/standalone/app/public)
+# If it doesn't exist, just create empty directory
+RUN mkdir -p ./public && \
+    if [ -d "./app/public" ]; then \
+      cp -r ./app/public/* ./public/ || true; \
+    fi
 
 USER nextjs
 

@@ -12,32 +12,44 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Only populate columns from JSON data if the JSON columns exist
+        // This migration is only needed when migrating from an older schema that had JSON columns
+        if (!Schema::hasColumn('tenants', 'personal_info')) {
+            // JSON columns don't exist, skip data population
+            return;
+        }
+
         // Populate new columns from existing JSON data
-        DB::statement("
-            UPDATE tenants SET 
-                first_name = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.firstName')),
-                last_name = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.lastName')),
-                date_of_birth = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.dateOfBirth')),
-                national_id = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.nationalId')),
-                gender = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.gender')),
-                email = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.email')),
-                phone = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.phone')),
-                address = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.address')),
-                city = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.city')),
-                postal_code = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.postalCode')),
-                emergency_contact_name = JSON_UNQUOTE(JSON_EXTRACT(emergency_contact, '$.name')),
-                emergency_contact_phone = JSON_UNQUOTE(JSON_EXTRACT(emergency_contact, '$.phone')),
-                emergency_contact_relationship = JSON_UNQUOTE(JSON_EXTRACT(emergency_contact, '$.relationship')),
-                employment_company = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.company')),
-                employment_position = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.position')),
-                employment_salary = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.salary')),
-                employment_phone = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.phone')),
-                bank_name = JSON_UNQUOTE(JSON_EXTRACT(financial_info, '$.bankName')),
-                account_number = JSON_UNQUOTE(JSON_EXTRACT(financial_info, '$.accountNumber')),
-                account_holder_name = JSON_UNQUOTE(JSON_EXTRACT(financial_info, '$.accountHolderName'))
-            WHERE personal_info IS NOT NULL 
-            AND personal_info != '{}'
-        ");
+        try {
+            DB::statement("
+                UPDATE tenants SET 
+                    first_name = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.firstName')),
+                    last_name = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.lastName')),
+                    date_of_birth = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.dateOfBirth')),
+                    national_id = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.nationalId')),
+                    gender = JSON_UNQUOTE(JSON_EXTRACT(personal_info, '$.gender')),
+                    email = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.email')),
+                    phone = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.phone')),
+                    address = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.address')),
+                    city = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.city')),
+                    postal_code = JSON_UNQUOTE(JSON_EXTRACT(contact_info, '$.postalCode')),
+                    emergency_contact_name = JSON_UNQUOTE(JSON_EXTRACT(emergency_contact, '$.name')),
+                    emergency_contact_phone = JSON_UNQUOTE(JSON_EXTRACT(emergency_contact, '$.phone')),
+                    emergency_contact_relationship = JSON_UNQUOTE(JSON_EXTRACT(emergency_contact, '$.relationship')),
+                    employment_company = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.company')),
+                    employment_position = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.position')),
+                    employment_salary = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.salary')),
+                    employment_phone = JSON_UNQUOTE(JSON_EXTRACT(employment_info, '$.phone')),
+                    bank_name = JSON_UNQUOTE(JSON_EXTRACT(financial_info, '$.bankName')),
+                    account_number = JSON_UNQUOTE(JSON_EXTRACT(financial_info, '$.accountNumber')),
+                    account_holder_name = JSON_UNQUOTE(JSON_EXTRACT(financial_info, '$.accountHolderName'))
+                WHERE personal_info IS NOT NULL 
+                AND personal_info != '{}'
+            ");
+        } catch (\Exception $e) {
+            // If JSON columns don't exist or extraction fails, skip silently
+            // This is expected in fresh migrations
+        }
     }
 
     /**

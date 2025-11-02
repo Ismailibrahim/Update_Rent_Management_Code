@@ -12,8 +12,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('tenants', function (Blueprint $table) {
-            $table->date('lease_start_date')->nullable()->after('notes');
-            $table->date('lease_end_date')->nullable()->after('lease_start_date');
+            // Only add columns if they don't already exist
+            if (!Schema::hasColumn('tenants', 'lease_start_date')) {
+                $table->date('lease_start_date')->nullable()->after('notes');
+            }
+            if (!Schema::hasColumn('tenants', 'lease_end_date')) {
+                $table->date('lease_end_date')->nullable()->after('lease_start_date');
+            }
         });
     }
 

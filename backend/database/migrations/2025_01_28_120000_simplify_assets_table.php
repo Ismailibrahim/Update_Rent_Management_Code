@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('assets', function (Blueprint $table) {
-            // Drop unnecessary columns
-            $table->dropColumn([
+            // Drop unnecessary columns if they exist
+            $columnsToDrop = [
                 'asset_number',
                 'model',
                 'description',
@@ -26,7 +26,50 @@ return new class extends Migration
                 'location',
                 'notes',
                 'is_active'
-            ]);
+            ];
+            
+            // Only drop columns that actually exist
+            $existingColumns = [];
+            if (Schema::hasColumn('assets', 'asset_number')) {
+                $existingColumns[] = 'asset_number';
+            }
+            if (Schema::hasColumn('assets', 'model')) {
+                $existingColumns[] = 'model';
+            }
+            if (Schema::hasColumn('assets', 'description')) {
+                $existingColumns[] = 'description';
+            }
+            if (Schema::hasColumn('assets', 'purchase_date')) {
+                $existingColumns[] = 'purchase_date';
+            }
+            if (Schema::hasColumn('assets', 'purchase_price')) {
+                $existingColumns[] = 'purchase_price';
+            }
+            if (Schema::hasColumn('assets', 'warranty_expiry')) {
+                $existingColumns[] = 'warranty_expiry';
+            }
+            if (Schema::hasColumn('assets', 'supplier')) {
+                $existingColumns[] = 'supplier';
+            }
+            if (Schema::hasColumn('assets', 'serial_number')) {
+                $existingColumns[] = 'serial_number';
+            }
+            if (Schema::hasColumn('assets', 'status')) {
+                $existingColumns[] = 'status';
+            }
+            if (Schema::hasColumn('assets', 'location')) {
+                $existingColumns[] = 'location';
+            }
+            if (Schema::hasColumn('assets', 'notes')) {
+                $existingColumns[] = 'notes';
+            }
+            if (Schema::hasColumn('assets', 'is_active')) {
+                $existingColumns[] = 'is_active';
+            }
+            
+            if (!empty($existingColumns)) {
+                $table->dropColumn($existingColumns);
+            }
         });
     }
 

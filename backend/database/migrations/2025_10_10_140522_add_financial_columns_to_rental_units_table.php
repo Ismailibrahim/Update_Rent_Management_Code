@@ -12,21 +12,57 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('rental_units', function (Blueprint $table) {
-            // Financial information columns
-            $table->decimal('rent_amount', 10, 2)->nullable()->after('unit_type');
-            $table->decimal('deposit_amount', 10, 2)->nullable()->after('rent_amount');
-            $table->string('currency', 3)->default('MVR')->after('deposit_amount');
+            // Financial information columns - only add if they don't already exist
+            if (!Schema::hasColumn('rental_units', 'rent_amount')) {
+                $table->decimal('rent_amount', 10, 2)->nullable()->after('unit_type');
+            }
+            if (!Schema::hasColumn('rental_units', 'deposit_amount')) {
+                $table->decimal('deposit_amount', 10, 2)->nullable()->after('rent_amount');
+            }
+            if (!Schema::hasColumn('rental_units', 'currency')) {
+                $table->string('currency', 3)->default('MVR')->after('deposit_amount');
+            }
             
-            // Unit details columns
-            $table->integer('number_of_rooms')->nullable()->after('currency');
-            $table->integer('number_of_toilets')->nullable()->after('number_of_rooms');
-            $table->decimal('square_feet', 8, 2)->nullable()->after('number_of_toilets');
+            // Unit details columns - only add if they don't already exist
+            if (!Schema::hasColumn('rental_units', 'number_of_rooms')) {
+                $table->integer('number_of_rooms')->nullable()->after('currency');
+            }
+            if (!Schema::hasColumn('rental_units', 'number_of_toilets')) {
+                $table->integer('number_of_toilets')->nullable()->after('number_of_rooms');
+            }
+            if (!Schema::hasColumn('rental_units', 'square_feet')) {
+                $table->decimal('square_feet', 8, 2)->nullable()->after('number_of_toilets');
+            }
             
-            // Add indexes for frequently searched fields
-            $table->index('rent_amount');
-            $table->index('number_of_rooms');
-            $table->index('number_of_toilets');
-            $table->index('square_feet');
+            // Add indexes for frequently searched fields (only if columns exist)
+            if (Schema::hasColumn('rental_units', 'rent_amount')) {
+                try {
+                    $table->index('rent_amount', 'rental_units_rent_amount_index');
+                } catch (\Exception $e) {
+                    // Index might already exist, ignore
+                }
+            }
+            if (Schema::hasColumn('rental_units', 'number_of_rooms')) {
+                try {
+                    $table->index('number_of_rooms', 'rental_units_number_of_rooms_index');
+                } catch (\Exception $e) {
+                    // Index might already exist, ignore
+                }
+            }
+            if (Schema::hasColumn('rental_units', 'number_of_toilets')) {
+                try {
+                    $table->index('number_of_toilets', 'rental_units_number_of_toilets_index');
+                } catch (\Exception $e) {
+                    // Index might already exist, ignore
+                }
+            }
+            if (Schema::hasColumn('rental_units', 'square_feet')) {
+                try {
+                    $table->index('square_feet', 'rental_units_square_feet_index');
+                } catch (\Exception $e) {
+                    // Index might already exist, ignore
+                }
+            }
         });
     }
 

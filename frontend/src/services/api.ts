@@ -221,7 +221,7 @@ export interface PaymentType {
   settings?: Record<string, unknown>;
 }
 
-interface PaymentMode {
+export interface PaymentMode {
   id: number;
   name: string;
   code: string;
@@ -664,7 +664,6 @@ export const maintenanceCostsAPI = {
       });
     }
   },
-  delete: (id: number) => api.delete(`/maintenance-costs/${id}`),
   getByRentalUnitAsset: (rentalUnitAssetId: number) => api.get(`/maintenance-costs/rental-unit-asset/${rentalUnitAssetId}`),
 };
 
@@ -767,7 +766,5 @@ export const maintenanceInvoicesAPI = {
   update: (id: number, data: Partial<MaintenanceInvoice>) => api.put(`/maintenance-invoices/${id}`, data),
   delete: (id: number) => api.delete(`/maintenance-invoices/${id}`),
 };
-
-export { PaymentMode };
 
 export default api;
