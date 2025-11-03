@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\RentInvoiceController;
 use App\Http\Controllers\Api\MaintenanceCostController;
 use App\Http\Controllers\Api\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\RentalUnitTypeController;
+use App\Http\Controllers\Api\IslandController;
 use App\Http\Controllers\TenantLedgerController;
 
 /*
@@ -64,6 +65,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Property routes
     Route::apiResource('properties', PropertyController::class);
     Route::get('/properties/{property}/capacity', [PropertyController::class, 'capacity']);
+    Route::get('/properties/import/template', [PropertyController::class, 'downloadTemplate']);
+    Route::post('/properties/import/preview', [PropertyController::class, 'previewImport']);
+    Route::post('/properties/import', [PropertyController::class, 'import']);
 
     // Rental Unit routes
     Route::get('/rental-units/maintenance-assets', [RentalUnitController::class, 'getMaintenanceAssets']);
@@ -136,4 +140,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/tenant-ledgers/tenant/{tenantId}/balance', [TenantLedgerController::class, 'getTenantBalance']);
     Route::get('/tenant-ledgers/tenant/{tenantId}/summary', [TenantLedgerController::class, 'getTenantSummary']);
     Route::get('/tenant-ledgers/balances/all', [TenantLedgerController::class, 'getAllTenantBalances']);
+
+    // Island routes
+    Route::apiResource('islands', IslandController::class);
 });

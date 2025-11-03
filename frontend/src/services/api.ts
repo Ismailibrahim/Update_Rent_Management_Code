@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosError } from 'axios';
 
 // API base URL - must be set in environment variables
 // For development, set NEXT_PUBLIC_API_URL in .env.local
@@ -10,10 +10,37 @@ function getApiBaseUrl(): string {
   if (process.env.NODE_ENV === 'development') {
     return 'http://localhost:8000/api';
   }
+  
+  // Log warning if running in production without API URL
+  if (typeof window !== 'undefined') {
+    console.warn('NEXT_PUBLIC_API_URL is not set. Using fallback. This may cause API requests to fail.');
+    console.warn('Current environment:', process.env.NODE_ENV);
+    console.warn('Window location:', window.location.href);
+  }
+  
+  // Try to infer from current host (for production deployments)
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    const protocol = window.location.protocol;
+    // Try common backend ports
+    const possiblePorts = ['8000', '8080', '80'];
+    // Default to port 8000
+    return `${protocol}//${host}:8000/api`;
+  }
+  
   throw new Error('NEXT_PUBLIC_API_URL environment variable is required in production');
 }
 
 const API_BASE_URL = getApiBaseUrl();
+
+// Log API configuration (only in development or if explicitly enabled)
+if (typeof window !== 'undefined' && (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_API === 'true')) {
+  console.log('API Configuration:', {
+    baseURL: API_BASE_URL,
+    nodeEnv: process.env.NODE_ENV,
+    apiUrl: process.env.NEXT_PUBLIC_API_URL || 'Not set'
+  });
+}
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -45,14 +72,38 @@ api.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
-    if (error.response?.status === 401) {
+  (error: unknown) => {
+    // Enhanced error logging for debugging
+    if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_API === 'true') {
+      const axiosError = error as AxiosError;
+      console.error('API Error:', {
+        message: axiosError.message,
+        status: axiosError.response?.status,
+        statusText: axiosError.response?.statusText,
+        data: axiosError.response?.data,
+        url: axiosError.config?.url,
+        baseURL: axiosError.config?.baseURL,
+        method: axiosError.config?.method,
+        hasToken: !!axiosError.config?.headers?.Authorization
+      });
+    }
+    
+    const axiosError = error as AxiosError;
+    
+    if (axiosError.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
         window.location.href = '/login';
       }
-    } else if (error.response?.status === 429) {
+    } else if (axiosError.response?.status === 429) {
       console.warn('Rate limit exceeded. Please wait before making more requests.');
+    } else if (!axiosError.response) {
+      // Network error - backend not reachable
+      console.error('Network Error: Unable to reach backend API', {
+        baseURL: API_BASE_URL,
+        url: axiosError.config?.url,
+        message: axiosError.message
+      });
     }
     
     return Promise.reject(error);
@@ -298,6 +349,11 @@ export const propertiesAPI = {
   update: (id: number, propertyData: Partial<Property>) => api.put(`/properties/${id}`, propertyData),
   delete: (id: number) => api.delete(`/properties/${id}`),
   getCapacity: (id: number) => api.get(`/properties/${id}/capacity`),
+  getImportTemplate: () => api.get('/properties/import/template'),
+  previewImport: (data: { csv_data: string; field_mapping: Record<number, string>; has_header: boolean }) => 
+    api.post('/properties/import/preview', data),
+  import: (data: { csv_data: string; field_mapping: Record<number, string>; has_header: boolean; skip_errors: boolean }) => 
+    api.post('/properties/import', data),
 };
 
 // Tenants API
@@ -707,6 +763,25 @@ export const tenantLedgerAPI = {
   getTenantBalance: (tenantId: number) => api.get(`/tenant-ledgers/tenant/${tenantId}/balance`),
   getTenantSummary: (tenantId: number, params?: Record<string, unknown>) => api.get(`/tenant-ledgers/tenant/${tenantId}/summary`, { params }),
   getAllTenantBalances: (params?: Record<string, unknown>) => api.get('/tenant-ledgers/balances/all', { params }),
+};
+
+export interface Island {
+  id: number;
+  name: string;
+  code?: string;
+  description?: string;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const islandsAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/islands', { params }),
+  getById: (id: number) => api.get(`/islands/${id}`),
+  create: (data: Partial<Island>) => api.post('/islands', data),
+  update: (id: number, data: Partial<Island>) => api.put(`/islands/${id}`, data),
+  delete: (id: number) => api.delete(`/islands/${id}`),
 };
 
 export const maintenanceRequestsAPI = {

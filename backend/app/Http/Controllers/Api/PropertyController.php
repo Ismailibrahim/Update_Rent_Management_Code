@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Property;
 use App\Models\User;
+use App\Models\RentalUnitType;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PropertyController extends Controller
@@ -124,9 +126,19 @@ class PropertyController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // Get valid types from rental_unit_types table
+        $validTypes = RentalUnitType::where('is_active', true)
+            ->pluck('name')
+            ->map(fn($name) => strtolower($name))
+            ->toArray();
+
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
-            'type' => ['required', Rule::in(['house', 'apartment', 'villa', 'commercial', 'office', 'shop', 'warehouse', 'land'])],
+            'type' => ['required', function ($attribute, $value, $fail) use ($validTypes) {
+                if (!in_array(strtolower($value), $validTypes)) {
+                    $fail('The selected property type is invalid. Please choose from available types.');
+                }
+            }],
             'street' => 'required|string|max:255',
             'city' => 'required|string|max:255',
             'island' => 'required|string|max:255',
@@ -199,21 +211,30 @@ class PropertyController extends Controller
     public function show(Request $request, Property $property): JsonResponse
     {
         try {
+            $user = $request->user();
+            
             // Check access for property managers
-            if ($request->user()->role->name === 'property_manager' && 
-                $property->assigned_manager_id !== $request->user()->id) {
+            if ($user && $user->role && $user->role->name === 'property_manager' && 
+                $property->assigned_manager_id !== $user->id) {
                 return response()->json([
                     'message' => 'Access denied'
                 ], 403);
             }
 
-            $property->load('assignedManager');
+            $property->load(['assignedManager', 'rentalUnits']);
 
             return response()->json([
                 'property' => $property
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Property show error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'property_id' => $property->id ?? null,
+                'user_id' => $request->user()?->id
+            ]);
+            
             return response()->json([
                 'message' => 'Failed to fetch property',
                 'error' => $e->getMessage()
@@ -226,9 +247,19 @@ class PropertyController extends Controller
      */
     public function update(Request $request, Property $property): JsonResponse
     {
+        // Get valid types from rental_unit_types table
+        $validTypes = RentalUnitType::where('is_active', true)
+            ->pluck('name')
+            ->map(fn($name) => strtolower($name))
+            ->toArray();
+
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
-            'type' => ['sometimes', Rule::in(['house', 'apartment', 'villa', 'commercial', 'office', 'shop', 'warehouse', 'land'])],
+            'type' => ['sometimes', function ($attribute, $value, $fail) use ($validTypes) {
+                if ($value && !in_array(strtolower($value), $validTypes)) {
+                    $fail('The selected property type is invalid. Please choose from available types.');
+                }
+            }],
             'street' => 'sometimes|string|max:255',
             'city' => 'sometimes|string|max:255',
             'island' => 'sometimes|string|max:255',
@@ -253,9 +284,11 @@ class PropertyController extends Controller
         }
 
         try {
+            $user = $request->user();
+            
             // Check access for property managers
-            if ($request->user()->role->name === 'property_manager' && 
-                $property->assigned_manager_id !== $request->user()->id) {
+            if ($user && $user->role && $user->role->name === 'property_manager' && 
+                $property->assigned_manager_id !== $user->id) {
                 return response()->json([
                     'message' => 'Access denied'
                 ], 403);
@@ -270,6 +303,14 @@ class PropertyController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Property update error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'property_id' => $property->id ?? null,
+                'user_id' => $request->user()?->id,
+                'request_data' => $request->all()
+            ]);
+            
             return response()->json([
                 'message' => 'Failed to update property',
                 'error' => $e->getMessage()
@@ -370,6 +411,389 @@ class PropertyController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to get capacity information',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Download CSV template for property import
+     */
+    public function downloadTemplate(): JsonResponse
+    {
+        try {
+            // Define headers with mandatory indicators
+            $headers = [
+                'name [REQUIRED]',
+                'type [REQUIRED]',
+                'street [REQUIRED]',
+                'city [REQUIRED]',
+                'island [REQUIRED]',
+                'postal_code',
+                'country',
+                'number_of_floors [REQUIRED]',
+                'number_of_rental_units [REQUIRED]',
+                'bedrooms [REQUIRED]',
+                'bathrooms [REQUIRED]',
+                'square_feet',
+                'year_built',
+                'description',
+                'status'
+            ];
+
+            // Instructions row
+            $instructions = [
+                'INSTRUCTIONS: Fields marked with [REQUIRED] must be filled. Type must match a valid property type from the system.',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                '',
+                ''
+            ];
+
+            $sampleData = [
+                [
+                    'name [REQUIRED]' => 'Sample Property 1',
+                    'type [REQUIRED]' => 'apartment',
+                    'street [REQUIRED]' => '123 Main Street',
+                    'city [REQUIRED]' => 'Male',
+                    'island [REQUIRED]' => 'Male',
+                    'postal_code' => '20001',
+                    'country' => 'Maldives',
+                    'number_of_floors [REQUIRED]' => '2',
+                    'number_of_rental_units [REQUIRED]' => '4',
+                    'bedrooms [REQUIRED]' => '2',
+                    'bathrooms [REQUIRED]' => '2',
+                    'square_feet' => '1200',
+                    'year_built' => '2020',
+                    'description' => 'Beautiful property',
+                    'status' => 'vacant'
+                ],
+                [
+                    'name [REQUIRED]' => 'Sample Property 2',
+                    'type [REQUIRED]' => 'villa',
+                    'street [REQUIRED]' => '456 Ocean View',
+                    'city [REQUIRED]' => 'Hulhumale',
+                    'island [REQUIRED]' => 'Male',
+                    'postal_code' => '20002',
+                    'country' => 'Maldives',
+                    'number_of_floors [REQUIRED]' => '1',
+                    'number_of_rental_units [REQUIRED]' => '1',
+                    'bedrooms [REQUIRED]' => '3',
+                    'bathrooms [REQUIRED]' => '2',
+                    'square_feet' => '2000',
+                    'year_built' => '2019',
+                    'description' => 'Luxury villa',
+                    'status' => 'vacant'
+                ]
+            ];
+
+            // Build CSV content with instructions and headers
+            $csvContent = '"' . implode('","', array_map(function($field) {
+                return str_replace('"', '""', $field);
+            }, $instructions)) . '"' . "\n";
+            $csvContent .= '"' . implode('","', array_map(function($field) {
+                return str_replace('"', '""', $field);
+            }, $headers)) . '"' . "\n";
+            
+            // Add sample data
+            foreach ($sampleData as $row) {
+                $csvContent .= '"' . implode('","', array_map(function($field) {
+                    return str_replace('"', '""', $field);
+                }, $row)) . '"' . "\n";
+            }
+
+            return response()->json([
+                'template' => $csvContent,
+                'headers' => $headers
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to generate template',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Preview CSV import data
+     */
+    public function previewImport(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'csv_data' => 'required|string',
+            'field_mapping' => 'required|array',
+            'has_header' => 'boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 400);
+        }
+
+        try {
+            $csvData = $request->csv_data;
+            $fieldMapping = $request->field_mapping;
+            $hasHeader = $request->has('has_header') ? $request->boolean('has_header') : true;
+
+            // Parse CSV
+            $lines = explode("\n", trim($csvData));
+            $dataLines = [];
+            
+            // Filter out empty lines and instruction rows
+            foreach ($lines as $line) {
+                $trimmedLine = trim($line);
+                if (empty($trimmedLine)) {
+                    continue;
+                }
+                
+                // Skip instruction rows
+                if (stripos($trimmedLine, 'INSTRUCTIONS:') !== false || 
+                    stripos($trimmedLine, 'instructions') !== false) {
+                    continue;
+                }
+                
+                $dataLines[] = $line;
+            }
+            
+            // Remove header row if present
+            if ($hasHeader && count($dataLines) > 0) {
+                array_shift($dataLines);
+            }
+
+            $previewData = [];
+            $errors = [];
+
+            // Get valid types
+            $validTypes = RentalUnitType::where('is_active', true)
+                ->pluck('name')
+                ->map(fn($name) => strtolower($name))
+                ->toArray();
+
+            foreach (array_slice($dataLines, 0, 10) as $index => $line) {
+                $rowData = str_getcsv($line);
+                if (empty(array_filter($rowData))) {
+                    continue; // Skip empty rows
+                }
+
+                $mappedData = [];
+                $rowErrors = [];
+
+                // Map fields and clean values
+                foreach ($fieldMapping as $csvColumn => $propertyField) {
+                    if ($propertyField && isset($rowData[$csvColumn])) {
+                        $value = trim($rowData[$csvColumn]);
+                        // Remove quotes and [REQUIRED] markers if present
+                        $value = str_replace(['"', "'"], '', $value);
+                        $value = preg_replace('/\s*\[REQUIRED\]\s*/i', '', $value);
+                        $mappedData[$propertyField] = $value;
+                    }
+                }
+
+                // Validate required fields
+                $requiredFields = ['name', 'type', 'street', 'city', 'island', 'number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms'];
+                foreach ($requiredFields as $field) {
+                    if (empty($mappedData[$field])) {
+                        $rowErrors[] = "Row " . ($index + 1) . ": Missing required field '{$field}'";
+                    }
+                }
+
+                // Validate type
+                if (isset($mappedData['type']) && !in_array(strtolower($mappedData['type']), $validTypes)) {
+                    $rowErrors[] = "Row " . ($index + 1) . ": Invalid property type '{$mappedData['type']}'";
+                }
+
+                // Validate and clean numeric fields
+                $numericFields = ['number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms', 'square_feet', 'year_built'];
+                foreach ($numericFields as $field) {
+                    if (isset($mappedData[$field]) && $mappedData[$field] !== '') {
+                        // Remove any non-numeric characters except decimal point and minus sign
+                        $cleanValue = preg_replace('/[^0-9.-]/', '', $mappedData[$field]);
+                        if (is_numeric($cleanValue)) {
+                            $mappedData[$field] = (int) floatval($cleanValue);
+                        } else {
+                            $rowErrors[] = "Row " . ($index + 1) . ": Field '{$field}' must be numeric (got: '{$mappedData[$field]}')";
+                        }
+                    }
+                }
+
+                if (empty($rowErrors)) {
+                    $previewData[] = $mappedData;
+                } else {
+                    $errors = array_merge($errors, $rowErrors);
+                }
+            }
+
+            return response()->json([
+                'preview' => $previewData,
+                'errors' => $errors,
+                'total_rows' => count($dataLines)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to preview import',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Import properties from CSV
+     */
+    public function import(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'csv_data' => 'required|string',
+            'field_mapping' => 'required|array',
+            'has_header' => 'boolean',
+            'skip_errors' => 'boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 400);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $csvData = $request->csv_data;
+            $fieldMapping = $request->field_mapping;
+            $hasHeader = $request->has('has_header') ? $request->boolean('has_header') : true;
+            $skipErrors = $request->has('skip_errors') ? $request->boolean('skip_errors') : false;
+
+            // Parse CSV
+            $lines = explode("\n", trim($csvData));
+            $dataLines = [];
+            
+            // Filter out empty lines and instruction rows
+            foreach ($lines as $line) {
+                $trimmedLine = trim($line);
+                if (empty($trimmedLine)) {
+                    continue;
+                }
+                
+                // Skip instruction rows
+                if (stripos($trimmedLine, 'INSTRUCTIONS:') !== false || 
+                    stripos($trimmedLine, 'instructions') !== false) {
+                    continue;
+                }
+                
+                $dataLines[] = $line;
+            }
+            
+            // Remove header row if present
+            if ($hasHeader && count($dataLines) > 0) {
+                array_shift($dataLines);
+            }
+
+            // Get valid types
+            $validTypes = RentalUnitType::where('is_active', true)
+                ->pluck('name')
+                ->map(fn($name) => strtolower($name))
+                ->toArray();
+
+            $imported = 0;
+            $failed = 0;
+            $errors = [];
+
+            foreach ($dataLines as $rowIndex => $line) {
+                $rowData = str_getcsv($line);
+                if (empty(array_filter($rowData))) {
+                    continue; // Skip empty rows
+                }
+
+                try {
+                    $mappedData = [];
+
+                    // Map fields and clean values
+                    foreach ($fieldMapping as $csvColumn => $propertyField) {
+                        if ($propertyField && isset($rowData[$csvColumn])) {
+                            $value = trim($rowData[$csvColumn]);
+                            // Remove quotes and [REQUIRED] markers if present
+                            $value = str_replace(['"', "'"], '', $value);
+                            $value = preg_replace('/\s*\[REQUIRED\]\s*/i', '', $value);
+                            if ($value !== '') {
+                                $mappedData[$propertyField] = $value;
+                            }
+                        }
+                    }
+
+                    // Set defaults
+                    $mappedData['country'] = $mappedData['country'] ?? 'Maldives';
+                    $mappedData['status'] = $mappedData['status'] ?? 'vacant';
+                    $mappedData['assigned_manager_id'] = $mappedData['assigned_manager_id'] ?? $request->user()->id;
+                    $mappedData['is_active'] = true;
+
+                    // Convert numeric fields - handle string numbers
+                    $numericFields = ['number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms', 'square_feet', 'year_built'];
+                    foreach ($numericFields as $field) {
+                        if (isset($mappedData[$field]) && $mappedData[$field] !== '') {
+                            // Remove any non-numeric characters except decimal point and minus sign
+                            $cleanValue = preg_replace('/[^0-9.-]/', '', $mappedData[$field]);
+                            if (is_numeric($cleanValue)) {
+                                $mappedData[$field] = (int) floatval($cleanValue);
+                            }
+                        }
+                    }
+
+                    // Validate required fields
+                    $requiredFields = ['name', 'type', 'street', 'city', 'island', 'number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms'];
+                    foreach ($requiredFields as $field) {
+                        if (empty($mappedData[$field])) {
+                            throw new \Exception("Missing required field: {$field}");
+                        }
+                    }
+
+                    // Validate type
+                    if (!in_array(strtolower($mappedData['type']), $validTypes)) {
+                        throw new \Exception("Invalid property type: {$mappedData['type']}");
+                    }
+
+                    // Create property
+                    Property::create($mappedData);
+                    $imported++;
+
+                } catch (\Exception $e) {
+                    $failed++;
+                    $errors[] = "Row " . ($rowIndex + 1) . ": " . $e->getMessage();
+                    if (!$skipErrors) {
+                        DB::rollBack();
+                        return response()->json([
+                            'message' => 'Import failed',
+                            'errors' => $errors,
+                            'imported' => $imported,
+                            'failed' => $failed
+                        ], 400);
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Import completed',
+                'imported' => $imported,
+                'failed' => $failed,
+                'errors' => $errors
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Import failed',
                 'error' => $e->getMessage()
             ], 500);
         }

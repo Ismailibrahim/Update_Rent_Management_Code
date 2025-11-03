@@ -69,7 +69,9 @@ interface RentalUnit {
 interface Property {
   id: number;
   name: string;
-  address: string;
+  street: string;
+  city: string;
+  island: string;
 }
 
 export default function RentalUnitsPage() {
@@ -243,7 +245,7 @@ export default function RentalUnitsPage() {
             <option value="all">All Properties</option>
             {properties.map((property) => (
               <option key={property.id} value={property.id.toString()}>
-                {property.name}
+                {property.name}{property.street && property.street.trim() ? ` - ${property.street.trim()}` : ''}
               </option>
             ))}
           </select>

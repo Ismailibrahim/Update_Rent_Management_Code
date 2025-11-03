@@ -9,11 +9,14 @@ import { rentalUnitsAPI, propertiesAPI, assetsAPI, rentalUnitTypesAPI } from '..
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '../../../contexts/AuthContext';
 
 interface Property {
   id: number;
   name: string;
-  address: string;
+  street: string;
+  city: string;
+  island: string;
   bedrooms: number;
   bathrooms: number;
 }
@@ -43,6 +46,7 @@ interface RentalUnit {
 function NewRentalUnitPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
   const propertyIdFromUrl = searchParams.get('property');
   const [properties, setProperties] = useState<Property[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -118,6 +122,7 @@ function NewRentalUnitPageContent() {
       
       const response = await propertiesAPI.getById(propertyId);
       const property = response.data.property;
+      console.log('📋 Property fetched:', { id: property?.id, name: property?.name, street: property?.street });
       setSelectedProperty(property);
       
       // Fetch existing rental units for this property
@@ -133,15 +138,26 @@ function NewRentalUnitPageContent() {
   }, [isLoadingProperty]);
 
   useEffect(() => {
-    fetchProperties();
-    fetchAssets();
-    fetchUnitTypes();
+    console.log('🔧 useEffect triggered', { authLoading, user: !!user, propertyIdFromUrl });
     
-    // If coming from a property page, fetch property details
-    if (propertyIdFromUrl) {
-      fetchPropertyDetails(parseInt(propertyIdFromUrl));
+    if (!authLoading && !user) {
+      console.log('🚪 Redirecting to login');
+      router.push('/login');
+      return;
     }
-  }, [propertyIdFromUrl, fetchPropertyDetails]);
+    
+    if (user) {
+      console.log('👤 User authenticated, fetching data...');
+      fetchProperties();
+      fetchAssets();
+      fetchUnitTypes();
+      
+      // If coming from a property page, fetch property details
+      if (propertyIdFromUrl) {
+        fetchPropertyDetails(parseInt(propertyIdFromUrl));
+      }
+    }
+  }, [user, authLoading, router, propertyIdFromUrl, fetchPropertyDetails]);
 
   const capacity = useMemo(() => {
     if (!selectedProperty) return { availableRooms: 0, availableToilets: 0, totalRooms: 0, totalToilets: 0, allocatedRooms: 0, allocatedToilets: 0 };
@@ -286,7 +302,7 @@ function NewRentalUnitPageContent() {
                 {!propertyIdFromUrl && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Property *
+                      Property * <span className="text-xs text-green-600">(Updated: Shows street address)</span>
                     </label>
                     <select
                       value={formData.property_id}
@@ -295,11 +311,27 @@ function NewRentalUnitPageContent() {
                       required
                     >
                       <option value="">Select a property</option>
-                      {properties.map((property) => (
-                        <option key={property.id} value={property.id.toString()}>
-                          {property.name} - {property.address}
-                        </option>
-                      ))}
+                      {properties.map((property) => {
+                        const street = (property.street || '').trim();
+                        const city = (property.city || '').trim();
+                        const island = (property.island || '').trim();
+                        
+                        let displayText = property.name;
+                        if (street) {
+                          displayText = `${property.name} - ${street}`;
+                        } else if (city || island) {
+                          const location = [city, island].filter(Boolean).join(', ');
+                          if (location) {
+                            displayText = `${property.name} - ${location}`;
+                          }
+                        }
+                        
+                        return (
+                          <option key={property.id} value={property.id.toString()}>
+                            {displayText}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 )}
@@ -310,7 +342,21 @@ function NewRentalUnitPageContent() {
                       Property
                     </label>
                     <div className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-md">
-                      {properties.find(p => p.id.toString() === propertyIdFromUrl)?.name || 'Loading...'}
+                      {(() => {
+                        const property = properties.find(p => p.id.toString() === propertyIdFromUrl);
+                        if (!property) return 'Loading...';
+                        const street = (property.street || '').trim();
+                        const city = (property.city || '').trim();
+                        const island = (property.island || '').trim();
+                        
+                        if (street) {
+                          return `${property.name} - ${street}`;
+                        } else if (city || island) {
+                          const location = [city, island].filter(Boolean).join(', ');
+                          return location ? `${property.name} - ${location}` : property.name;
+                        }
+                        return property.name;
+                      })()}
                     </div>
                   </div>
                 )}
@@ -360,6 +406,17 @@ function NewRentalUnitPageContent() {
               {/* Capacity Display */}
               {selectedProperty && (
                 <div key={`capacity-${selectedProperty.id}`} className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  {/* Property Name Header */}
+                  <div className="mb-4 pb-3 border-b border-blue-300">
+                    <h3 className="text-xl font-bold text-blue-900 mb-1" data-testid="property-name-header">
+                      {selectedProperty.name || 'Property Name'}
+                    </h3>
+                    {(selectedProperty.street || selectedProperty.city || selectedProperty.island) && (
+                      <p className="text-sm text-blue-700 mt-1">
+                        {[selectedProperty.street, selectedProperty.city, selectedProperty.island].filter(Boolean).join(', ')}
+                      </p>
+                    )}
+                  </div>
                   <h4 className="text-sm font-medium text-blue-900 mb-3">Property Capacity</h4>
                   <div className="grid grid-cols-2 gap-6">
                     {/* Bedrooms Column */}

@@ -10,7 +10,7 @@ import { Select } from '@/components/UI/Select';
 import { Textarea } from '@/components/UI/Textarea';
 import { FormSection } from '@/components/UI/FormSection';
 import { ArrowLeft, Save, Building2 } from 'lucide-react';
-import { propertiesAPI } from '@/services/api';
+import { propertiesAPI, rentalUnitTypesAPI, islandsAPI, Island } from '@/services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '@/components/Layout/SidebarLayout';
 
@@ -30,12 +30,21 @@ interface PropertyFormData {
   description?: string;
 }
 
+interface RentalUnitType {
+  id: number;
+  name: string;
+  description?: string;
+  is_active: boolean;
+}
+
 export default function EditPropertyPage() {
   const router = useRouter();
   const params = useParams();
   const propertyId = params.id as string;
   const [loading, setLoading] = useState(false);
   const [property, setProperty] = useState<PropertyFormData | null>(null);
+  const [propertyTypes, setPropertyTypes] = useState<RentalUnitType[]>([]);
+  const [islands, setIslands] = useState<Island[]>([]);
   
   const { register, handleSubmit, formState: { errors }, reset } = useForm<PropertyFormData>({
     defaultValues: {
@@ -71,10 +80,41 @@ export default function EditPropertyPage() {
       
       setProperty(formData);
       reset(formData);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error fetching property:', error);
-      toast.error('Failed to fetch property details');
-      router.push('/properties');
+      
+      // More detailed error handling
+      let errorMessage = 'Failed to fetch property details';
+      let responseStatus: number | undefined;
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { status?: number; data?: { message?: string; error?: string } } };
+        const status = axiosError.response?.status;
+        responseStatus = status;
+        const message = axiosError.response?.data?.message || axiosError.response?.data?.error || errorMessage;
+        
+        if (status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        } else if (status === 403) {
+          errorMessage = 'Access denied. You don\'t have permission to edit this property.';
+        } else if (status === 404) {
+          errorMessage = 'Property not found.';
+        } else if (status === 500) {
+          errorMessage = 'Server error. Please check backend logs.';
+        } else {
+          errorMessage = message;
+        }
+      } else if (error && typeof error === 'object' && 'request' in error) {
+        errorMessage = 'Network error. Please check your connection and ensure the backend API is running.';
+      } else if (error instanceof Error) {
+        errorMessage = error.message || errorMessage;
+      }
+      
+      toast.error(errorMessage);
+      
+      // Only redirect on 404 or 403
+      if (responseStatus === 404 || responseStatus === 403) {
+        router.push('/properties');
+      }
     } finally {
       setLoading(false);
     }
@@ -86,15 +126,84 @@ export default function EditPropertyPage() {
     }
   }, [propertyId, fetchProperty]);
 
+  useEffect(() => {
+    const fetchPropertyTypes = async () => {
+      try {
+        const response = await rentalUnitTypesAPI.getAll({ active_only: true });
+        const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
+        setPropertyTypes(types);
+      } catch (error) {
+        console.error('Error fetching property types:', error);
+        toast.error('Failed to fetch property types');
+      }
+    };
+
+    const fetchIslands = async () => {
+      try {
+        const response = await islandsAPI.getAll({ active_only: true });
+        const islandsData = response.data?.data || [];
+        setIslands(islandsData);
+      } catch (error) {
+        console.error('Error fetching islands:', error);
+        toast.error('Failed to fetch islands');
+      }
+    };
+
+    fetchPropertyTypes();
+    fetchIslands();
+  }, []);
+
   const onSubmit = async (data: PropertyFormData) => {
     try {
       setLoading(true);
+      console.log('Updating property with data:', data);
+      
       await propertiesAPI.update(parseInt(propertyId), data);
+      
       toast.success('Property updated successfully!');
       router.push('/properties');
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error updating property:', error);
-      toast.error('Failed to update property');
+      
+      // More detailed error handling
+      let errorMessage = 'Failed to update property';
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number; 
+            data?: { 
+              message?: string; 
+              error?: string; 
+              errors?: Record<string, string[]> 
+            } 
+          } 
+        };
+        const status = axiosError.response?.status;
+        const message = axiosError.response?.data?.message || axiosError.response?.data?.error || errorMessage;
+        const errors = axiosError.response?.data?.errors;
+        
+        if (status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        } else if (status === 403) {
+          errorMessage = 'Access denied. You don\'t have permission to edit this property.';
+        } else if (status === 404) {
+          errorMessage = 'Property not found.';
+        } else if (status === 422 && errors) {
+          // Validation errors
+          const errorList = Object.values(errors).flat().join(', ');
+          errorMessage = `Validation failed: ${errorList}`;
+        } else if (status === 500) {
+          errorMessage = `Server error: ${message}. Please check backend logs.`;
+        } else {
+          errorMessage = message;
+        }
+      } else if (error && typeof error === 'object' && 'request' in error) {
+        errorMessage = 'Network error. Please check your connection and ensure the backend API is running.';
+      } else if (error instanceof Error) {
+        errorMessage = error.message || errorMessage;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -171,14 +280,15 @@ export default function EditPropertyPage() {
                     <Select
                       {...register('type', { required: 'Property type is required' })}
                     >
-                      <option value="apartment">Apartment</option>
-                      <option value="house">House</option>
-                      <option value="villa">Villa</option>
-                      <option value="commercial">Commercial</option>
-                      <option value="office">Office</option>
-                      <option value="shop">Shop</option>
-                      <option value="warehouse">Warehouse</option>
-                      <option value="land">Land</option>
+                      <option value="">Select property type</option>
+                      {propertyTypes.map((type) => (
+                        <option key={type.id} value={type.name.toLowerCase()}>
+                          {type.name}
+                        </option>
+                      ))}
+                      {propertyTypes.length === 0 && (
+                        <option value="" disabled>Loading types...</option>
+                      )}
                     </Select>
                     {errors.type && (
                       <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
@@ -215,10 +325,19 @@ export default function EditPropertyPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Island *
                     </label>
-                    <Input
-                      placeholder="Enter island"
+                    <Select
                       {...register('island', { required: 'Island is required' })}
-                    />
+                    >
+                      <option value="">Select island</option>
+                      {islands.map((island) => (
+                        <option key={island.id} value={island.name}>
+                          {island.name}
+                        </option>
+                      ))}
+                      {islands.length === 0 && (
+                        <option value="" disabled>Loading islands...</option>
+                      )}
+                    </Select>
                     {errors.island && (
                       <p className="mt-1 text-sm text-red-600">{errors.island.message}</p>
                     )}

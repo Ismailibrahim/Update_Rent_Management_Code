@@ -64,10 +64,45 @@ export default function PropertyDetailsPage() {
       setLoading(true);
       const response = await propertiesAPI.getById(parseInt(propertyId));
       setProperty(response.data.property);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error fetching property:', error);
-      toast.error('Failed to fetch property details');
-      router.push('/properties');
+      
+      // More detailed error handling
+      let errorMessage = 'Failed to fetch property details';
+      let responseStatus: number | undefined;
+      
+      if (error && typeof error === 'object' && 'response' in error) {
+        // Server responded with error
+        const axiosError = error as { response?: { status?: number; data?: { message?: string; error?: string } } };
+        const status = axiosError.response?.status;
+        responseStatus = status;
+        const message = axiosError.response?.data?.message || axiosError.response?.data?.error || errorMessage;
+        
+        if (status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        } else if (status === 403) {
+          errorMessage = 'Access denied. You don\'t have permission to view this property.';
+        } else if (status === 404) {
+          errorMessage = 'Property not found.';
+        } else if (status === 500) {
+          errorMessage = 'Server error. Please try again later.';
+        } else {
+          errorMessage = message;
+        }
+      } else if (error && typeof error === 'object' && 'request' in error) {
+        // Request made but no response (network error)
+        errorMessage = 'Network error. Please check your connection and ensure the backend API is running.';
+      } else if (error instanceof Error) {
+        // Error setting up request
+        errorMessage = error.message || errorMessage;
+      }
+      
+      toast.error(errorMessage);
+      
+      // Only redirect if it's a 404 or 403 error
+      if (responseStatus === 404 || responseStatus === 403) {
+        router.push('/properties');
+      }
     } finally {
       setLoading(false);
     }
@@ -218,10 +253,14 @@ export default function PropertyDetailsPage() {
                       <label className="text-sm font-medium text-gray-600">Status</label>
                       <div className="mt-1">
                         <span className={`px-2 py-1 text-xs rounded-full ${
-                          property.status === 'occupied' 
-                            ? 'bg-green-100 text-green-800' 
-                            : property.status === 'vacant'
+                          property.status === 'vacant'
+                            ? 'bg-green-100 text-green-800'
+                            : property.status === 'occupied'
                             ? 'bg-blue-100 text-blue-800'
+                            : property.status === 'maintenance'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : property.status === 'renovation'
+                            ? 'bg-orange-100 text-orange-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}>
                           {property.status}

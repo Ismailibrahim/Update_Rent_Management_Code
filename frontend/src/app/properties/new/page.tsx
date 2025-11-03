@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/UI/Card';
@@ -10,7 +10,7 @@ import { Select } from '../../../components/UI/Select';
 import { Textarea } from '../../../components/UI/Textarea';
 import { FormSection } from '../../../components/UI/FormSection';
 import { ArrowLeft, Save, Building2 } from 'lucide-react';
-import { propertiesAPI } from '../../../services/api';
+import { propertiesAPI, rentalUnitTypesAPI, islandsAPI, Island } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
 
@@ -30,18 +30,54 @@ interface PropertyFormData {
   description?: string;
 }
 
+interface RentalUnitType {
+  id: number;
+  name: string;
+  description?: string;
+  is_active: boolean;
+}
+
 export default function NewPropertyPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [propertyTypes, setPropertyTypes] = useState<RentalUnitType[]>([]);
+  const [islands, setIslands] = useState<Island[]>([]);
   
   const { register, handleSubmit, formState: { errors } } = useForm<PropertyFormData>({
     defaultValues: {
       status: 'vacant',
-      type: 'apartment',
+      type: '',
       number_of_floors: 1,
       number_of_rental_units: 1
     }
   });
+
+  useEffect(() => {
+    const fetchPropertyTypes = async () => {
+      try {
+        const response = await rentalUnitTypesAPI.getAll({ active_only: true });
+        const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
+        setPropertyTypes(types);
+      } catch (error) {
+        console.error('Error fetching property types:', error);
+        toast.error('Failed to fetch property types');
+      }
+    };
+
+    const fetchIslands = async () => {
+      try {
+        const response = await islandsAPI.getAll({ active_only: true });
+        const islandsData = response.data?.data || [];
+        setIslands(islandsData);
+      } catch (error) {
+        console.error('Error fetching islands:', error);
+        toast.error('Failed to fetch islands');
+      }
+    };
+
+    fetchPropertyTypes();
+    fetchIslands();
+  }, []);
 
   const onSubmit = async (data: PropertyFormData) => {
     try {
@@ -118,14 +154,15 @@ export default function NewPropertyPage() {
                     <Select
                       {...register('type', { required: 'Property type is required' })}
                     >
-                      <option value="apartment">Apartment</option>
-                      <option value="house">House</option>
-                      <option value="villa">Villa</option>
-                      <option value="commercial">Commercial</option>
-                      <option value="office">Office</option>
-                      <option value="shop">Shop</option>
-                      <option value="warehouse">Warehouse</option>
-                      <option value="land">Land</option>
+                      <option value="">Select property type</option>
+                      {propertyTypes.map((type) => (
+                        <option key={type.id} value={type.name.toLowerCase()}>
+                          {type.name}
+                        </option>
+                      ))}
+                      {propertyTypes.length === 0 && (
+                        <option value="" disabled>Loading types...</option>
+                      )}
                     </Select>
                     {errors.type && (
                       <p className="mt-1 text-sm text-red-600">{errors.type.message}</p>
@@ -162,10 +199,19 @@ export default function NewPropertyPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Island *
                     </label>
-                    <Input
-                      placeholder="Enter island"
+                    <Select
                       {...register('island', { required: 'Island is required' })}
-                    />
+                    >
+                      <option value="">Select island</option>
+                      {islands.map((island) => (
+                        <option key={island.id} value={island.name}>
+                          {island.name}
+                        </option>
+                      ))}
+                      {islands.length === 0 && (
+                        <option value="" disabled>Loading islands...</option>
+                      )}
+                    </Select>
                     {errors.island && (
                       <p className="mt-1 text-sm text-red-600">{errors.island.message}</p>
                     )}

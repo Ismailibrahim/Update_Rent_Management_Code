@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Building2, Plus, Search, Edit, Trash2, Eye } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
+import { Building2, Plus, Search, Edit, Trash2, Eye, Upload, Download } from 'lucide-react';
 import { propertiesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -52,9 +53,41 @@ export default function PropertiesPage() {
       setLoading(true);
       const response = await propertiesAPI.getAll();
       setProperties(response.data.properties || []);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error fetching properties:', error);
-      toast.error('Failed to fetch properties');
+      
+      // More detailed error handling
+      let errorMessage = 'Failed to fetch properties';
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { status?: number; data?: { message?: string; error?: string } } };
+        // Server responded with error
+        const status = axiosError.response?.status;
+        const message = axiosError.response?.data?.message || axiosError.response?.data?.error || errorMessage;
+        
+        if (status === 401) {
+          errorMessage = 'Authentication required. Please log in again.';
+        } else if (status === 403) {
+          errorMessage = 'Access denied. You don\'t have permission to view properties.';
+        } else if (status === 500) {
+          errorMessage = 'Server error. Please try again later.';
+        } else {
+          errorMessage = message;
+        }
+      } else if (error && typeof error === 'object' && 'request' in error) {
+        // Request made but no response (network error)
+        const requestError = error as { config?: { url?: string; baseURL?: string; timeout?: number } };
+        errorMessage = 'Network error. Please check your connection and ensure the backend API is running.';
+        console.error('Network error details:', {
+          url: requestError.config?.url,
+          baseURL: requestError.config?.baseURL,
+          timeout: requestError.config?.timeout
+        });
+      } else if (error instanceof Error) {
+        // Error setting up request
+        errorMessage = error.message || errorMessage;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -113,10 +146,20 @@ export default function PropertiesPage() {
               Manage your rental properties
             </p>
           </div>
-          <Button className="flex items-center" onClick={handleAddProperty}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Property
-          </Button>
+          <div className="flex space-x-2">
+            <Button 
+              variant="outline" 
+              className="flex items-center" 
+              onClick={() => router.push('/properties/import')}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Import
+            </Button>
+            <Button className="flex items-center" onClick={handleAddProperty}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Property
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -130,94 +173,103 @@ export default function PropertiesPage() {
           />
         </div>
 
-        {/* Properties Grid */}
+        {/* Properties Table */}
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredProperties.map((property) => (
-              <Card key={property.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="text-lg">{property.name}</CardTitle>
-                      <CardDescription className="mt-1">
-                        {property.street}, {property.city}, {property.island}
-                      </CardDescription>
-                    </div>
-                    <span className={`px-2 py-1 text-xs rounded-full ${
-                      property.status === 'occupied' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {property.status}
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Type:</span>
-                      <span className="text-sm font-medium capitalize">{property.type}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Floors:</span>
-                      <span className="text-sm font-medium">{property.number_of_floors || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Rental Units:</span>
-                      <span className="text-sm font-medium">{property.number_of_rental_units || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Bedrooms:</span>
-                      <span className="text-sm font-medium">{property.bedrooms || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-gray-600">Bathrooms:</span>
-                      <span className="text-sm font-medium">{property.bathrooms || 'N/A'}</span>
-                    </div>
-                    {property.square_feet && (
-                      <div className="flex justify-between">
-                        <span className="text-sm text-gray-600">Square Feet:</span>
-                        <span className="text-sm font-medium">{property.square_feet.toLocaleString()}</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex justify-end space-x-2 mt-4">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleViewProperty(property.id)}
-                      title="View Property"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleEditProperty(property.id)}
-                      title="Edit Property"
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => handleDeleteProperty(property.id)}
-                      className="text-red-600 hover:text-red-700"
-                      title="Delete Property"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
+        ) : filteredProperties.length > 0 ? (
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Address</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Floors</TableHead>
+                      <TableHead>Units</TableHead>
+                      <TableHead>Bedrooms</TableHead>
+                      <TableHead>Bathrooms</TableHead>
+                      <TableHead>Square Feet</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredProperties.map((property) => (
+                      <TableRow key={property.id} className="hover:bg-gray-50">
+                        <TableCell className="font-medium">{property.name}</TableCell>
+                        <TableCell>
+                          <div className="text-sm text-gray-600">
+                            {property.street}, {property.island}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm capitalize">{property.type}</span>
+                        </TableCell>
+                        <TableCell>{property.number_of_floors || 'N/A'}</TableCell>
+                        <TableCell>{property.number_of_rental_units || 'N/A'}</TableCell>
+                        <TableCell>{property.bedrooms || 'N/A'}</TableCell>
+                        <TableCell>{property.bathrooms || 'N/A'}</TableCell>
+                        <TableCell>
+                          {property.square_feet ? property.square_feet.toLocaleString() : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            property.status === 'vacant'
+                              ? 'bg-green-100 text-green-800'
+                              : property.status === 'occupied'
+                              ? 'bg-blue-100 text-blue-800'
+                              : property.status === 'maintenance'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : property.status === 'renovation'
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {property.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end space-x-2">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleViewProperty(property.id)}
+                              title="View Property"
+                              className="h-8 w-8 p-0"
+                            >
+                              <Eye className="h-4 w-4 text-blue-600" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleEditProperty(property.id)}
+                              title="Edit Property"
+                              className="h-8 w-8 p-0"
+                            >
+                              <Edit className="h-4 w-4 text-blue-600" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleDeleteProperty(property.id)}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                              title="Delete Property"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {!loading && filteredProperties.length === 0 && (
           <div className="text-center py-12">

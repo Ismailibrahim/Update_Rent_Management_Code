@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   
   // Enable React strict mode
   reactStrictMode: true,
+  
+  // Ensure server binds to all interfaces (0.0.0.0)
+  // This is handled by Next.js automatically, but explicit config helps
 };
 
 export default nextConfig;

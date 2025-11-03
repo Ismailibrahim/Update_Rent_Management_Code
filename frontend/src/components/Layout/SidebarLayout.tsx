@@ -30,7 +30,8 @@ import {
   TrendingUp,
   UserCog,
   BookOpen,
-  Calculator
+  Calculator,
+  Map
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -57,6 +58,7 @@ const navigationGroups: NavigationGroup[] = [
       { name: 'Properties', href: '/properties', icon: Building2 },
       { name: 'Rental Units', href: '/rental-units', icon: HomeIcon },
       { name: 'Rental Unit Types', href: '/rental-unit-types', icon: Building },
+      { name: 'Islands', href: '/islands', icon: Map },
       { name: 'Tenants', href: '/tenants', icon: Users },
       { name: 'Assets', href: '/assets', icon: Package },
     ]

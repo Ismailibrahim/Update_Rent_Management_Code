@@ -36,3 +36,38 @@ Thumbs.db
 # Backups
 backup-*.sql
 *.sql.bak
+*.backup.*
+.env.backup.*
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/vendor/
+
+# Temporary/Debug files
+CHECK_*.md
+DEBUG_*.md
+FIX_*.md
+QUICK_*.md
+URGENT_*.md
+VERIFY_*.md
+TROUBLESHOOT*.md
+INSTALL_*.md
+START_*.md
+SWITCH_*.md
+REBUILD_*.md
+RESTART_*.md
+POPULATE_*.md
+CONSOLIDATE_*.md
+DEV_MODE_*.md
+DIRECT_*.md
+DOCKER_FIX_*.md
+FINAL_*.md
+NODE_VERSION_*.md
+IMMEDIATE_*.md
+PERMANENT-*.md
+
+# Temporary scripts
+*.sh
+!docker-entrypoint.sh
+!fix-docker-permissions.sh

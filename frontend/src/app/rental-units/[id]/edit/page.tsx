@@ -13,7 +13,9 @@ import { useRouter, useParams } from 'next/navigation';
 interface Property {
   id: number;
   name: string;
-  address: string;
+  street: string;
+  city: string;
+  island: string;
 }
 
 interface Asset {
@@ -372,7 +374,7 @@ export default function EditRentalUnitPage() {
                     <option value="">Select a property</option>
                     {properties.map((property) => (
                       <option key={property.id} value={property.id.toString()}>
-                        {property.name} - {property.address}
+                        {property.name}{property.street && property.street.trim() ? ` - ${property.street.trim()}` : ''}
                       </option>
                     ))}
                   </select>
