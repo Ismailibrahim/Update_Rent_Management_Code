@@ -31,7 +31,10 @@ import {
   UserCog,
   BookOpen,
   Calculator,
-  Map
+  Map,
+  MessageSquare,
+  Send,
+  FileText as FileTextIcon
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -104,6 +107,10 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { name: 'Settings', href: '/settings', icon: Settings },
       { name: 'Currencies', href: '/currencies', icon: Coins },
+      { name: 'SMS Templates', href: '/sms/templates', icon: MessageSquare },
+      { name: 'SMS Settings', href: '/sms/settings', icon: Settings },
+      { name: 'Send SMS', href: '/sms/send', icon: Send },
+      { name: 'SMS Logs', href: '/sms/logs', icon: FileTextIcon },
     ]
   },
 ];
@@ -178,6 +185,7 @@ export default function SidebarLayout({ children }: SidebarProps) {
             <div className="mb-4">
               <Link
                 href="/dashboard"
+                prefetch={true}
                 className={`
                   flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors
                   ${pathname === '/dashboard'
@@ -230,6 +238,7 @@ export default function SidebarLayout({ children }: SidebarProps) {
                           <Link
                             key={item.name}
                             href={item.href}
+                            prefetch={true}
                             className={`
                               flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors
                               ${isActive

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/UI/Card';
 import { Button } from '@/components/UI/Button';
 import { ArrowLeft, Edit, Trash2, Building2, MapPin, Calendar, Users, Home } from 'lucide-react';
@@ -64,6 +65,7 @@ export default function PropertyDetailsPage() {
       setLoading(true);
       const response = await propertiesAPI.getById(parseInt(propertyId));
       setProperty(response.data.property);
+      setLoading(false); // Stop loading as soon as property data arrives
     } catch (error: unknown) {
       console.error('Error fetching property:', error);
       
@@ -102,9 +104,9 @@ export default function PropertyDetailsPage() {
       // Only redirect if it's a 404 or 403 error
       if (responseStatus === 404 || responseStatus === 403) {
         router.push('/properties');
+      } else {
+        setLoading(false); // Ensure loading is set to false on error too
       }
-    } finally {
-      setLoading(false);
     }
   }, [propertyId, router]);
 
@@ -125,14 +127,14 @@ export default function PropertyDetailsPage() {
 
   useEffect(() => {
     if (propertyId) {
+      // Fetch property first (critical data), then rental units (secondary data)
+      // This allows the page to render property details immediately while rental units load
       fetchProperty();
-      fetchRentalUnits();
+      fetchRentalUnits(); // Don't wait for this to render the page
     }
   }, [propertyId, fetchProperty, fetchRentalUnits]);
 
-  const handleEdit = () => {
-    router.push(`/properties/${propertyId}/edit`);
-  };
+  // Edit navigation is now handled by Link component with prefetch - no need for this handler
 
   const handleDelete = async () => {
     if (!confirm('Are you sure you want to delete this property?')) return;
@@ -161,6 +163,7 @@ export default function PropertyDetailsPage() {
     }
   };
 
+  // Back navigation can use router.push since it's going back to a list page
   const handleBack = () => {
     router.push('/properties');
   };
@@ -168,8 +171,36 @@ export default function PropertyDetailsPage() {
   if (loading) {
     return (
       <SidebarLayout>
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="space-y-6 animate-pulse">
+          <div className="flex items-center space-x-4">
+            <div className="h-8 w-8 bg-gray-200 rounded"></div>
+            <div className="h-8 w-48 bg-gray-200 rounded"></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <div className="h-6 w-32 bg-gray-200 rounded"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="h-4 w-full bg-gray-200 rounded"></div>
+                  <div className="h-4 w-3/4 bg-gray-200 rounded"></div>
+                  <div className="h-4 w-1/2 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <div className="h-6 w-32 bg-gray-200 rounded"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="h-4 w-full bg-gray-200 rounded"></div>
+                  <div className="h-4 w-3/4 bg-gray-200 rounded"></div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </SidebarLayout>
     );
@@ -198,15 +229,16 @@ export default function PropertyDetailsPage() {
         {/* Page Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleBack}
-              className="flex items-center"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
+            <Link href="/properties" prefetch={true}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="flex items-center"
+              >
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+            </Link>
             <div>
               <h1 className="text-3xl font-bold text-gray-900">{property.name}</h1>
               <p className="mt-2 text-gray-600">
@@ -216,10 +248,12 @@ export default function PropertyDetailsPage() {
             </div>
           </div>
           <div className="flex space-x-2">
-            <Button onClick={handleEdit} className="flex items-center">
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Property
-            </Button>
+            <Link href={`/properties/${propertyId}/edit`} prefetch={true}>
+              <Button className="flex items-center">
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Property
+              </Button>
+            </Link>
             <Button 
               variant="outline" 
               onClick={handleDelete}

@@ -9,7 +9,8 @@ import { Input } from '@/components/UI/Input';
 import { Select } from '@/components/UI/Select';
 import { Textarea } from '@/components/UI/Textarea';
 import { FormSection } from '@/components/UI/FormSection';
-import { ArrowLeft, Save, Building2 } from 'lucide-react';
+import { ArrowLeft, Save, Building2, X } from 'lucide-react';
+import Link from 'next/link';
 import { propertiesAPI, rentalUnitTypesAPI, islandsAPI, Island } from '@/services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '@/components/Layout/SidebarLayout';
@@ -127,30 +128,26 @@ export default function EditPropertyPage() {
   }, [propertyId, fetchProperty]);
 
   useEffect(() => {
-    const fetchPropertyTypes = async () => {
+    // Fetch property types and islands in parallel for faster loading
+    const fetchData = async () => {
       try {
-        const response = await rentalUnitTypesAPI.getAll({ active_only: true });
-        const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
+        const [typesResponse, islandsResponse] = await Promise.all([
+          rentalUnitTypesAPI.getAll({ active_only: true }),
+          islandsAPI.getAll({ active_only: true })
+        ]);
+        
+        const types = (typesResponse.data?.data?.unitTypes ?? typesResponse.data?.unitTypes) || [];
+        const islandsData = islandsResponse.data?.data || [];
+        
         setPropertyTypes(types);
-      } catch (error) {
-        console.error('Error fetching property types:', error);
-        toast.error('Failed to fetch property types');
-      }
-    };
-
-    const fetchIslands = async () => {
-      try {
-        const response = await islandsAPI.getAll({ active_only: true });
-        const islandsData = response.data?.data || [];
         setIslands(islandsData);
       } catch (error) {
-        console.error('Error fetching islands:', error);
-        toast.error('Failed to fetch islands');
+        console.error('Error fetching data:', error);
+        toast.error('Failed to fetch data');
       }
     };
 
-    fetchPropertyTypes();
-    fetchIslands();
+    fetchData();
   }, []);
 
   const onSubmit = async (data: PropertyFormData) => {
@@ -188,6 +185,10 @@ export default function EditPropertyPage() {
           errorMessage = 'Access denied. You don\'t have permission to edit this property.';
         } else if (status === 404) {
           errorMessage = 'Property not found.';
+        } else if (status === 400 && errors) {
+          // Validation errors (including duplicates)
+          const errorList = Object.values(errors).flat().join(', ');
+          errorMessage = errorList;
         } else if (status === 422 && errors) {
           // Validation errors
           const errorList = Object.values(errors).flat().join(', ');
@@ -228,15 +229,16 @@ export default function EditPropertyPage() {
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex items-center space-x-4">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleCancel}
-            className="flex items-center"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+          <Link href="/properties" prefetch={true}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex items-center gap-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </Link>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Edit Property</h1>
             <p className="mt-2 text-gray-600">
@@ -482,25 +484,30 @@ export default function EditPropertyPage() {
               </FormSection>
 
               {/* Form Actions */}
-              <div className="flex justify-end space-x-4 pt-6 border-t">
+              <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
                 <Button 
                   type="button" 
                   variant="outline" 
                   onClick={handleCancel}
                   disabled={loading}
+                  className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
+                  <X className="h-4 w-4" />
                   Cancel
                 </Button>
                 <Button 
                   type="submit" 
                   disabled={loading}
-                  className="flex items-center"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
-                    'Updating...'
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Updating...
+                    </>
                   ) : (
                     <>
-                      <Save className="h-4 w-4 mr-2" />
+                      <Save className="h-4 w-4" />
                       Update Property
                     </>
                   )}

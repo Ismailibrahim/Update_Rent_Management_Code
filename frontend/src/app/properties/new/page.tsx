@@ -9,7 +9,8 @@ import { Input } from '../../../components/UI/Input';
 import { Select } from '../../../components/UI/Select';
 import { Textarea } from '../../../components/UI/Textarea';
 import { FormSection } from '../../../components/UI/FormSection';
-import { ArrowLeft, Save, Building2 } from 'lucide-react';
+import { ArrowLeft, Save, Building2, X } from 'lucide-react';
+import Link from 'next/link';
 import { propertiesAPI, rentalUnitTypesAPI, islandsAPI, Island } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
@@ -85,9 +86,33 @@ export default function NewPropertyPage() {
       await propertiesAPI.create(data);
       toast.success('Property created successfully!');
       router.push('/properties');
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error creating property:', error);
-      toast.error('Failed to create property');
+      
+      let errorMessage = 'Failed to create property';
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { 
+          response?: { 
+            status?: number; 
+            data?: { 
+              message?: string; 
+              error?: string; 
+              errors?: Record<string, string[]> 
+            } 
+          } 
+        };
+        const errors = axiosError.response?.data?.errors;
+        
+        if (errors) {
+          // Display specific error messages
+          const errorList = Object.values(errors).flat();
+          errorMessage = errorList.join(', ');
+        } else {
+          errorMessage = axiosError.response?.data?.message || axiosError.response?.data?.error || errorMessage;
+        }
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -102,15 +127,16 @@ export default function NewPropertyPage() {
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex items-center space-x-4">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleCancel}
-            className="flex items-center"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+          <Link href="/properties" prefetch={true}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex items-center gap-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </Link>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Add New Property</h1>
             <p className="mt-2 text-gray-600">
@@ -356,25 +382,30 @@ export default function NewPropertyPage() {
               </FormSection>
 
               {/* Form Actions */}
-              <div className="flex justify-end space-x-4 pt-6 border-t">
+              <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
                 <Button 
                   type="button" 
                   variant="outline" 
                   onClick={handleCancel}
                   disabled={loading}
+                  className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
+                  <X className="h-4 w-4" />
                   Cancel
                 </Button>
                 <Button 
                   type="submit" 
                   disabled={loading}
-                  className="flex items-center"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
-                    'Creating...'
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Creating...
+                    </>
                   ) : (
                     <>
-                      <Save className="h-4 w-4 mr-2" />
+                      <Save className="h-4 w-4" />
                       Create Property
                     </>
                   )}

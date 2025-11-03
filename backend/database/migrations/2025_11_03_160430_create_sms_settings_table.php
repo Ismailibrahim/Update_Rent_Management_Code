@@ -13,7 +13,12 @@ return new class extends Migration
     {
         Schema::create('sms_settings', function (Blueprint $table) {
             $table->id();
+            $table->string('setting_key')->unique();
+            $table->text('setting_value')->nullable();
+            $table->text('description')->nullable();
             $table->timestamps();
+            
+            $table->index('setting_key');
         });
     }
 

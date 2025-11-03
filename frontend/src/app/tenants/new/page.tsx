@@ -108,9 +108,13 @@ export default function NewTenantPage() {
             toast.error('Please fill in first name and last name for individual tenant');
             return;
           }
+          if (!formData.email || !formData.phone) {
+            toast.error('Please fill in email and phone for individual tenant');
+            return;
+          }
         } else if (formData.tenant_type === 'company') {
           if (!formData.company_name || !formData.company_address || !formData.company_registration_number || !formData.company_telephone || !formData.company_email) {
-            toast.error('Please fill in all required fields for company tenant');
+            toast.error('Please fill in all required company fields (name, address, registration number, telephone, and email)');
             return;
           }
           // For company tenants, personal information is optional

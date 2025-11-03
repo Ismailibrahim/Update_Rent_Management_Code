@@ -9,6 +9,7 @@ import { rentalUnitsAPI, propertiesAPI, assetsAPI, tenantsAPI, rentalUnitTypesAP
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../../components/Layout/SidebarLayout';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 
 interface Property {
   id: number;
@@ -63,6 +64,13 @@ export default function EditRentalUnitPage() {
     number_of_rooms: '',
     number_of_toilets: '',
     square_feet: '',
+    // Utility meter information
+    water_meter_number: '',
+    water_billing_account: '',
+    electricity_meter_number: '',
+    electricity_billing_account: '',
+    // Access card numbers
+    access_card_numbers: '',
     status: 'available',
     tenant_id: '',
     notes: ''
@@ -85,6 +93,13 @@ export default function EditRentalUnitPage() {
         number_of_rooms: unit.number_of_rooms.toString(),
         number_of_toilets: unit.number_of_toilets.toString(),
         square_feet: unit.square_feet ? unit.square_feet.toString() : '',
+        // Utility meter information
+        water_meter_number: unit.water_meter_number || '',
+        water_billing_account: unit.water_billing_account || '',
+        electricity_meter_number: unit.electricity_meter_number || '',
+        electricity_billing_account: unit.electricity_billing_account || '',
+        // Access card numbers
+        access_card_numbers: unit.access_card_numbers || '',
         status: unit.status,
         tenant_id: unit.tenant_id ? unit.tenant_id.toString() : '',
         notes: unit.notes || ''
@@ -218,6 +233,13 @@ export default function EditRentalUnitPage() {
         number_of_rooms: parseInt(formData.number_of_rooms),
         number_of_toilets: parseInt(formData.number_of_toilets),
         square_feet: formData.square_feet ? parseFloat(formData.square_feet) : undefined,
+        // Utility meter information - convert empty strings to undefined
+        water_meter_number: formData.water_meter_number?.trim() || undefined,
+        water_billing_account: formData.water_billing_account?.trim() || undefined,
+        electricity_meter_number: formData.electricity_meter_number?.trim() || undefined,
+        electricity_billing_account: formData.electricity_billing_account?.trim() || undefined,
+        // Access card numbers - convert empty strings to undefined
+        access_card_numbers: formData.access_card_numbers?.trim() || undefined,
         tenant_id: formData.tenant_id ? parseInt(formData.tenant_id) : undefined
       };
 
@@ -342,13 +364,23 @@ export default function EditRentalUnitPage() {
   return (
     <SidebarLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={handleCancel} className="flex items-center">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Rental Units
-          </Button>
-          <h1 className="text-3xl font-bold text-gray-900">Edit Rental Unit</h1>
-          <div></div> {/* Spacer for alignment */}
+        <div className="flex items-center space-x-4">
+          <Link href="/rental-units" prefetch={true}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex items-center gap-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Edit Rental Unit</h1>
+            <p className="mt-2 text-gray-600">
+              Update rental unit information
+            </p>
+          </div>
         </div>
 
         <Card>
@@ -554,6 +586,103 @@ export default function EditRentalUnitPage() {
                 />
               </div>
 
+              {/* Utility Meter Information */}
+              <div className="space-y-4 border-t pt-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Utility Meter Information</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Enter water and electricity meter details for this rental unit (optional)
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Water Meter Number
+                    </label>
+                    <Input
+                      placeholder="Enter water meter number"
+                      value={formData.water_meter_number}
+                      onChange={(e) => setFormData(prev => ({ ...prev, water_meter_number: e.target.value }))}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Water Billing Account Number
+                    </label>
+                    <Input
+                      placeholder="Enter water billing account number"
+                      value={formData.water_billing_account}
+                      onChange={(e) => setFormData(prev => ({ ...prev, water_billing_account: e.target.value }))}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Electricity Meter Number
+                    </label>
+                    <Input
+                      placeholder="Enter electricity meter number"
+                      value={formData.electricity_meter_number}
+                      onChange={(e) => setFormData(prev => ({ ...prev, electricity_meter_number: e.target.value }))}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Electricity Billing Account Number
+                    </label>
+                    <Input
+                      placeholder="Enter electricity billing account number"
+                      value={formData.electricity_billing_account}
+                      onChange={(e) => setFormData(prev => ({ ...prev, electricity_billing_account: e.target.value }))}
+                      maxLength={100}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Access Card Numbers */}
+              <div className="space-y-4 border-t pt-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Card Numbers</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    Enter access card numbers separated by commas (optional). Each card number must be unique across all rental units.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Card Numbers
+                  </label>
+                  <textarea
+                    placeholder="e.g., CARD001, CARD002, CARD003"
+                    value={formData.access_card_numbers}
+                    onChange={(e) => setFormData(prev => ({ ...prev, access_card_numbers: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[80px]"
+                    maxLength={500}
+                  />
+                  {formData.access_card_numbers && (
+                    <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Parsed Card Numbers:</p>
+                      <ul className="space-y-1">
+                        {formData.access_card_numbers
+                          .split(',')
+                          .map(card => card.trim())
+                          .filter(card => card.length > 0)
+                          .map((card, index) => (
+                            <li key={index} className="text-sm text-gray-600 flex items-center gap-2">
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-xs font-medium">
+                                {index + 1}
+                              </span>
+                              <span>{card}</span>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Tenant Assignment */}
               <div className="space-y-4">
                 <div>
@@ -715,13 +844,13 @@ export default function EditRentalUnitPage() {
                                           <span className="text-gray-400 text-xs">N/A</span>
                                         )}
                                       </td>
-                                      <td className="py-3 px-4">
+                                      <td className="py-3 px-4 text-right">
                                         <Button
                                           type="button"
                                           variant="outline"
                                           size="sm"
                                           onClick={() => setSelectedAssets(prev => prev.filter(id => id !== assetId))}
-                                          className="text-red-600 hover:text-red-700"
+                                          className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
                                         >
                                           <X className="h-4 w-4" />
                                         </Button>
@@ -743,13 +872,33 @@ export default function EditRentalUnitPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-4 pt-6">
-                <Button type="button" variant="outline" onClick={handleCancel}>
-                  <X className="h-4 w-4 mr-2" />
+              <div className="flex justify-end gap-3 pt-6 border-t border-gray-200">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleCancel}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <X className="h-4 w-4" />
                   Cancel
                 </Button>
-                <Button type="submit" disabled={loading}>
-                  {loading ? 'Updating...' : <><Save className="h-4 w-4 mr-2" /> Update Rental Unit</>}
+                <Button 
+                  type="submit" 
+                  disabled={loading}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Update Rental Unit
+                    </>
+                  )}
                 </Button>
               </div>
             </form>

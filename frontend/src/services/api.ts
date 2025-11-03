@@ -175,6 +175,13 @@ export interface RentalUnit {
   number_of_rooms: number;
   number_of_toilets: number;
   square_feet?: number;
+  // Utility meter information
+  water_meter_number?: string;
+  water_billing_account?: string;
+  electricity_meter_number?: string;
+  electricity_billing_account?: string;
+  // Access card numbers
+  access_card_numbers?: string;
   status: string;
   tenant_id?: number;
   move_in_date?: string;
@@ -440,6 +447,11 @@ export const assetsAPI = {
   update: (id: number, data: Partial<Asset>) => api.put(`/assets/${id}`, data),
   updateStatus: (id: number, data: { status: string; maintenance_notes?: string; quantity?: number }) => api.patch(`/assets/${id}/status`, data),
   delete: (id: number) => api.delete(`/assets/${id}`),
+  getImportTemplate: () => api.get('/assets/import/template'),
+  previewImport: (data: { csv_data: string; field_mapping: Record<number, string>; has_header: boolean }) => 
+    api.post('/assets/import/preview', data),
+  import: (data: { csv_data: string; field_mapping: Record<number, string>; has_header: boolean; skip_errors: boolean }) => 
+    api.post('/assets/import', data),
 };
 
         // Rental Units API
@@ -840,6 +852,81 @@ export const maintenanceInvoicesAPI = {
   getById: (id: number) => api.get(`/maintenance-invoices/${id}`),
   update: (id: number, data: Partial<MaintenanceInvoice>) => api.put(`/maintenance-invoices/${id}`, data),
   delete: (id: number) => api.delete(`/maintenance-invoices/${id}`),
+};
+
+// SMS Interfaces
+export interface SmsTemplate {
+  id: number;
+  name: string;
+  type: 'rent_reminder' | 'payment_confirmation' | 'lease_expiry' | 'custom';
+  content: string;
+  variables?: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsSetting {
+  id: number;
+  setting_key: string;
+  setting_value: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SmsLog {
+  id: number;
+  tenant_id?: number;
+  rental_unit_id?: number;
+  template_id?: number;
+  phone_number: string;
+  message_content: string;
+  status: 'pending' | 'sent' | 'failed';
+  api_response?: Record<string, unknown>;
+  error_message?: string;
+  sent_at?: string;
+  created_at: string;
+  updated_at: string;
+  tenant?: Tenant;
+  rental_unit?: RentalUnit;
+  template?: SmsTemplate;
+}
+
+// SMS APIs
+export const smsTemplatesAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/sms-templates', { params }),
+  getById: (id: number) => api.get(`/sms-templates/${id}`),
+  create: (data: Partial<SmsTemplate>) => api.post('/sms-templates', data),
+  update: (id: number, data: Partial<SmsTemplate>) => api.put(`/sms-templates/${id}`, data),
+  delete: (id: number) => api.delete(`/sms-templates/${id}`),
+};
+
+export const smsSettingsAPI = {
+  getAll: () => api.get('/sms-settings'),
+  update: (settings: Array<{ key: string; value: string; description?: string }>) => 
+    api.post('/sms-settings', { settings }),
+  getByKey: (key: string) => api.get(`/sms-settings/${key}`),
+};
+
+export const smsLogsAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/sms-logs', { params }),
+  getById: (id: number) => api.get(`/sms-logs/${id}`),
+};
+
+export const smsNotificationsAPI = {
+  sendManual: (data: {
+    tenant_ids: number[];
+    template_id?: number;
+    message?: string;
+    custom_data?: Record<string, unknown>;
+  }) => api.post('/sms-notifications/send', data),
+  previewTemplate: (data: {
+    template_id: number;
+    tenant_id?: number;
+    custom_data?: Record<string, unknown>;
+  }) => api.post('/sms-notifications/preview', data),
+  testConnection: () => api.get('/sms-notifications/test-connection'),
 };
 
 export default api;

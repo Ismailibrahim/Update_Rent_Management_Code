@@ -54,6 +54,8 @@ services:
       - CACHE_STORE=${CACHE_STORE:-database}
       - SESSION_DRIVER=${SESSION_DRIVER:-database}
       - QUEUE_CONNECTION=${QUEUE_CONNECTION:-database}
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
     depends_on:
       mysql:
         condition: service_healthy

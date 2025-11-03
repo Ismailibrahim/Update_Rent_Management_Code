@@ -54,6 +54,20 @@ if [ ! -L public/storage ]; then
     php artisan storage:link || echo "Warning: Could not create storage link"
 fi
 
+# Fix permissions for host filesystem access (if HOST_UID is set)
+if [ -n "$HOST_UID" ] && [ -d "/var/www/html/app" ]; then
+    echo "Fixing file permissions for host user (UID: $HOST_UID)..."
+    HOST_GID=${HOST_GID:-$HOST_UID}
+    # Fix ownership for common directories
+    chown -R $HOST_UID:$HOST_GID /var/www/html/app /var/www/html/config /var/www/html/database /var/www/html/routes /var/www/html/artisan 2>/dev/null || true
+    # Also fix any root-owned files that might have been created
+    find /var/www/html/app -user root -type f -exec chown $HOST_UID:$HOST_GID {} \; 2>/dev/null || true
+    find /var/www/html/config -user root -type f -exec chown $HOST_UID:$HOST_GID {} \; 2>/dev/null || true
+    find /var/www/html/database -user root -type f -exec chown $HOST_UID:$HOST_GID {} \; 2>/dev/null || true
+    find /var/www/html/routes -user root -type f -exec chown $HOST_UID:$HOST_GID {} \; 2>/dev/null || true
+    echo "Permissions fixed!"
+fi
+
 echo "Application setup complete! Starting PHP-FPM..."
 
 # Start PHP-FPM (this should never fail - it's the main process)

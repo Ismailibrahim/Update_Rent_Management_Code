@@ -23,6 +23,13 @@ class RentalUnit extends Model
         'number_of_rooms',
         'number_of_toilets',
         'square_feet',
+        // Utility meter information
+        'water_meter_number',
+        'water_billing_account',
+        'electricity_meter_number',
+        'electricity_billing_account',
+        // Access card numbers
+        'access_card_numbers',
         'status',
         'tenant_id',
         'move_in_date',

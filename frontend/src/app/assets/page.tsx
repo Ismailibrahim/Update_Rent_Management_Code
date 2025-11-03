@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/UI/Dialog';
-import { Package, Plus, Search, Edit, Trash2, Save, X } from 'lucide-react';
+import { Package, Plus, Search, Edit, Trash2, Save, X, Upload, ArrowUp, ArrowDown } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
 import { assetsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -24,6 +26,8 @@ export default function AssetsPage() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
   const [formData, setFormData] = useState({
@@ -62,14 +66,83 @@ export default function AssetsPage() {
     }
   };
 
-  const filteredAssets = assets
-    .filter(asset =>
-      asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.serial_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      asset.category.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const filteredAssets = assets.filter(asset =>
+    asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    asset.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    asset.serial_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    asset.category.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      // Toggle direction if clicking the same column
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new column and default to ascending
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedAssets = [...filteredAssets].sort((a, b) => {
+    if (!sortColumn) return 0;
+
+    let aValue: string;
+    let bValue: string;
+
+    switch (sortColumn) {
+      case 'name':
+        aValue = a.name.toLowerCase();
+        bValue = b.name.toLowerCase();
+        break;
+      case 'brand':
+        aValue = (a.brand || '').toLowerCase();
+        bValue = (b.brand || '').toLowerCase();
+        break;
+      case 'serial_no':
+        aValue = (a.serial_no || '').toLowerCase();
+        bValue = (b.serial_no || '').toLowerCase();
+        break;
+      case 'category':
+        aValue = a.category.toLowerCase();
+        bValue = b.category.toLowerCase();
+        break;
+      default:
+        return 0;
+    }
+
+    if (sortDirection === 'asc') {
+      return aValue.localeCompare(bValue);
+    } else {
+      return bValue.localeCompare(aValue);
+    }
+  });
+
+  const SortableHeader = ({ column, label }: { column: string; label: string }) => {
+    const isActive = sortColumn === column;
+    return (
+      <TableHead 
+        className="cursor-pointer hover:bg-gray-100 select-none" 
+        onClick={() => handleSort(column)}
+      >
+        <div className="flex items-center space-x-1">
+          <span>{label}</span>
+          {isActive ? (
+            sortDirection === 'asc' ? (
+              <ArrowUp className="h-3 w-3 text-blue-600" />
+            ) : (
+              <ArrowDown className="h-3 w-3 text-blue-600" />
+            )
+          ) : (
+            <div className="flex flex-col">
+              <ArrowUp className="h-2 w-2 text-gray-300" />
+              <ArrowDown className="h-2 w-2 text-gray-300 -mt-1" />
+            </div>
+          )}
+        </div>
+      </TableHead>
+    );
+  };
 
   const handleAddAsset = () => {
     setEditingAsset(null);
@@ -184,10 +257,21 @@ export default function AssetsPage() {
               Manage property assets and equipment
             </p>
           </div>
-          <Button onClick={handleAddAsset} className="flex items-center">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Asset
-          </Button>
+          <div className="flex space-x-2">
+            <Link href="/assets/import" prefetch={true}>
+              <Button 
+                variant="outline" 
+                className="flex items-center" 
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Import
+              </Button>
+            </Link>
+            <Button onClick={handleAddAsset} className="flex items-center">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Asset
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -283,32 +367,32 @@ export default function AssetsPage() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Brand</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Serial No</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Category</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-600">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAssets.map((asset) => (
-                    <tr key={asset.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableHeader column="name" label="Name" />
+                    <SortableHeader column="brand" label="Brand" />
+                    <SortableHeader column="serial_no" label="Serial No" />
+                    <SortableHeader column="category" label="Category" />
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedAssets.map((asset) => (
+                    <TableRow key={asset.id} className="hover:bg-gray-50">
+                      <TableCell>
                         <div className="font-medium text-gray-900">{asset.name}</div>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell>
                         <div className="text-gray-600">{asset.brand || 'N/A'}</div>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell>
                         <div className="text-gray-600">{asset.serial_no || 'N/A'}</div>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell>
                         <div className="text-gray-600 capitalize">{asset.category}</div>
-                      </td>
-                      <td className="py-3 px-4">
+                      </TableCell>
+                      <TableCell className="text-right">
                         <div className="flex justify-end space-x-2">
                           <Button
                             variant="outline"
@@ -326,14 +410,14 @@ export default function AssetsPage() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
 
-            {filteredAssets.length === 0 && (
+            {sortedAssets.length === 0 && (
               <div className="text-center py-12">
                 <Package className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-sm font-medium text-gray-900">No assets found</h3>

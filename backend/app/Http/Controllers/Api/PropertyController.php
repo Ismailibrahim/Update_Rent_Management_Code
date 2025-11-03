@@ -169,6 +169,30 @@ class PropertyController extends Controller
                 'request_data' => $request->all()
             ]);
 
+            // Check for duplicate property name
+            $existingByName = Property::where('name', $request->name)->first();
+            if ($existingByName) {
+                return response()->json([
+                    'message' => 'Validation failed',
+                    'errors' => [
+                        'name' => ['A property with this name already exists.']
+                    ]
+                ], 400);
+            }
+
+            // Check for duplicate address (street + island combination)
+            $existingByAddress = Property::where('street', $request->street)
+                ->where('island', $request->island)
+                ->first();
+            if ($existingByAddress) {
+                return response()->json([
+                    'message' => 'Validation failed',
+                    'errors' => [
+                        'address' => ['A property with this address (street and island combination) already exists.']
+                    ]
+                ], 400);
+            }
+
             $propertyData = $request->all();
             $propertyData['assigned_manager_id'] = $propertyData['assigned_manager_id'] ?? $request->user()->id;
             $propertyData['status'] = $propertyData['status'] ?? 'vacant';
@@ -294,6 +318,41 @@ class PropertyController extends Controller
                 ], 403);
             }
 
+            // Check for duplicate property name (excluding current property)
+            if ($request->has('name') && $request->name !== $property->name) {
+                $existingByName = Property::where('name', $request->name)
+                    ->where('id', '!=', $property->id)
+                    ->first();
+                if ($existingByName) {
+                    return response()->json([
+                        'message' => 'Validation failed',
+                        'errors' => [
+                            'name' => ['A property with this name already exists.']
+                        ]
+                    ], 400);
+                }
+            }
+
+            // Check for duplicate address (street + island combination, excluding current property)
+            if (($request->has('street') || $request->has('island')) && 
+                ($request->street !== $property->street || $request->island !== $property->island)) {
+                $street = $request->street ?? $property->street;
+                $island = $request->island ?? $property->island;
+                
+                $existingByAddress = Property::where('street', $street)
+                    ->where('island', $island)
+                    ->where('id', '!=', $property->id)
+                    ->first();
+                if ($existingByAddress) {
+                    return response()->json([
+                        'message' => 'Validation failed',
+                        'errors' => [
+                            'address' => ['A property with this address (street and island combination) already exists.']
+                        ]
+                    ], 400);
+                }
+            }
+
             $property->update($request->all());
             $property->load('assignedManager');
 
@@ -324,21 +383,42 @@ class PropertyController extends Controller
     public function destroy(Request $request, Property $property): JsonResponse
     {
         try {
+            $user = $request->user();
+            
+            if (!$user) {
+                return response()->json([
+                    'message' => 'Unauthenticated'
+                ], 401);
+            }
+
+            // Load role relationship if not already loaded
+            if (!$user->relationLoaded('role')) {
+                $user->load('role');
+            }
+            
             // Check access for property managers
-            if ($request->user()->role->name === 'property_manager' && 
-                $property->assigned_manager_id !== $request->user()->id) {
+            if ($user->role && $user->role->name === 'property_manager' && 
+                $property->assigned_manager_id !== $user->id) {
                 return response()->json([
                     'message' => 'Access denied'
                 ], 403);
             }
 
             // Check if property has rental units
-            $rentalUnitsCount = $property->rentalUnits()->count();
-            if ($rentalUnitsCount > 0) {
-                return response()->json([
-                    'message' => 'Cannot delete property with rental units. Please delete all rental units first.',
-                    'rental_units_count' => $rentalUnitsCount
-                ], 400);
+            try {
+                $rentalUnitsCount = $property->rentalUnits()->count();
+                if ($rentalUnitsCount > 0) {
+                    return response()->json([
+                        'message' => 'Cannot delete property with rental units. Please delete all rental units first.',
+                        'rental_units_count' => $rentalUnitsCount
+                    ], 400);
+                }
+            } catch (\Exception $e) {
+                // If rentalUnits relationship doesn't exist or fails, log and continue
+                Log::warning('Could not check rental units count', [
+                    'property_id' => $property->id,
+                    'error' => $e->getMessage()
+                ]);
             }
 
             $property->delete();
@@ -347,11 +427,16 @@ class PropertyController extends Controller
                 'message' => 'Property deleted successfully'
             ]);
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'Property not found'
+            ], 404);
         } catch (\Exception $e) {
             Log::error('Property deletion failed', [
-                'property_id' => $property->id,
+                'property_id' => $property->id ?? null,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $request->user()?->id
             ]);
             
             return response()->json([
@@ -761,6 +846,20 @@ class PropertyController extends Controller
                     // Validate type
                     if (!in_array(strtolower($mappedData['type']), $validTypes)) {
                         throw new \Exception("Invalid property type: {$mappedData['type']}");
+                    }
+
+                    // Check for duplicate property name
+                    $existingByName = Property::where('name', $mappedData['name'])->first();
+                    if ($existingByName) {
+                        throw new \Exception("Property with name '{$mappedData['name']}' already exists");
+                    }
+
+                    // Check for duplicate address (street + island combination)
+                    $existingByAddress = Property::where('street', $mappedData['street'])
+                        ->where('island', $mappedData['island'])
+                        ->first();
+                    if ($existingByAddress) {
+                        throw new \Exception("Property with address '{$mappedData['street']}, {$mappedData['island']}' already exists");
                     }
 
                     // Create property

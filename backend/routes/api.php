@@ -22,6 +22,10 @@ use App\Http\Controllers\Api\MaintenanceCostController;
 use App\Http\Controllers\Api\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\RentalUnitTypeController;
 use App\Http\Controllers\Api\IslandController;
+use App\Http\Controllers\Api\SmsTemplateController;
+use App\Http\Controllers\Api\SmsSettingController;
+use App\Http\Controllers\Api\SmsLogController;
+use App\Http\Controllers\Api\SmsNotificationController;
 use App\Http\Controllers\TenantLedgerController;
 
 /*
@@ -83,6 +87,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // Asset routes
     Route::apiResource('assets', AssetController::class);
     Route::patch('/assets/{asset}/status', [AssetController::class, 'updateStatus']);
+    Route::get('/assets/import/template', [AssetController::class, 'downloadTemplate']);
+    Route::post('/assets/import/preview', [AssetController::class, 'previewImport']);
+    Route::post('/assets/import', [AssetController::class, 'import']);
 
     // Tenant routes
     Route::apiResource('tenants', TenantController::class);
@@ -143,4 +150,20 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Island routes
     Route::apiResource('islands', IslandController::class);
+
+    // SMS Template routes
+    Route::apiResource('sms-templates', SmsTemplateController::class);
+
+    // SMS Setting routes
+    Route::get('/sms-settings', [SmsSettingController::class, 'index']);
+    Route::post('/sms-settings', [SmsSettingController::class, 'update']);
+    Route::get('/sms-settings/{key}', [SmsSettingController::class, 'getSetting']);
+
+    // SMS Log routes
+    Route::apiResource('sms-logs', SmsLogController::class)->only(['index', 'show']);
+
+    // SMS Notification routes
+    Route::post('/sms-notifications/send', [SmsNotificationController::class, 'sendManual']);
+    Route::post('/sms-notifications/preview', [SmsNotificationController::class, 'previewTemplate']);
+    Route::get('/sms-notifications/test-connection', [SmsNotificationController::class, 'testConnection']);
 });

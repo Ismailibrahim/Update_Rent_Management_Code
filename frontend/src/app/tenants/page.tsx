@@ -9,6 +9,7 @@ import { tenantsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface RentalUnit {
   id: number;
@@ -367,28 +368,28 @@ export default function TenantsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center space-x-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
+                          <div className="flex items-center justify-end space-x-2">
+                            <Link 
+                              href={`/tenants/${tenant.id}`}
+                              prefetch={true}
+                              className="inline-flex items-center justify-center h-8 w-8 p-0 rounded-md hover:bg-gray-100 transition-colors"
                               title="View Details"
-                              onClick={() => router.push(`/tenants/${tenant.id}`)}
                             >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
+                              <Eye className="h-4 w-4 text-blue-600" />
+                            </Link>
+                            <Link 
+                              href={`/tenants/${tenant.id}/edit`}
+                              prefetch={true}
+                              className="inline-flex items-center justify-center h-8 w-8 p-0 rounded-md hover:bg-gray-100 transition-colors"
                               title="Edit Tenant"
-                              onClick={() => router.push(`/tenants/${tenant.id}/edit`)}
                             >
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                              <Edit className="h-4 w-4 text-blue-600" />
+                            </Link>
                             <Button 
                               variant="outline" 
                               size="sm" 
                               onClick={() => handleDeleteTenant(tenant.id)}
-                              className="text-red-600 hover:text-red-700"
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                               title="Delete Tenant"
                             >
                               <Trash2 className="h-4 w-4" />

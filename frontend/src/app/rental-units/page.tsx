@@ -4,11 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Building2, Plus, Search, Edit, Trash2 } from 'lucide-react';
+import { Building2, Plus, Search, Edit, Trash2, Eye } from 'lucide-react';
 import { rentalUnitsAPI, propertiesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 interface RentalUnit {
   id: number;
@@ -187,41 +188,43 @@ export default function RentalUnitsPage() {
               Manage rental units and their details
             </p>
           </div>
-          <Button className="flex items-center" onClick={() => router.push('/rental-units/new')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Rental Unit
-          </Button>
+          <Link href="/rental-units/new" prefetch={true}>
+            <Button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+              <Plus className="h-4 w-4" />
+              Add Rental Unit
+            </Button>
+          </Link>
         </div>
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-white border border-gray-200">
+          <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Units</CardTitle>
-              <Building2 className="h-4 w-4 text-gray-400" />
+              <CardTitle className="text-sm font-semibold text-gray-700">Total Units</CardTitle>
+              <Building2 className="h-5 w-5 text-gray-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{totalUnits}</div>
+              <div className="text-3xl font-bold text-gray-900">{totalUnits}</div>
             </CardContent>
           </Card>
 
-          <Card className="bg-white border border-gray-200">
+          <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Available</CardTitle>
-              <div className="h-2 w-2 bg-green-500 rounded-full"></div>
+              <CardTitle className="text-sm font-semibold text-gray-700">Available</CardTitle>
+              <div className="h-3 w-3 bg-green-500 rounded-full shadow-sm"></div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{availableUnits}</div>
+              <div className="text-3xl font-bold text-green-600">{availableUnits}</div>
             </CardContent>
           </Card>
 
-          <Card className="bg-white border border-gray-200">
+          <Card className="bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Occupied</CardTitle>
-              <div className="h-2 w-2 bg-red-500 rounded-full"></div>
+              <CardTitle className="text-sm font-semibold text-gray-700">Occupied</CardTitle>
+              <div className="h-3 w-3 bg-red-500 rounded-full shadow-sm"></div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{occupiedUnits}</div>
+              <div className="text-3xl font-bold text-red-600">{occupiedUnits}</div>
             </CardContent>
           </Card>
         </div>
@@ -229,18 +232,18 @@ export default function RentalUnitsPage() {
         {/* Search and Filters */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
             <Input
-              placeholder="Search rental units..."
+              placeholder="Search rental units by unit number, property name, or tenant..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-12 pr-4 py-2.5 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg shadow-sm transition-all duration-200"
             />
           </div>
           <select
             value={selectedProperty}
             onChange={(e) => setSelectedProperty(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 shadow-sm transition-all duration-200"
           >
             <option value="all">All Properties</option>
             {properties.map((property) => (
@@ -252,9 +255,9 @@ export default function RentalUnitsPage() {
         </div>
 
         {/* Rental Units Table */}
-        <Card className="w-full">
+        <Card className="w-full shadow-md border border-gray-200">
           <CardContent className="p-0">
-            <div className="w-full">
+            <div className="w-full overflow-x-auto">
               <table className="w-full table-auto">
                 <colgroup>
                   <col className="w-[12%]" />
@@ -267,40 +270,40 @@ export default function RentalUnitsPage() {
                   <col className="w-[12%]" />
                   <col className="w-[14%]" />
                 </colgroup>
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Unit Details
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Property
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Floor
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Rooms/Toilets
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Rent Amount
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Tenant
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Assets
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-gray-100">
                   {filteredRentalUnits.map((unit) => (
-                    <tr key={unit.id} className="hover:bg-gray-50">
+                    <tr key={unit.id} className="hover:bg-blue-50/50 transition-colors duration-150 border-b border-gray-100">
                       <td className="px-2 py-2 align-top">
                         <div className="text-sm font-medium text-gray-900 truncate">
                           Unit {unit.unit_number}
@@ -415,38 +418,37 @@ export default function RentalUnitsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="px-2 py-2 text-sm font-medium align-top">
-                        <div className="flex flex-row gap-1.5">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => {
-                              router.push(`/rental-units/${unit.id}/edit`);
-                              // Refresh data after navigation
-                              setTimeout(() => fetchRentalUnits(), 1000);
-                            }}
-                            className="h-7 px-2"
+                      <td className="px-2 py-2 text-sm font-medium align-top text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link 
+                            href={`/rental-units/${unit.id}/edit`}
+                            prefetch={true}
+                            className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
                             title="Edit"
                           >
-                            <Edit className="h-3 w-3" />
-                          </Button>
+                            <Edit className="h-4 w-4" />
+                          </Link>
                           <Button 
-                            variant="outline" 
+                            variant="ghost" 
                             size="sm"
                             onClick={() => handleToggleStatus(unit.id, unit.is_active)}
-                            className={`h-7 px-2 text-xs ${unit.is_active ? 'text-orange-600 hover:text-orange-700' : 'text-green-600 hover:text-green-700'}`}
+                            className={`h-9 px-3 rounded-lg text-xs font-medium transition-all duration-200 shadow-sm hover:shadow-md ${
+                              unit.is_active 
+                                ? 'bg-orange-50 text-orange-600 hover:bg-orange-100 hover:text-orange-700' 
+                                : 'bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700'
+                            }`}
                             title={unit.is_active ? 'Deactivate' : 'Activate'}
                           >
                             {unit.is_active ? 'Deactivate' : 'Activate'}
                           </Button>
                           <Button 
-                            variant="outline" 
+                            variant="ghost" 
                             size="sm" 
                             onClick={() => handleDeleteRentalUnit(unit.id)}
-                            className="h-7 px-2 text-red-600 hover:text-red-700"
+                            className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
                             title="Delete"
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </td>
@@ -463,14 +465,8 @@ export default function RentalUnitsPage() {
             <Building2 className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No rental units found</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || selectedProperty !== 'all' ? 'Try adjusting your search terms or filters.' : 'Get started by adding your first rental unit.'}
+              {searchTerm || selectedProperty !== 'all' ? 'Try adjusting your search terms or filters.' : 'Get started by adding your first rental unit using the button above.'}
             </p>
-            <div className="mt-6">
-              <Button onClick={() => router.push('/rental-units/new')}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Rental Unit
-              </Button>
-            </div>
           </div>
         )}
       </div>

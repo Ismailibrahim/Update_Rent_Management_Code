@@ -99,6 +99,13 @@ class RentalUnitController extends Controller
             'number_of_rooms' => 'required|integer|min:0',
             'number_of_toilets' => 'required|integer|min:0',
             'square_feet' => 'nullable|numeric|min:0',
+            // Utility meter information
+            'water_meter_number' => 'nullable|string|max:100',
+            'water_billing_account' => 'nullable|string|max:100',
+            'electricity_meter_number' => 'nullable|string|max:100',
+            'electricity_billing_account' => 'nullable|string|max:100',
+            // Access card numbers
+            'access_card_numbers' => 'nullable|string|max:500',
             'rent_amount' => 'required|numeric|min:0',
             'deposit_amount' => 'required|numeric|min:0',
             'currency' => 'required|string|max:10',
@@ -140,6 +147,45 @@ class RentalUnitController extends Controller
                 return response()->json([
                     'message' => 'Unit number already exists for this property'
                 ], 400);
+            }
+
+            // Check for duplicate access card numbers
+            if ($request->has('access_card_numbers') && !empty($request->access_card_numbers)) {
+                $inputCards = $request->access_card_numbers;
+                // Parse comma-separated card numbers
+                $cardNumbers = array_map('trim', explode(',', $inputCards));
+                $cardNumbers = array_filter($cardNumbers, function($card) {
+                    return !empty($card);
+                });
+                
+                if (!empty($cardNumbers)) {
+                    // Load all existing rental units with card numbers once
+                    $existingUnits = RentalUnit::whereNotNull('access_card_numbers')
+                        ->where('access_card_numbers', '!=', '')
+                        ->with('property')
+                        ->get();
+                    
+                    // Check each input card number for duplicates
+                    foreach ($cardNumbers as $cardNumber) {
+                        foreach ($existingUnits as $existingUnit) {
+                            if ($existingUnit->access_card_numbers) {
+                                $existingCards = array_map('trim', explode(',', $existingUnit->access_card_numbers));
+                                $existingCards = array_filter($existingCards, function($card) {
+                                    return !empty($card);
+                                });
+                                
+                                if (in_array($cardNumber, $existingCards)) {
+                                    return response()->json([
+                                        'message' => 'Validation failed',
+                                        'errors' => [
+                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$existingUnit->property->name ?? 'Unknown Property'}"]
+                                        ]
+                                    ], 400);
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             $rentalUnitData = $request->all();
@@ -249,6 +295,13 @@ class RentalUnitController extends Controller
             'unit_details.numberOfRooms' => 'sometimes|integer|min:0',
             'unit_details.numberOfToilets' => 'sometimes|numeric|min:0',
             'unit_details.squareFeet' => 'nullable|numeric|min:0',
+            // Utility meter information
+            'water_meter_number' => 'nullable|string|max:100',
+            'water_billing_account' => 'nullable|string|max:100',
+            'electricity_meter_number' => 'nullable|string|max:100',
+            'electricity_billing_account' => 'nullable|string|max:100',
+            // Access card numbers
+            'access_card_numbers' => 'nullable|string|max:500',
             'financial' => 'sometimes|array',
             'financial.rentAmount' => 'sometimes|numeric|min:0',
             'financial.depositAmount' => 'sometimes|numeric|min:0',
@@ -342,6 +395,46 @@ class RentalUnitController extends Controller
                 }
             }
             
+            // Check for duplicate access card numbers (excluding current rental unit)
+            if (isset($updateData['access_card_numbers']) && !empty($updateData['access_card_numbers'])) {
+                $inputCards = $updateData['access_card_numbers'];
+                // Parse comma-separated card numbers
+                $cardNumbers = array_map('trim', explode(',', $inputCards));
+                $cardNumbers = array_filter($cardNumbers, function($card) {
+                    return !empty($card);
+                });
+                
+                if (!empty($cardNumbers)) {
+                    // Load all existing rental units with card numbers once (excluding current unit)
+                    $existingUnits = RentalUnit::whereNotNull('access_card_numbers')
+                        ->where('access_card_numbers', '!=', '')
+                        ->where('id', '!=', $rentalUnit->id) // Exclude current unit
+                        ->with('property')
+                        ->get();
+                    
+                    // Check each input card number for duplicates
+                    foreach ($cardNumbers as $cardNumber) {
+                        foreach ($existingUnits as $existingUnit) {
+                            if ($existingUnit->access_card_numbers) {
+                                $existingCards = array_map('trim', explode(',', $existingUnit->access_card_numbers));
+                                $existingCards = array_filter($existingCards, function($card) {
+                                    return !empty($card);
+                                });
+                                
+                                if (in_array($cardNumber, $existingCards)) {
+                                    return response()->json([
+                                        'message' => 'Validation failed',
+                                        'errors' => [
+                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$existingUnit->property->name ?? 'Unknown Property'}"]
+                                        ]
+                                    ], 400);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Log::info('About to update rental unit', [
                 'rental_unit_id' => $rentalUnit->id,
                 'update_data' => $updateData
