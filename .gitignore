@@ -33,6 +33,9 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 
+# cPanel
+.cpanel/
+
 # Backups
 backup-*.sql
 *.sql.bak
