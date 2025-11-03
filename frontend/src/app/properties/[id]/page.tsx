@@ -64,7 +64,9 @@ export default function PropertyDetailsPage() {
     try {
       setLoading(true);
       const response = await propertiesAPI.getById(parseInt(propertyId));
-      setProperty(response.data.property);
+      if (response.data?.property) {
+        setProperty(response.data.property);
+      }
       setLoading(false); // Stop loading as soon as property data arrives
     } catch (error: unknown) {
       console.error('Error fetching property:', error);
@@ -113,10 +115,8 @@ export default function PropertyDetailsPage() {
   const fetchRentalUnits = useCallback(async () => {
     try {
       setRentalUnitsLoading(true);
-      console.log('Fetching rental units for property ID:', propertyId);
       const response = await rentalUnitsAPI.getByProperty(parseInt(propertyId));
-      console.log('Rental units response:', response);
-      setRentalUnits(response.data.rentalUnits || []);
+      setRentalUnits(response.data?.rentalUnits || []);
     } catch (error) {
       console.error('Error fetching rental units:', error);
       toast.error('Failed to fetch rental units');

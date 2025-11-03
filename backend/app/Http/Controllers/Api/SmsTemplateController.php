@@ -29,9 +29,7 @@ class SmsTemplateController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'templates' => $templates
-                ]
+                'data' => $templates
             ]);
         } catch (\Exception $e) {
             return response()->json([

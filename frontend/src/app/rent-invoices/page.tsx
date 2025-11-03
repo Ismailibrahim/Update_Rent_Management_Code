@@ -84,11 +84,11 @@ export default function RentInvoicesPage() {
     fetchPaymentTypesAndModes();
   }, [fetchInvoices]);
 
-  // Auto-refresh invoices every 30 seconds to catch status updates
+  // Auto-refresh invoices every 60 seconds to catch status updates (reduced from 30 to improve performance)
   useEffect(() => {
     const interval = setInterval(() => {
       fetchInvoices();
-    }, 30000); // 30 seconds
+    }, 60000); // 60 seconds
 
     return () => clearInterval(interval);
   }, [fetchInvoices]);
@@ -315,22 +315,6 @@ export default function RentInvoicesPage() {
       paymentSlips.forEach((file, index) => {
         formData.append(`payment_slip_${index}`, file);
       });
-
-      // Debug: Log what we're sending
-      console.log('Sending FormData:', {
-        paymentType,
-        paymentMode,
-        referenceNumber,
-        paymentNotes,
-        paymentSlipsCount: paymentSlips.length,
-        paymentSlips: paymentSlips.map(f => ({ name: f.name, size: f.size, type: f.type }))
-      });
-
-      // Debug: Log FormData contents
-      console.log('FormData entries:');
-      for (const [key, value] of formData.entries()) {
-        console.log(`${key}:`, value);
-      }
 
       await rentInvoicesAPI.markAsPaid(selectedInvoice.id, formData);
       toast.success('Invoice marked as paid successfully');

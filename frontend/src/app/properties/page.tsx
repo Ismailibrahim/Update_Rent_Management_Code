@@ -3,15 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
-import { Button } from '../../components/UI/Button';
-import { Input } from '../../components/UI/Input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/UI/Card';
+import { Button } from '@/components/UI/Button';
+import { Input } from '@/components/UI/Input';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/UI/Table';
 import { Building2, Plus, Search, Edit, Trash2, Eye, Upload, Download, ArrowUp, ArrowDown } from 'lucide-react';
-import { propertiesAPI } from '../../services/api';
+import { propertiesAPI } from '@/services/api';
 import toast from 'react-hot-toast';
-import SidebarLayout from '../../components/Layout/SidebarLayout';
-import { useAuth } from '../../contexts/AuthContext';
+import SidebarLayout from '@/components/Layout/SidebarLayout';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Property {
   id: number;

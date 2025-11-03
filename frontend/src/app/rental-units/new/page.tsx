@@ -130,7 +130,6 @@ function NewRentalUnitPageContent() {
       
       const response = await propertiesAPI.getById(propertyId);
       const property = response.data.property;
-      console.log('📋 Property fetched:', { id: property?.id, name: property?.name, street: property?.street });
       setSelectedProperty(property);
       
       // Fetch existing rental units for this property
@@ -146,16 +145,12 @@ function NewRentalUnitPageContent() {
   }, [isLoadingProperty]);
 
   useEffect(() => {
-    console.log('🔧 useEffect triggered', { authLoading, user: !!user, propertyIdFromUrl });
-    
     if (!authLoading && !user) {
-      console.log('🚪 Redirecting to login');
       router.push('/login');
       return;
     }
     
     if (user) {
-      console.log('👤 User authenticated, fetching data...');
       fetchProperties();
       fetchAssets();
       fetchUnitTypes();

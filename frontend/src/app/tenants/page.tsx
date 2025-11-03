@@ -94,15 +94,16 @@ export default function TenantsPage() {
   };
 
   const filteredTenants = tenants.filter(tenant => {
-    const fullName = `${tenant.first_name} ${tenant.last_name}`.toLowerCase();
+    const fullName = `${tenant.first_name || ''} ${tenant.last_name || ''}`.toLowerCase();
     const companyName = tenant.company_name?.toLowerCase() || '';
-    const email = tenant.email.toLowerCase();
-    const phone = tenant.phone;
+    const email = (tenant.email || '').toLowerCase();
+    const phone = tenant.phone || '';
     const idNumber = tenant.national_id || '';
+    const searchLower = searchTerm.toLowerCase();
     
-    return fullName.includes(searchTerm.toLowerCase()) ||
-           companyName.includes(searchTerm.toLowerCase()) ||
-           email.includes(searchTerm.toLowerCase()) ||
+    return fullName.includes(searchLower) ||
+           companyName.includes(searchLower) ||
+           email.includes(searchLower) ||
            phone.includes(searchTerm) ||
            idNumber.includes(searchTerm);
   });

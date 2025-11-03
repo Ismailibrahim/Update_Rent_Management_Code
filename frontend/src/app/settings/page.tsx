@@ -39,9 +39,13 @@ export default function SettingsPage() {
     try {
       const response = await settingsAPI.getDropdowns();
       // In a real app, you'd have a dedicated settings endpoint
-      console.log('Settings loaded:', response.data);
+      // Settings will be loaded and applied here when backend endpoint is available
+      if (response.data) {
+        // Apply settings from response when available
+      }
     } catch (error) {
       console.error('Error fetching settings:', error);
+      toast.error('Failed to load settings');
     }
   };
 

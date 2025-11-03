@@ -175,10 +175,13 @@ class RentalUnitController extends Controller
                                 });
                                 
                                 if (in_array($cardNumber, $existingCards)) {
+                                    $propertyName = isset($existingUnit->property) && isset($existingUnit->property->name)
+                                        ? $existingUnit->property->name
+                                        : 'Unknown Property';
                                     return response()->json([
                                         'message' => 'Validation failed',
                                         'errors' => [
-                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$existingUnit->property->name ?? 'Unknown Property'}"]
+                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$propertyName}"]
                                         ]
                                     ], 400);
                                 }
@@ -422,10 +425,13 @@ class RentalUnitController extends Controller
                                 });
                                 
                                 if (in_array($cardNumber, $existingCards)) {
+                                    $propertyName = isset($existingUnit->property) && isset($existingUnit->property->name)
+                                        ? $existingUnit->property->name
+                                        : 'Unknown Property';
                                     return response()->json([
                                         'message' => 'Validation failed',
                                         'errors' => [
-                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$existingUnit->property->name ?? 'Unknown Property'}"]
+                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$propertyName}"]
                                         ]
                                     ], 400);
                                 }

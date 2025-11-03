@@ -76,16 +76,19 @@ api.interceptors.response.use(
     // Enhanced error logging for debugging
     if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_API === 'true') {
       const axiosError = error as AxiosError;
-      console.error('API Error:', {
-        message: axiosError.message,
-        status: axiosError.response?.status,
-        statusText: axiosError.response?.statusText,
-        data: axiosError.response?.data,
-        url: axiosError.config?.url,
-        baseURL: axiosError.config?.baseURL,
-        method: axiosError.config?.method,
-        hasToken: !!axiosError.config?.headers?.Authorization
-      });
+      // Only log if it's an actual error (not a normal rejection)
+      if (axiosError.response || axiosError.request) {
+        console.error('API Error:', {
+          message: axiosError.message,
+          status: axiosError.response?.status,
+          statusText: axiosError.response?.statusText,
+          data: axiosError.response?.data,
+          url: axiosError.config?.url,
+          baseURL: axiosError.config?.baseURL,
+          method: axiosError.config?.method,
+          hasToken: !!axiosError.config?.headers?.Authorization
+        });
+      }
     }
     
     const axiosError = error as AxiosError;

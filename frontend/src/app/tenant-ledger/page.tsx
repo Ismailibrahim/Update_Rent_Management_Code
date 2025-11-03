@@ -41,27 +41,19 @@ export default function TenantLedgerPage() {
   });
 
   useEffect(() => {
-    console.log('useEffect triggered - filters:', filters, 'pagination:', pagination.current_page);
     loadData();
   }, [filters, pagination.current_page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
     setLoading(true);
     try {
-      console.log('Loading data for main ledger page...');
       const [tenantsRes, paymentTypesRes] = await Promise.all([
         tenantsAPI.getAll(),
         paymentTypesAPI.getAll(),
       ]);
 
-      console.log('Main page - Tenants response:', tenantsRes.data);
-      console.log('Main page - Payment types response:', paymentTypesRes.data);
-
       const tenantsData = tenantsRes.data?.tenants || [];
       const paymentTypesData = paymentTypesRes.data?.payment_types || [];
-
-      console.log('Main page - Tenants data:', tenantsData);
-      console.log('Main page - Payment types data:', paymentTypesData);
 
       setTenants(tenantsData);
       setPaymentTypes(paymentTypesData);
@@ -73,20 +65,15 @@ export default function TenantLedgerPage() {
         ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '')),
       };
 
-      console.log('Loading ledger entries with params:', params);
       const response = await tenantLedgerAPI.getAll(params);
-      
-      console.log('Ledger entries response:', response.data);
       
       // Ensure we have an array of ledger entries
       const ledgerData = response.data?.data?.data || response.data?.data || [];
-      console.log('Ledger data extracted:', ledgerData);
       setLedgerEntries(Array.isArray(ledgerData) ? ledgerData : []);
       
       // Handle pagination metadata
       if (response.data?.data?.meta || response.data?.meta) {
         const meta = response.data?.data?.meta || response.data?.meta;
-        console.log('Pagination meta:', meta);
         setPagination(prev => ({
           ...prev,
           current_page: meta.current_page || 1,
@@ -234,22 +221,12 @@ export default function TenantLedgerPage() {
   };
 
   const getRentalUnitDisplay = (entry: TenantLedger) => {
-    // Debug logging to understand the data structure
-    console.log('Entry data for unit display:', {
-      ledgerId: entry.ledger_id,
-      tenantId: entry.tenant_id,
-      tenant: entry.tenant,
-      rentalUnit: entry.rental_unit
-    });
-    
     if (entry.rental_unit) {
       const unitNumber = entry.rental_unit.unit_number || 'N/A';
       const propertyName = entry.rental_unit.property?.name || 'Unknown Property';
-      console.log(`Unit found for tenant ${entry.tenant?.full_name}: ${propertyName} - Unit ${unitNumber}`);
       return `${propertyName} - Unit ${unitNumber}`;
     }
     
-    console.log('No unit found for entry:', entry.ledger_id);
     return 'No Unit Assigned';
   };
 
@@ -510,14 +487,11 @@ export default function TenantLedgerPage() {
                 onChange={(e) => setFilters(prev => ({ ...prev, tenant_id: e.target.value }))}
               >
                 <option value="">All Tenants ({tenants.length} available)</option>
-                {tenants.map(tenant => {
-                  console.log('Filter dropdown - Rendering tenant:', tenant);
-                  return (
-                    <option key={tenant.id} value={tenant.id}>
-                      {tenant.full_name || `${tenant.first_name} ${tenant.last_name}`}
-                    </option>
-                  );
-                })}
+                {tenants.map(tenant => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.full_name || `${tenant.first_name} ${tenant.last_name}`}
+                  </option>
+                ))}
               </Select>
             </div>
             <div>
@@ -529,14 +503,11 @@ export default function TenantLedgerPage() {
                 onChange={(e) => setFilters(prev => ({ ...prev, payment_type_id: e.target.value }))}
               >
                 <option value="">All Payment Types ({paymentTypes.length} available)</option>
-                {paymentTypes.map(type => {
-                  console.log('Filter dropdown - Rendering payment type:', type);
-                  return (
-                    <option key={type.id} value={type.id}>
-                      {type.name}
-                    </option>
-                  );
-                })}
+                {paymentTypes.map(type => (
+                  <option key={type.id} value={type.id}>
+                    {type.name}
+                  </option>
+                ))}
               </Select>
             </div>
             <div>

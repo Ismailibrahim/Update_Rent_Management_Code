@@ -266,7 +266,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-gray-900 mb-1">
-                MVR {stats.totalRentalUnits > 0 ? Math.round(stats.monthlyRevenue / stats.totalRentalUnits).toLocaleString() : '0'}
+                MVR {stats.totalRentalUnits > 0 && stats.monthlyRevenue > 0 ? Math.round(stats.monthlyRevenue / stats.totalRentalUnits).toLocaleString() : '0'}
               </div>
               <p className="text-sm text-gray-500">
                 Per rental unit

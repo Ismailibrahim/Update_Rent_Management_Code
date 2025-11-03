@@ -3,17 +3,17 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/UI/Card';
-import { Button } from '../../../components/UI/Button';
-import { Input } from '../../../components/UI/Input';
-import { Select } from '../../../components/UI/Select';
-import { Textarea } from '../../../components/UI/Textarea';
-import { FormSection } from '../../../components/UI/FormSection';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/UI/Card';
+import { Button } from '@/components/UI/Button';
+import { Input } from '@/components/UI/Input';
+import { Select } from '@/components/UI/Select';
+import { Textarea } from '@/components/UI/Textarea';
+import { FormSection } from '@/components/UI/FormSection';
 import { ArrowLeft, Save, Building2, X } from 'lucide-react';
 import Link from 'next/link';
-import { propertiesAPI, rentalUnitTypesAPI, islandsAPI, Island } from '../../../services/api';
+import { propertiesAPI, rentalUnitTypesAPI, islandsAPI, Island } from '@/services/api';
 import toast from 'react-hot-toast';
-import SidebarLayout from '../../../components/Layout/SidebarLayout';
+import SidebarLayout from '@/components/Layout/SidebarLayout';
 
 interface PropertyFormData {
   name: string;

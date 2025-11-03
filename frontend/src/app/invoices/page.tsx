@@ -168,11 +168,11 @@ export default function InvoicesPage() {
     fetchInvoices();
   }, [fetchInvoices]);
 
-  // Auto-refresh invoices every 30 seconds
+  // Auto-refresh invoices every 60 seconds (reduced from 30 to improve performance)
   useEffect(() => {
     const interval = setInterval(() => {
       fetchInvoices();
-    }, 30000); // 30 seconds
+    }, 60000); // 60 seconds
 
     return () => clearInterval(interval);
   }, [fetchInvoices]);
