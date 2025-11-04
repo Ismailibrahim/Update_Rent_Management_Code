@@ -7,7 +7,7 @@ import { Button } from '../../../components/UI/Button';
 import { Input } from '../../../components/UI/Input';
 import { Select } from '../../../components/UI/Select';
 import { ArrowLeft, Upload, Download, CheckCircle, XCircle, Eye } from 'lucide-react';
-import { propertiesAPI } from '../../../services/api';
+import { propertiesAPI, rentalUnitTypesAPI, islandsAPI } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/UI/Table';
@@ -22,17 +22,8 @@ const propertyFields = [
   { value: 'name', label: 'Name *' },
   { value: 'type', label: 'Type *' },
   { value: 'street', label: 'Street *' },
-  { value: 'city', label: 'City *' },
   { value: 'island', label: 'Island *' },
-  { value: 'postal_code', label: 'Postal Code' },
-  { value: 'country', label: 'Country' },
-  { value: 'number_of_floors', label: 'Number of Floors *' },
   { value: 'number_of_rental_units', label: 'Number of Rental Units *' },
-  { value: 'bedrooms', label: 'Bedrooms *' },
-  { value: 'bathrooms', label: 'Bathrooms *' },
-  { value: 'square_feet', label: 'Square Feet' },
-  { value: 'year_built', label: 'Year Built' },
-  { value: 'description', label: 'Description' },
   { value: 'status', label: 'Status' },
 ];
 
@@ -49,6 +40,10 @@ export default function ImportPropertiesPage() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<'upload' | 'map' | 'preview'>('upload');
   const [importResult, setImportResult] = useState<{ imported: number; failed: number; errors: string[] } | null>(null);
+  const [propertyTypes, setPropertyTypes] = useState<Array<{ id: number; name: string }>>([]);
+  const [propertyTypeCorrections, setPropertyTypeCorrections] = useState<Record<number, string>>({});
+  const [islands, setIslands] = useState<Array<{ id: number; name: string }>>([]);
+  const [islandCorrections, setIslandCorrections] = useState<Record<number, string>>({});
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -137,6 +132,19 @@ export default function ImportPropertiesPage() {
 
     try {
       setLoading(true);
+      
+      // Fetch property types and islands from database
+      const [propertyTypesResponse, islandsResponse] = await Promise.all([
+        rentalUnitTypesAPI.getPropertyTypes(),
+        islandsAPI.getAll({ active_only: true })
+      ]);
+      
+      const types = (propertyTypesResponse.data?.data?.unitTypes ?? propertyTypesResponse.data?.unitTypes) || [];
+      setPropertyTypes(types.map((t: any) => ({ id: t.id, name: t.name })));
+      
+      const islandsData = islandsResponse.data?.data || islandsResponse.data?.islands || [];
+      setIslands(islandsData.map((i: any) => ({ id: i.id, name: i.name })));
+      
       const mapping: Record<number, string> = {};
       Object.keys(fieldMapping).forEach(key => {
         mapping[parseInt(key)] = fieldMapping[parseInt(key)];
@@ -151,6 +159,8 @@ export default function ImportPropertiesPage() {
       setPreviewData(response.data.preview || []);
       setPreviewErrors(response.data.errors || []);
       setTotalRows(response.data.total_rows || 0);
+      setPropertyTypeCorrections({}); // Reset corrections
+      setIslandCorrections({}); // Reset island corrections
       setStep('preview');
       
       if (response.data.errors && response.data.errors.length > 0) {
@@ -165,6 +175,20 @@ export default function ImportPropertiesPage() {
       setLoading(false);
     }
   };
+  
+  const handlePropertyTypeChange = (rowIndex: number, selectedType: string) => {
+    setPropertyTypeCorrections(prev => ({
+      ...prev,
+      [rowIndex]: selectedType
+    }));
+  };
+  
+  const handleIslandChange = (rowIndex: number, selectedIsland: string) => {
+    setIslandCorrections(prev => ({
+      ...prev,
+      [rowIndex]: selectedIsland
+    }));
+  };
 
   const handleImport = async (skipErrors = false) => {
     try {
@@ -174,8 +198,103 @@ export default function ImportPropertiesPage() {
         mapping[parseInt(key)] = fieldMapping[parseInt(key)];
       });
 
+      // Apply property type and island corrections to CSV data before import
+      let correctedCsvData = csvData;
+      const hasCorrections = Object.keys(propertyTypeCorrections).length > 0 || Object.keys(islandCorrections).length > 0;
+      
+      if (hasCorrections) {
+        const lines = correctedCsvData.split('\n');
+        const typeFieldIndex = Object.keys(fieldMapping).find(
+          key => fieldMapping[parseInt(key)] === 'type'
+        );
+        const islandFieldIndex = Object.keys(fieldMapping).find(
+          key => fieldMapping[parseInt(key)] === 'island'
+        );
+        
+        // Find instruction row if exists
+        let instructionRowIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].toLowerCase().includes('instructions')) {
+            instructionRowIndex = i;
+            break;
+          }
+        }
+        
+        // Calculate data row offset (skip header and instructions)
+        let dataRowOffset = 0;
+        if (hasHeader) dataRowOffset++;
+        if (instructionRowIndex >= 0 && instructionRowIndex < dataRowOffset) {
+          dataRowOffset++;
+        }
+        
+        // Helper function to parse and rebuild CSV line
+        const parseAndUpdateCSVLine = (line: string, columnIndex: number, newValue: string): string => {
+          const rowData: string[] = [];
+          let currentField = '';
+          let inQuotes = false;
+          
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              rowData.push(currentField);
+              currentField = '';
+            } else {
+              currentField += char;
+            }
+          }
+          rowData.push(currentField); // Add last field
+          
+          if (rowData[columnIndex] !== undefined) {
+            rowData[columnIndex] = newValue;
+            // Rebuild the line with proper CSV formatting
+            return rowData.map(field => {
+              // Quote field if it contains comma, quote, or newline
+              if (field.includes(',') || field.includes('"') || field.includes('\n')) {
+                return `"${field.replace(/"/g, '""')}"`;
+              }
+              return field;
+            }).join(',');
+          }
+          return line;
+        };
+        
+        // Apply property type corrections
+        if (typeFieldIndex !== undefined) {
+          const typeColumnIndex = parseInt(typeFieldIndex);
+          Object.keys(propertyTypeCorrections).forEach(rowIndex => {
+            const actualRowIndex = parseInt(rowIndex) + dataRowOffset;
+            if (actualRowIndex < lines.length && actualRowIndex >= 0) {
+              lines[actualRowIndex] = parseAndUpdateCSVLine(
+                lines[actualRowIndex],
+                typeColumnIndex,
+                propertyTypeCorrections[parseInt(rowIndex)]
+              );
+            }
+          });
+        }
+        
+        // Apply island corrections
+        if (islandFieldIndex !== undefined) {
+          const islandColumnIndex = parseInt(islandFieldIndex);
+          Object.keys(islandCorrections).forEach(rowIndex => {
+            const actualRowIndex = parseInt(rowIndex) + dataRowOffset;
+            if (actualRowIndex < lines.length && actualRowIndex >= 0) {
+              lines[actualRowIndex] = parseAndUpdateCSVLine(
+                lines[actualRowIndex],
+                islandColumnIndex,
+                islandCorrections[parseInt(rowIndex)]
+              );
+            }
+          });
+        }
+        
+        correctedCsvData = lines.join('\n');
+      }
+
       const response = await propertiesAPI.import({
-        csv_data: csvData,
+        csv_data: correctedCsvData,
         field_mapping: mapping,
         has_header: hasHeader,
         skip_errors: skipErrors,
@@ -306,12 +425,8 @@ export default function ImportPropertiesPage() {
                   <li>Name</li>
                   <li>Type (must match a valid property type from the system)</li>
                   <li>Street</li>
-                  <li>City</li>
                   <li>Island</li>
-                  <li>Number of Floors</li>
                   <li>Number of Rental Units</li>
-                  <li>Bedrooms</li>
-                  <li>Bathrooms</li>
                 </ul>
               </div>
               
@@ -424,34 +539,88 @@ export default function ImportPropertiesPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Name</TableHead>
-                          <TableHead>Type</TableHead>
+                          <TableHead>Type *</TableHead>
                           <TableHead>Street</TableHead>
-                          <TableHead>City</TableHead>
-                          <TableHead>Island</TableHead>
-                          <TableHead>Floors</TableHead>
+                          <TableHead>Island *</TableHead>
                           <TableHead>Units</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {previewData.slice(0, 10).map((row, index) => (
-                          <TableRow key={index}>
-                            <TableCell>{row.name}</TableCell>
-                            <TableCell>{row.type}</TableCell>
-                            <TableCell>{row.street}</TableCell>
-                            <TableCell>{row.city}</TableCell>
-                            <TableCell>{row.island}</TableCell>
-                            <TableCell>{row.number_of_floors}</TableCell>
-                            <TableCell>{row.number_of_rental_units}</TableCell>
-                            <TableCell>
-                              <span className={`px-2 py-1 text-xs rounded-full ${
-                                row.status === 'vacant' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {row.status || 'vacant'}
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {previewData.slice(0, 10).map((row, index) => {
+                          const correctedType = propertyTypeCorrections[index] || row.type;
+                          const correctedIsland = islandCorrections[index] || row.island;
+                          const isTypeValid = propertyTypes.some(
+                            pt => pt.name.toLowerCase() === correctedType?.toLowerCase()
+                          );
+                          const isIslandValid = islands.some(
+                            i => i.name.toLowerCase() === correctedIsland?.toLowerCase()
+                          );
+                          return (
+                            <TableRow key={index}>
+                              <TableCell>{row.name}</TableCell>
+                              <TableCell>
+                                <Select
+                                  value={correctedType || ''}
+                                  onChange={(e) => handlePropertyTypeChange(index, e.target.value)}
+                                  className={`min-w-[180px] ${
+                                    !isTypeValid && correctedType 
+                                      ? 'border-red-300 focus:ring-red-500' 
+                                      : ''
+                                  }`}
+                                >
+                                  <option value={row.type || ''}>
+                                    {row.type || 'Select type...'}
+                                  </option>
+                                  {propertyTypes.map((pt) => (
+                                    <option key={pt.id} value={pt.name}>
+                                      {pt.name}
+                                    </option>
+                                  ))}
+                                </Select>
+                                {!isTypeValid && correctedType && (
+                                  <p className="text-xs text-red-600 mt-1">
+                                    Invalid type - please select from dropdown
+                                  </p>
+                                )}
+                              </TableCell>
+                              <TableCell>{row.street}</TableCell>
+                              <TableCell>
+                                <Select
+                                  value={correctedIsland || ''}
+                                  onChange={(e) => handleIslandChange(index, e.target.value)}
+                                  className={`min-w-[180px] ${
+                                    !isIslandValid && correctedIsland 
+                                      ? 'border-red-300 focus:ring-red-500' 
+                                      : ''
+                                  }`}
+                                >
+                                  <option value={row.island || ''}>
+                                    {row.island || 'Select island...'}
+                                  </option>
+                                  {islands.map((island) => (
+                                    <option key={island.id} value={island.name}>
+                                      {island.name}
+                                    </option>
+                                  ))}
+                                </Select>
+                                {!isIslandValid && correctedIsland && (
+                                  <p className="text-xs text-red-600 mt-1">
+                                    Invalid island - please select from dropdown
+                                  </p>
+                                )}
+                              </TableCell>
+                              <TableCell>{row.number_of_rental_units}</TableCell>
+                              <TableCell>
+                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                  row.status === 'vacant' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {row.status || 'vacant'}
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
                       </TableBody>
                     </Table>
                     {previewData.length > 10 && (
@@ -484,7 +653,7 @@ export default function ImportPropertiesPage() {
                     )}
                     <Button
                       onClick={() => handleImport(false)}
-                      disabled={loading || previewErrors.length > 0}
+                      disabled={loading || (previewErrors.length > 0 && !skipErrors)}
                     >
                       {loading ? 'Importing...' : 'Import Properties'}
                     </Button>

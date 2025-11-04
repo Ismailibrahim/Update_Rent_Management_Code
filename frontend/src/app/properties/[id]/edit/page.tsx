@@ -18,17 +18,10 @@ import SidebarLayout from '@/components/Layout/SidebarLayout';
 interface PropertyFormData {
   name: string;
   street: string;
-  city: string;
   island: string;
   type: string;
   status: string;
-  number_of_floors: number;
   number_of_rental_units: number;
-  bedrooms: number;
-  bathrooms: number;
-  square_feet: number;
-  year_built: number;
-  description?: string;
 }
 
 interface RentalUnitType {
@@ -47,14 +40,17 @@ export default function EditPropertyPage() {
   const [propertyTypes, setPropertyTypes] = useState<RentalUnitType[]>([]);
   const [islands, setIslands] = useState<Island[]>([]);
   
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<PropertyFormData>({
+  const { register, handleSubmit, formState: { errors }, reset, setValue, watch } = useForm<PropertyFormData>({
     defaultValues: {
       status: 'vacant',
-      type: 'apartment',
-      number_of_floors: 1,
+      type: '',
+      island: '',
       number_of_rental_units: 1
     }
   });
+  
+  const selectedType = watch('type');
+  const selectedIsland = watch('island');
 
   const fetchProperty = useCallback(async () => {
     try {
@@ -66,21 +62,20 @@ export default function EditPropertyPage() {
       const formData: PropertyFormData = {
         name: propertyData.name || '',
         street: propertyData.street || '',
-        city: propertyData.city || '',
         island: propertyData.island || '',
-        type: propertyData.type || 'apartment',
+        type: propertyData.type || '',
         status: propertyData.status || 'vacant',
-        number_of_floors: propertyData.number_of_floors || 1,
-        number_of_rental_units: propertyData.number_of_rental_units || 1,
-        bedrooms: propertyData.bedrooms || 0,
-        bathrooms: propertyData.bathrooms || 0,
-        square_feet: propertyData.square_feet || 0,
-        year_built: propertyData.year_built || new Date().getFullYear(),
-        description: propertyData.description || ''
+        number_of_rental_units: propertyData.number_of_rental_units || 1
       };
       
       setProperty(formData);
       reset(formData);
+      
+      // Ensure property type is set correctly after types are loaded
+      // The type from backend should match exactly with propertyTypes names
+      if (formData.type) {
+        setValue('type', formData.type);
+      }
     } catch (error: unknown) {
       console.error('Error fetching property:', error);
       
@@ -132,7 +127,7 @@ export default function EditPropertyPage() {
     const fetchData = async () => {
       try {
         const [typesResponse, islandsResponse] = await Promise.all([
-          rentalUnitTypesAPI.getAll({ active_only: true }),
+          rentalUnitTypesAPI.getPropertyTypes({ active_only: true }),
           islandsAPI.getAll({ active_only: true })
         ]);
         
@@ -149,6 +144,42 @@ export default function EditPropertyPage() {
 
     fetchData();
   }, []);
+
+  // Sync property type when both property and propertyTypes are available
+  useEffect(() => {
+    if (property && property.type && propertyTypes.length > 0) {
+      // Find the exact match (case-insensitive) and set the correct case
+      const matchedType = propertyTypes.find(
+        t => t.name.toLowerCase() === property.type.toLowerCase()
+      );
+      if (matchedType && matchedType.name !== property.type) {
+        // Update to the correct case from database
+        setValue('type', matchedType.name);
+        setProperty(prev => prev ? { ...prev, type: matchedType.name } : null);
+      } else if (matchedType) {
+        // Ensure form value is set even if case matches
+        setValue('type', matchedType.name);
+      }
+    }
+  }, [property, propertyTypes, setValue]);
+
+  // Sync island when both property and islands are available
+  useEffect(() => {
+    if (property && property.island && islands.length > 0) {
+      // Find the exact match (case-insensitive) and set the correct case
+      const matchedIsland = islands.find(
+        i => i.name.toLowerCase() === property.island.toLowerCase()
+      );
+      if (matchedIsland && matchedIsland.name !== property.island) {
+        // Update to the correct case from database
+        setValue('island', matchedIsland.name);
+        setProperty(prev => prev ? { ...prev, island: matchedIsland.name } : null);
+      } else if (matchedIsland) {
+        // Ensure form value is set even if case matches
+        setValue('island', matchedIsland.name);
+      }
+    }
+  }, [property, islands, setValue]);
 
   const onSubmit = async (data: PropertyFormData) => {
     try {
@@ -281,10 +312,12 @@ export default function EditPropertyPage() {
                     </label>
                     <Select
                       {...register('type', { required: 'Property type is required' })}
+                      value={selectedType || property?.type || ''}
+                      onChange={(e) => setValue('type', e.target.value, { shouldValidate: true })}
                     >
                       <option value="">Select property type</option>
                       {propertyTypes.map((type) => (
-                        <option key={type.id} value={type.name.toLowerCase()}>
+                        <option key={type.id} value={type.name}>
                           {type.name}
                         </option>
                       ))}
@@ -312,23 +345,12 @@ export default function EditPropertyPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      City *
-                    </label>
-                    <Input
-                      placeholder="Enter city"
-                      {...register('city', { required: 'City is required' })}
-                    />
-                    {errors.city && (
-                      <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Island *
                     </label>
                     <Select
                       {...register('island', { required: 'Island is required' })}
+                      value={selectedIsland || property?.island || ''}
+                      onChange={(e) => setValue('island', e.target.value, { shouldValidate: true })}
                     >
                       <option value="">Select island</option>
                       {islands.map((island) => (
@@ -349,28 +371,10 @@ export default function EditPropertyPage() {
 
               {/* Property Details */}
               <FormSection title="Property Details">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Number of Floors *
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="1"
-                      {...register('number_of_floors', { 
-                        required: 'Number of floors is required',
-                        valueAsNumber: true 
-                      })}
-                    />
-                    {errors.number_of_floors && (
-                      <p className="mt-1 text-sm text-red-600">{errors.number_of_floors.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Number of Rental Units *
+                      Total Rental Units *
                     </label>
                     <Input
                       type="number"
@@ -384,70 +388,7 @@ export default function EditPropertyPage() {
                     {errors.number_of_rental_units && (
                       <p className="mt-1 text-sm text-red-600">{errors.number_of_rental_units.message}</p>
                     )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Bedrooms *
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="1"
-                      {...register('bedrooms', { 
-                        required: 'Number of bedrooms is required',
-                        min: { value: 1, message: 'At least 1 bedroom is required' },
-                        valueAsNumber: true 
-                      })}
-                    />
-                    {errors.bedrooms && (
-                      <p className="mt-1 text-sm text-red-600">{errors.bedrooms.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Bathrooms *
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      step="0.5"
-                      placeholder="1"
-                      {...register('bathrooms', { 
-                        required: 'Number of bathrooms is required',
-                        min: { value: 1, message: 'At least 1 bathroom is required' },
-                        valueAsNumber: true 
-                      })}
-                    />
-                    {errors.bathrooms && (
-                      <p className="mt-1 text-sm text-red-600">{errors.bathrooms.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Square Feet
-                    </label>
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      {...register('square_feet', { valueAsNumber: true })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Year Built
-                    </label>
-                    <Input
-                      type="number"
-                      min="1800"
-                      max={new Date().getFullYear()}
-                      placeholder="2020"
-                      {...register('year_built', { valueAsNumber: true })}
-                    />
+                    <p className="mt-1 text-xs text-gray-500">Maximum number of rental units in this property</p>
                   </div>
                 </div>
               </FormSection>
@@ -466,20 +407,6 @@ export default function EditPropertyPage() {
                       <option value="renovation">Under Renovation</option>
                     </Select>
                   </div>
-                </div>
-              </FormSection>
-
-              {/* Description */}
-              <FormSection title="Description">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <Textarea
-                    placeholder="Enter property description..."
-                    rows={4}
-                    {...register('description')}
-                  />
                 </div>
               </FormSection>
 
