@@ -397,13 +397,13 @@ export default function TenantLedgerPage() {
             <Button 
               onClick={loadData} 
               variant="outline"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
               disabled={loading}
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </Button>
-            <Button onClick={handleNewEntry} className="flex items-center gap-2">
+            <Button onClick={handleNewEntry} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
               <Plus className="h-4 w-4" />
               New Entry
             </Button>
@@ -527,7 +527,7 @@ export default function TenantLedgerPage() {
         </Card>
 
         {/* Complete Table with All Fields */}
-        <Card className="p-4 md:p-6">
+        <Card className="p-4 md:p-6 bg-white border border-gray-200">
           {/* Bulk Actions */}
           {showBulkActions && (
             <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">

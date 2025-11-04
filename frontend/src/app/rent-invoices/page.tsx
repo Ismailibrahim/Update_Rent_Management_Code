@@ -6,7 +6,7 @@ import { Card, CardContent } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Select } from '../../components/UI/Select';
-import { FileText, Search, Trash2, Eye, User, Building, CheckCircle, Clock, AlertCircle, Plus, Upload, FileImage, Receipt } from 'lucide-react';
+import { FileText, Search, Trash2, Eye, User, Building, CheckCircle, Clock, AlertCircle, Plus, Upload, FileImage, Receipt, RefreshCw, X } from 'lucide-react';
 import { rentInvoicesAPI, paymentTypesAPI, paymentModesAPI, RentInvoice } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -449,17 +449,17 @@ export default function RentInvoicesPage() {
             <Button 
               onClick={fetchInvoices}
               variant="outline"
-              className="flex items-center"
+              className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
               disabled={loading}
             >
-              <Search className="h-4 w-4 mr-2" />
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
               {loading ? 'Refreshing...' : 'Refresh'}
             </Button>
             <Button 
               onClick={() => setShowGenerateModal(true)}
-              className="flex items-center"
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
             >
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4" />
               Generate Monthly Rent Invoices
             </Button>
           </div>
@@ -592,7 +592,12 @@ export default function RentInvoicesPage() {
                 max="2030"
               />
               
-              <Button variant="outline" onClick={fetchInvoices}>
+              <Button 
+                variant="outline" 
+                onClick={fetchInvoices}
+                className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+              >
+                <RefreshCw className="h-4 w-4" />
                 Refresh
               </Button>
             </div>
@@ -605,7 +610,7 @@ export default function RentInvoicesPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         ) : (
-          <Card className="w-full">
+          <Card className="w-full bg-white border border-gray-200">
             <CardContent className="p-0">
               {/* Bulk Actions */}
               {showBulkActions && (
@@ -748,10 +753,10 @@ export default function RentInvoicesPage() {
                                 variant="ghost" 
                                 size="sm" 
                                 onClick={() => handleMarkAsPaid(invoice)}
-                                className="p-1 h-7"
+                                className="h-9 w-9 p-0 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
                                 title="Mark as Paid"
                               >
-                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <CheckCircle className="h-4 w-4" />
                               </Button>
                             )}
                             {invoice.status === 'paid' && invoice.payment_slip_files && invoice.payment_slip_files.split(',').length > 0 && (
@@ -767,10 +772,10 @@ export default function RentInvoicesPage() {
                                     setShowPaymentSlipModal(true);
                                   }
                                 }}
-                                className="p-1 h-7"
+                                className="h-9 w-9 p-0 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 hover:text-purple-700 transition-all duration-200 shadow-sm hover:shadow-md"
                                 title={`View Payment Slip${invoice.payment_slip_files && invoice.payment_slip_files.split(',').length > 1 ? 's' : ''} (${invoice.payment_slip_files?.split(',').length || 0})`}
                               >
-                                <FileImage className="h-4 w-4 text-purple-600" />
+                                <FileImage className="h-4 w-4" />
                               </Button>
                             )}
                             <Button 
@@ -780,19 +785,19 @@ export default function RentInvoicesPage() {
                                 setSelectedInvoice(invoice);
                                 setShowViewInvoiceModal(true);
                               }}
-                              className="p-1 h-7"
+                              className="h-9 w-9 p-0 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
                               title="View Invoice"
                             >
-                              <Receipt className="h-4 w-4 text-blue-600" />
+                              <Receipt className="h-4 w-4" />
                             </Button>
                             <Button 
                               variant="ghost" 
                               size="sm" 
                               onClick={() => handleDeleteInvoice(invoice.id)}
-                              className="p-1 h-7"
+                              className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
                               title="Delete Invoice"
                             >
-                              <Trash2 className="h-4 w-4 text-red-600" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </td>
@@ -812,12 +817,6 @@ export default function RentInvoicesPage() {
             <p className="mt-1 text-sm text-gray-500">
               {searchTerm || statusFilter || monthFilter ? 'Try adjusting your search filters.' : 'Get started by generating monthly invoices.'}
             </p>
-            <div className="mt-6">
-              <Button onClick={() => setShowGenerateModal(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Generate Monthly Rent Invoices
-              </Button>
-            </div>
           </div>
         )}
 
@@ -919,28 +918,30 @@ export default function RentInvoicesPage() {
                 )}
               </div>
               
-              <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end space-x-3">
+              <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end gap-3">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setShowGenerateModal(false);
                     setSkippedTenants([]);
                   }}
+                  className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleGenerateInvoices}
                   disabled={generating}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {generating ? (
                     <>
-                      <Clock className="h-4 w-4 mr-2 animate-spin" />
+                      <Clock className="h-4 w-4 animate-spin" />
                       Generating...
                     </>
                   ) : (
                     <>
-                      <FileText className="h-4 w-4 mr-2" />
+                      <FileText className="h-4 w-4" />
                       Generate Rent Invoices
                     </>
                   )}
@@ -1139,18 +1140,19 @@ export default function RentInvoicesPage() {
                 </div>
               </div>
               
-              <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end space-x-3">
+              <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end gap-3">
                 <Button
                   variant="outline"
                   onClick={() => setShowPaymentModal(false)}
+                  className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={handleConfirmPayment}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
                 >
-                  <CheckCircle className="h-4 w-4 mr-2" />
+                  <CheckCircle className="h-4 w-4" />
                   Mark as Paid
                 </Button>
               </div>
@@ -1219,6 +1221,7 @@ export default function RentInvoicesPage() {
                 <Button
                   variant="outline"
                   onClick={() => setShowPaymentSlipModal(false)}
+                  className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
                 >
                   Close
                 </Button>
@@ -1248,9 +1251,10 @@ export default function RentInvoicesPage() {
                   <Button
                     variant="outline"
                     onClick={() => setShowViewInvoiceModal(false)}
-                    className="text-gray-500 hover:text-gray-700"
+                    className="h-9 w-9 p-0 rounded-lg border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md"
+                    title="Close"
                   >
-                    ×
+                    <X className="h-4 w-4 text-gray-500 hover:text-gray-700" />
                   </Button>
                 </div>
               </div>

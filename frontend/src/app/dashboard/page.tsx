@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
+import { Button } from '../../components/UI/Button';
 import { Building2, Users, DollarSign, RefreshCw } from 'lucide-react';
 import { propertiesAPI, tenantsAPI, rentalUnitsAPI } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -148,15 +149,16 @@ export default function DashboardPage() {
                 Welcome to your rental property management dashboard
               </p>
             </div>
-            <button
+            <Button
+              variant="outline"
               onClick={() => {
                 fetchDashboardData();
               }}
-              className="flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
             >
-              <RefreshCw className="h-4 w-4 mr-2" />
+              <RefreshCw className="h-4 w-4" />
               Refresh
-            </button>
+            </Button>
           </div>
 
         {/* Stats Cards */}

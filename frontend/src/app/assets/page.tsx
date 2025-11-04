@@ -261,14 +261,14 @@ export default function AssetsPage() {
             <Link href="/assets/import" prefetch={true}>
               <Button 
                 variant="outline" 
-                className="flex items-center" 
+                className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
               >
-                <Upload className="h-4 w-4 mr-2" />
+                <Upload className="h-4 w-4" />
                 Import
               </Button>
             </Link>
-            <Button onClick={handleAddAsset} className="flex items-center">
-              <Plus className="h-4 w-4 mr-2" />
+            <Button onClick={handleAddAsset} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+              <Plus className="h-4 w-4" />
               Add Asset
             </Button>
           </div>
@@ -345,12 +345,19 @@ export default function AssetsPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={cancelForm}>
-                <X className="h-4 w-4 mr-2" />
+              <Button 
+                variant="outline" 
+                onClick={cancelForm}
+                className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+              >
+                <X className="h-4 w-4" />
                 Cancel
               </Button>
-              <Button onClick={handleSaveAsset}>
-                <Save className="h-4 w-4 mr-2" />
+              <Button 
+                onClick={handleSaveAsset}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Save className="h-4 w-4" />
                 {editingAsset ? 'Update Asset' : 'Create Asset'}
               </Button>
             </DialogFooter>
@@ -425,8 +432,8 @@ export default function AssetsPage() {
                   {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first asset.'}
                 </p>
                 <div className="mt-6">
-                  <Button onClick={handleAddAsset}>
-                    <Plus className="h-4 w-4 mr-2" />
+                  <Button onClick={handleAddAsset} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+                    <Plus className="h-4 w-4" />
                     Add Asset
                   </Button>
                 </div>

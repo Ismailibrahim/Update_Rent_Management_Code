@@ -163,8 +163,8 @@ export default function PaymentTypesPage() {
               Manage different types of payments
             </p>
           </div>
-          <Button onClick={handleAddPaymentType} className="flex items-center">
-            <Plus className="h-4 w-4 mr-2" />
+          <Button onClick={handleAddPaymentType} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+            <Plus className="h-4 w-4" />
             Add Payment Type
           </Button>
         </div>
@@ -259,12 +259,19 @@ export default function PaymentTypesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={cancelForm}>
-                <X className="h-4 w-4 mr-2" />
+              <Button 
+                variant="outline" 
+                onClick={cancelForm}
+                className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+              >
+                <X className="h-4 w-4" />
                 Cancel
               </Button>
-              <Button onClick={handleSavePaymentType}>
-                <Save className="h-4 w-4 mr-2" />
+              <Button 
+                onClick={handleSavePaymentType}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Save className="h-4 w-4" />
                 {editingPaymentType ? 'Update Payment Type' : 'Create Payment Type'}
               </Button>
             </DialogFooter>
@@ -348,12 +355,6 @@ export default function PaymentTypesPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first payment type.'}
                 </p>
-                <div className="mt-6">
-                  <Button onClick={handleAddPaymentType}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Payment Type
-                  </Button>
-                </div>
               </div>
             )}
           </CardContent>

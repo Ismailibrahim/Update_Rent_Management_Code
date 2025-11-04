@@ -316,7 +316,7 @@ export default function PropertiesPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         ) : sortedProperties.length > 0 ? (
-          <Card className="shadow-md border border-gray-200">
+          <Card className="bg-white shadow-md border border-gray-200">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>

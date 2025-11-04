@@ -213,8 +213,11 @@ export default function PropertyDetailsPage() {
           <div className="text-center">
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Property Not Found</h2>
             <p className="text-gray-600 mb-4">The property you&apos;re looking for doesn&apos;t exist.</p>
-            <Button onClick={handleBack}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
+            <Button 
+              onClick={handleBack}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+            >
+              <ArrowLeft className="h-4 w-4" />
               Back to Properties
             </Button>
           </div>
@@ -233,9 +236,9 @@ export default function PropertyDetailsPage() {
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="flex items-center"
+                className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
+                <ArrowLeft className="h-4 w-4" />
                 Back
               </Button>
             </Link>
@@ -347,7 +350,7 @@ export default function PropertyDetailsPage() {
             )}
 
             {/* Rental Units */}
-            <Card>
+            <Card className="bg-white border border-gray-200">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center">

@@ -156,7 +156,7 @@ function IslandsPageContent() {
           </div>
           <Button
             onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
           >
             <Plus className="h-4 w-4" />
             Add Island
@@ -229,10 +229,19 @@ function IslandsPageContent() {
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={resetForm}>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={resetForm}
+                    className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+                  >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={loading}>
+                  <Button 
+                    type="submit" 
+                    disabled={loading}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     {editingIsland ? 'Update' : 'Create'} Island
                   </Button>
                 </DialogFooter>
@@ -242,7 +251,7 @@ function IslandsPageContent() {
         )}
 
         {/* Islands List (Table View) */}
-        <Card>
+        <Card className="bg-white border border-gray-200">
           <CardHeader>
             <CardTitle>Islands ({filteredIslands.length})</CardTitle>
             <CardDescription>Manage your islands</CardDescription>

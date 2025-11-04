@@ -324,7 +324,7 @@ export default function InvoicesPage() {
             <Button 
               onClick={fetchInvoices}
               variant="outline"
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
               disabled={loading}
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -514,7 +514,7 @@ export default function InvoicesPage() {
         )}
 
         {/* Invoices Table */}
-        <Card className="flex-1 overflow-hidden">
+        <Card className="flex-1 overflow-hidden bg-white border border-gray-200">
           <CardContent className="p-0 h-full overflow-hidden">
             <div className="overflow-auto" style={{ height: 'calc(100vh - 320px)', maxHeight: 'calc(100vh - 320px)' }}>
               <table className="min-w-full divide-y divide-gray-200">

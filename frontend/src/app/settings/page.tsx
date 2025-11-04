@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Settings, Save, Building2, DollarSign, Bell } from 'lucide-react';
+import { Settings, Save, Building2, DollarSign, Bell, FileText } from 'lucide-react';
+import Link from 'next/link';
 import { settingsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -300,15 +301,27 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Template</label>
-                <select
-                  value={settings.invoice_template}
-                  onChange={(e) => handleInputChange('invoice_template', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="default">Default Template</option>
-                  <option value="modern">Modern Template</option>
-                  <option value="classic">Classic Template</option>
-                </select>
+                <div className="flex gap-2">
+                  <select
+                    value={settings.invoice_template}
+                    onChange={(e) => handleInputChange('invoice_template', e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="default">Default Template</option>
+                    <option value="modern">Modern Template</option>
+                    <option value="classic">Classic Template</option>
+                  </select>
+                  <Link href="/settings/invoice-templates">
+                    <Button
+                      variant="outline"
+                      className="flex items-center gap-2 px-4 py-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+                      title="Manage Templates"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Manage
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
           </CardContent>

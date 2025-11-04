@@ -222,8 +222,8 @@ export default function EmployeePage() {
               Manage your team members and their roles
             </p>
           </div>
-          <Button onClick={handleAddUser} className="flex items-center">
-            <Plus className="h-4 w-4 mr-2" />
+          <Button onClick={handleAddUser} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+            <Plus className="h-4 w-4" />
             Add Employee
           </Button>
         </div>
@@ -383,12 +383,19 @@ export default function EmployeePage() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={cancelForm}>
-                <X className="h-4 w-4 mr-2" />
+              <Button 
+                variant="outline" 
+                onClick={cancelForm}
+                className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+              >
+                <X className="h-4 w-4" />
                 Cancel
               </Button>
-              <Button onClick={handleSaveUser}>
-                <Save className="h-4 w-4 mr-2" />
+              <Button 
+                onClick={handleSaveUser}
+                className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Save className="h-4 w-4" />
                 {editingUser ? 'Update Employee' : 'Create Employee'}
               </Button>
             </DialogFooter>
@@ -489,8 +496,8 @@ export default function EmployeePage() {
                   {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first employee.'}
                 </p>
                 <div className="mt-6">
-                  <Button onClick={handleAddUser}>
-                    <Plus className="h-4 w-4 mr-2" />
+                  <Button onClick={handleAddUser} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+                    <Plus className="h-4 w-4" />
                     Add Employee
                   </Button>
                 </div>

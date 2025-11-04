@@ -932,4 +932,29 @@ export const smsNotificationsAPI = {
   testConnection: () => api.get('/sms-notifications/test-connection'),
 };
 
+export interface InvoiceTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  type: 'rent' | 'maintenance' | 'both';
+  template_data: Record<string, unknown>;
+  html_content?: string;
+  styles?: Record<string, unknown>;
+  logo_path?: string;
+  is_active: boolean;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const invoiceTemplatesAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/invoice-templates', { params }),
+  getById: (id: number) => api.get(`/invoice-templates/${id}`),
+  create: (data: Partial<InvoiceTemplate>) => api.post('/invoice-templates', data),
+  update: (id: number, data: Partial<InvoiceTemplate>) => api.put(`/invoice-templates/${id}`, data),
+  delete: (id: number) => api.delete(`/invoice-templates/${id}`),
+  setDefault: (id: number) => api.post(`/invoice-templates/${id}/set-default`),
+  duplicate: (id: number) => api.post(`/invoice-templates/${id}/duplicate`),
+};
+
 export default api;

@@ -34,7 +34,8 @@ import {
   Map,
   MessageSquare,
   Send,
-  FileText as FileTextIcon
+  FileText as FileTextIcon,
+  Layout
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -106,6 +107,7 @@ const navigationGroups: NavigationGroup[] = [
     icon: Settings,
     items: [
       { name: 'Settings', href: '/settings', icon: Settings },
+      { name: 'Invoice Templates', href: '/settings/invoice-templates', icon: Layout },
       { name: 'Currencies', href: '/currencies', icon: Coins },
       { name: 'SMS Templates', href: '/sms/templates', icon: MessageSquare },
       { name: 'SMS Settings', href: '/sms/settings', icon: Settings },

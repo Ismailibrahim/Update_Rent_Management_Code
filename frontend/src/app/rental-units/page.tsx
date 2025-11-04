@@ -189,7 +189,7 @@ export default function RentalUnitsPage() {
             </p>
           </div>
           <Link href="/rental-units/new" prefetch={true}>
-            <Button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+            <Button className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
               <Plus className="h-4 w-4" />
               Add Rental Unit
             </Button>
@@ -255,7 +255,7 @@ export default function RentalUnitsPage() {
         </div>
 
         {/* Rental Units Table */}
-        <Card className="w-full shadow-md border border-gray-200">
+        <Card className="w-full bg-white shadow-md border border-gray-200">
           <CardContent className="p-0">
             <div className="w-full overflow-x-auto">
               <table className="w-full table-auto">

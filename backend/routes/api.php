@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\SmsTemplateController;
 use App\Http\Controllers\Api\SmsSettingController;
 use App\Http\Controllers\Api\SmsLogController;
 use App\Http\Controllers\Api\SmsNotificationController;
+use App\Http\Controllers\Api\InvoiceTemplateController;
 use App\Http\Controllers\TenantLedgerController;
 
 /*
@@ -141,6 +142,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Rental Unit Type routes
     Route::apiResource('rental-unit-types', RentalUnitTypeController::class);
+
+    // Invoice Template routes
+    Route::apiResource('invoice-templates', InvoiceTemplateController::class);
+    Route::post('/invoice-templates/{id}/set-default', [InvoiceTemplateController::class, 'setDefault']);
+    Route::post('/invoice-templates/{id}/duplicate', [InvoiceTemplateController::class, 'duplicate']);
 
     // Tenant Ledger routes
     Route::apiResource('tenant-ledgers', TenantLedgerController::class);

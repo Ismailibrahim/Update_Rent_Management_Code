@@ -174,8 +174,8 @@ export default function TenantsPage() {
               Manage your tenants and lease information
             </p>
           </div>
-          <Button onClick={handleAddTenant} className="flex items-center">
-            <Plus className="h-4 w-4 mr-2" />
+          <Button onClick={handleAddTenant} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+            <Plus className="h-4 w-4" />
             Add Tenant
           </Button>
         </div>
@@ -239,7 +239,7 @@ export default function TenantsPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         ) : (
-          <Card>
+          <Card className="bg-white border border-gray-200">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -369,28 +369,28 @@ export default function TenantsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center justify-end space-x-2">
+                          <div className="flex items-center justify-end gap-1.5">
                             <Link 
                               href={`/tenants/${tenant.id}`}
                               prefetch={true}
-                              className="inline-flex items-center justify-center h-8 w-8 p-0 rounded-md hover:bg-gray-100 transition-colors"
+                              className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
                               title="View Details"
                             >
-                              <Eye className="h-4 w-4 text-blue-600" />
+                              <Eye className="h-4 w-4" />
                             </Link>
                             <Link 
                               href={`/tenants/${tenant.id}/edit`}
                               prefetch={true}
-                              className="inline-flex items-center justify-center h-8 w-8 p-0 rounded-md hover:bg-gray-100 transition-colors"
+                              className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
                               title="Edit Tenant"
                             >
-                              <Edit className="h-4 w-4 text-blue-600" />
+                              <Edit className="h-4 w-4" />
                             </Link>
                             <Button 
-                              variant="outline" 
+                              variant="ghost" 
                               size="sm" 
                               onClick={() => handleDeleteTenant(tenant.id)}
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                              className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
                               title="Delete Tenant"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -413,12 +413,6 @@ export default function TenantsPage() {
             <p className="mt-1 text-sm text-gray-500">
               {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first tenant.'}
             </p>
-            <div className="mt-6">
-              <Button onClick={handleAddTenant}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Tenant
-              </Button>
-            </div>
           </div>
         )}
       </div>

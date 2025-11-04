@@ -227,8 +227,12 @@ export default function NewTenantPage() {
       <div className="space-y-6">
         {/* Page Header */}
         <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={handleBack} className="flex items-center">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+          <Button 
+            variant="outline" 
+            onClick={handleBack} 
+            className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+          >
+            <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
           <div>
