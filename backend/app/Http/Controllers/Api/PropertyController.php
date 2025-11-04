@@ -40,8 +40,7 @@ class PropertyController extends Controller
                 $search = $request->search;
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('street', 'like', "%{$search}%")
-                      ->orWhere('city', 'like', "%{$search}%");
+                      ->orWhere('street', 'like', "%{$search}%");
                 });
             }
 
@@ -74,17 +73,8 @@ class PropertyController extends Controller
                     'name' => $property->name,
                     'type' => $property->type,
                     'street' => $property->street,
-                    'city' => $property->city,
                     'island' => $property->island,
-                    'postal_code' => $property->postal_code,
-                    'country' => $property->country,
-                    'number_of_floors' => $property->number_of_floors,
                     'number_of_rental_units' => $property->number_of_rental_units,
-                    'bedrooms' => $property->bedrooms,
-                    'bathrooms' => $property->bathrooms,
-                    'square_feet' => $property->square_feet,
-                    'year_built' => $property->year_built,
-                    'description' => $property->description,
                     'status' => $property->occupancy_status, // Use calculated status
                     'photos' => $property->photos,
                     'amenities' => $property->amenities,
@@ -126,8 +116,9 @@ class PropertyController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        // Get valid types from rental_unit_types table
-        $validTypes = RentalUnitType::where('is_active', true)
+        // Get valid property-level types only
+        $validTypes = RentalUnitType::propertyTypes()
+            ->where('is_active', true)
             ->pluck('name')
             ->map(fn($name) => strtolower($name))
             ->toArray();
@@ -140,17 +131,8 @@ class PropertyController extends Controller
                 }
             }],
             'street' => 'required|string|max:255',
-            'city' => 'required|string|max:255',
             'island' => 'required|string|max:255',
-            'postal_code' => 'nullable|string|max:20',
-            'country' => 'nullable|string|max:100',
-            'number_of_floors' => 'required|integer|min:1',
             'number_of_rental_units' => 'required|integer|min:1',
-            'bedrooms' => 'required|integer|min:1',
-            'bathrooms' => 'required|integer|min:1',
-            'square_feet' => 'nullable|numeric|min:0',
-            'year_built' => 'nullable|numeric|min:1800|max:' . date('Y'),
-            'description' => 'nullable|string',
             'status' => ['nullable', Rule::in(['occupied', 'vacant', 'maintenance', 'renovation'])],
             'assigned_manager_id' => 'nullable|exists:users,id',
         ]);
@@ -169,8 +151,8 @@ class PropertyController extends Controller
                 'request_data' => $request->all()
             ]);
 
-            // Check for duplicate property name
-            $existingByName = Property::where('name', $request->name)->first();
+            // Check for duplicate property name (case insensitive and trimmed)
+            $existingByName = Property::whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($request->name))])->first();
             if ($existingByName) {
                 return response()->json([
                     'message' => 'Validation failed',
@@ -180,30 +162,19 @@ class PropertyController extends Controller
                 ], 400);
             }
 
-            // Check for duplicate address (street + island combination)
-            $existingByAddress = Property::where('street', $request->street)
-                ->where('island', $request->island)
-                ->first();
-            if ($existingByAddress) {
-                return response()->json([
-                    'message' => 'Validation failed',
-                    'errors' => [
-                        'address' => ['A property with this address (street and island combination) already exists.']
-                    ]
-                ], 400);
-            }
-
             $propertyData = $request->all();
             $propertyData['assigned_manager_id'] = $propertyData['assigned_manager_id'] ?? $request->user()->id;
             $propertyData['status'] = $propertyData['status'] ?? 'vacant';
-            $propertyData['country'] = $propertyData['country'] ?? 'Maldives';
             
-            // Convert numeric strings to integers
-            if (isset($propertyData['square_feet']) && is_numeric($propertyData['square_feet'])) {
-                $propertyData['square_feet'] = (int) $propertyData['square_feet'];
+            // Trim string fields to prevent whitespace issues
+            if (isset($propertyData['street'])) {
+                $propertyData['street'] = trim($propertyData['street']);
             }
-            if (isset($propertyData['year_built']) && is_numeric($propertyData['year_built'])) {
-                $propertyData['year_built'] = (int) $propertyData['year_built'];
+            if (isset($propertyData['island'])) {
+                $propertyData['island'] = trim($propertyData['island']);
+            }
+            if (isset($propertyData['name'])) {
+                $propertyData['name'] = trim($propertyData['name']);
             }
 
             $property = Property::create($propertyData);
@@ -271,8 +242,9 @@ class PropertyController extends Controller
      */
     public function update(Request $request, Property $property): JsonResponse
     {
-        // Get valid types from rental_unit_types table
-        $validTypes = RentalUnitType::where('is_active', true)
+        // Get valid property-level types only
+        $validTypes = RentalUnitType::propertyTypes()
+            ->where('is_active', true)
             ->pluck('name')
             ->map(fn($name) => strtolower($name))
             ->toArray();
@@ -285,17 +257,8 @@ class PropertyController extends Controller
                 }
             }],
             'street' => 'sometimes|string|max:255',
-            'city' => 'sometimes|string|max:255',
             'island' => 'sometimes|string|max:255',
-            'postal_code' => 'nullable|string|max:20',
-            'country' => 'nullable|string|max:100',
-            'number_of_floors' => 'sometimes|integer|min:1',
             'number_of_rental_units' => 'sometimes|integer|min:1',
-            'bedrooms' => 'sometimes|integer|min:1',
-            'bathrooms' => 'sometimes|integer|min:1',
-            'square_feet' => 'nullable|numeric|min:0',
-            'year_built' => 'nullable|numeric|min:1800|max:' . date('Y'),
-            'description' => 'nullable|string',
             'status' => ['sometimes', Rule::in(['occupied', 'vacant', 'maintenance', 'renovation'])],
             'assigned_manager_id' => 'nullable|exists:users,id',
         ]);
@@ -318,9 +281,9 @@ class PropertyController extends Controller
                 ], 403);
             }
 
-            // Check for duplicate property name (excluding current property)
-            if ($request->has('name') && $request->name !== $property->name) {
-                $existingByName = Property::where('name', $request->name)
+            // Check for duplicate property name (case insensitive and trimmed, excluding current property)
+            if ($request->has('name') && strtolower(trim($request->name)) !== strtolower(trim($property->name))) {
+                $existingByName = Property::whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($request->name))])
                     ->where('id', '!=', $property->id)
                     ->first();
                 if ($existingByName) {
@@ -328,26 +291,6 @@ class PropertyController extends Controller
                         'message' => 'Validation failed',
                         'errors' => [
                             'name' => ['A property with this name already exists.']
-                        ]
-                    ], 400);
-                }
-            }
-
-            // Check for duplicate address (street + island combination, excluding current property)
-            if (($request->has('street') || $request->has('island')) && 
-                ($request->street !== $property->street || $request->island !== $property->island)) {
-                $street = $request->street ?? $property->street;
-                $island = $request->island ?? $property->island;
-                
-                $existingByAddress = Property::where('street', $street)
-                    ->where('island', $island)
-                    ->where('id', '!=', $property->id)
-                    ->first();
-                if ($existingByAddress) {
-                    return response()->json([
-                        'message' => 'Validation failed',
-                        'errors' => [
-                            'address' => ['A property with this address (street and island combination) already exists.']
                         ]
                     ], 400);
                 }
@@ -507,22 +450,13 @@ class PropertyController extends Controller
     public function downloadTemplate(): JsonResponse
     {
         try {
-            // Define headers with mandatory indicators
+            // Define headers with mandatory indicators (updated to match current schema)
             $headers = [
                 'name [REQUIRED]',
                 'type [REQUIRED]',
                 'street [REQUIRED]',
-                'city [REQUIRED]',
                 'island [REQUIRED]',
-                'postal_code',
-                'country',
-                'number_of_floors [REQUIRED]',
                 'number_of_rental_units [REQUIRED]',
-                'bedrooms [REQUIRED]',
-                'bathrooms [REQUIRED]',
-                'square_feet',
-                'year_built',
-                'description',
                 'status'
             ];
 
@@ -533,51 +467,24 @@ class PropertyController extends Controller
                 '',
                 '',
                 '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
                 ''
             ];
 
             $sampleData = [
                 [
                     'name [REQUIRED]' => 'Sample Property 1',
-                    'type [REQUIRED]' => 'apartment',
+                    'type [REQUIRED]' => 'Apartment Building',
                     'street [REQUIRED]' => '123 Main Street',
-                    'city [REQUIRED]' => 'Male',
                     'island [REQUIRED]' => 'Male',
-                    'postal_code' => '20001',
-                    'country' => 'Maldives',
-                    'number_of_floors [REQUIRED]' => '2',
                     'number_of_rental_units [REQUIRED]' => '4',
-                    'bedrooms [REQUIRED]' => '2',
-                    'bathrooms [REQUIRED]' => '2',
-                    'square_feet' => '1200',
-                    'year_built' => '2020',
-                    'description' => 'Beautiful property',
                     'status' => 'vacant'
                 ],
                 [
                     'name [REQUIRED]' => 'Sample Property 2',
-                    'type [REQUIRED]' => 'villa',
+                    'type [REQUIRED]' => 'Mixed-Use Building',
                     'street [REQUIRED]' => '456 Ocean View',
-                    'city [REQUIRED]' => 'Hulhumale',
-                    'island [REQUIRED]' => 'Male',
-                    'postal_code' => '20002',
-                    'country' => 'Maldives',
-                    'number_of_floors [REQUIRED]' => '1',
-                    'number_of_rental_units [REQUIRED]' => '1',
-                    'bedrooms [REQUIRED]' => '3',
-                    'bathrooms [REQUIRED]' => '2',
-                    'square_feet' => '2000',
-                    'year_built' => '2019',
-                    'description' => 'Luxury villa',
+                    'island [REQUIRED]' => 'Hulhumale',
+                    'number_of_rental_units [REQUIRED]' => '8',
                     'status' => 'vacant'
                 ]
             ];
@@ -660,8 +567,9 @@ class PropertyController extends Controller
             $previewData = [];
             $errors = [];
 
-            // Get valid types
-            $validTypes = RentalUnitType::where('is_active', true)
+            // Get valid property types (category = 'property')
+            $validTypes = RentalUnitType::propertyTypes()
+                ->where('is_active', true)
                 ->pluck('name')
                 ->map(fn($name) => strtolower($name))
                 ->toArray();
@@ -687,20 +595,23 @@ class PropertyController extends Controller
                 }
 
                 // Validate required fields
-                $requiredFields = ['name', 'type', 'street', 'city', 'island', 'number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms'];
+                $requiredFields = ['name', 'type', 'street', 'island', 'number_of_rental_units'];
                 foreach ($requiredFields as $field) {
                     if (empty($mappedData[$field])) {
                         $rowErrors[] = "Row " . ($index + 1) . ": Missing required field '{$field}'";
                     }
                 }
 
-                // Validate type
-                if (isset($mappedData['type']) && !in_array(strtolower($mappedData['type']), $validTypes)) {
-                    $rowErrors[] = "Row " . ($index + 1) . ": Invalid property type '{$mappedData['type']}'";
+                // Validate type (case-insensitive match)
+                if (isset($mappedData['type'])) {
+                    $typeLower = strtolower(trim($mappedData['type']));
+                    if (!in_array($typeLower, $validTypes)) {
+                        $rowErrors[] = "Row " . ($index + 1) . ": Invalid property type '{$mappedData['type']}'. Valid types: " . implode(', ', array_map('ucfirst', $validTypes));
+                    }
                 }
 
                 // Validate and clean numeric fields
-                $numericFields = ['number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms', 'square_feet', 'year_built'];
+                $numericFields = ['number_of_rental_units'];
                 foreach ($numericFields as $field) {
                     if (isset($mappedData[$field]) && $mappedData[$field] !== '') {
                         // Remove any non-numeric characters except decimal point and minus sign
@@ -785,8 +696,9 @@ class PropertyController extends Controller
                 array_shift($dataLines);
             }
 
-            // Get valid types
-            $validTypes = RentalUnitType::where('is_active', true)
+            // Get valid property types (category = 'property')
+            $validTypes = RentalUnitType::propertyTypes()
+                ->where('is_active', true)
                 ->pluck('name')
                 ->map(fn($name) => strtolower($name))
                 ->toArray();
@@ -818,13 +730,12 @@ class PropertyController extends Controller
                     }
 
                     // Set defaults
-                    $mappedData['country'] = $mappedData['country'] ?? 'Maldives';
                     $mappedData['status'] = $mappedData['status'] ?? 'vacant';
                     $mappedData['assigned_manager_id'] = $mappedData['assigned_manager_id'] ?? $request->user()->id;
                     $mappedData['is_active'] = true;
 
                     // Convert numeric fields - handle string numbers
-                    $numericFields = ['number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms', 'square_feet', 'year_built'];
+                    $numericFields = ['number_of_rental_units'];
                     foreach ($numericFields as $field) {
                         if (isset($mappedData[$field]) && $mappedData[$field] !== '') {
                             // Remove any non-numeric characters except decimal point and minus sign
@@ -834,36 +745,50 @@ class PropertyController extends Controller
                             }
                         }
                     }
+                    
+                    // Trim string fields to prevent whitespace issues
+                    if (isset($mappedData['name'])) {
+                        $mappedData['name'] = trim($mappedData['name']);
+                    }
+                    if (isset($mappedData['street'])) {
+                        $mappedData['street'] = trim($mappedData['street']);
+                    }
+                    if (isset($mappedData['island'])) {
+                        $mappedData['island'] = trim($mappedData['island']);
+                    }
 
                     // Validate required fields
-                    $requiredFields = ['name', 'type', 'street', 'city', 'island', 'number_of_floors', 'number_of_rental_units', 'bedrooms', 'bathrooms'];
+                    $requiredFields = ['name', 'type', 'street', 'island', 'number_of_rental_units'];
                     foreach ($requiredFields as $field) {
                         if (empty($mappedData[$field])) {
                             throw new \Exception("Missing required field: {$field}");
                         }
                     }
 
-                    // Validate type
-                    if (!in_array(strtolower($mappedData['type']), $validTypes)) {
-                        throw new \Exception("Invalid property type: {$mappedData['type']}");
+                    // Validate type (case-insensitive match)
+                    $typeLower = strtolower(trim($mappedData['type']));
+                    if (!in_array($typeLower, $validTypes)) {
+                        throw new \Exception("Invalid property type: {$mappedData['type']}. Valid types: " . implode(', ', array_map('ucfirst', $validTypes)));
                     }
 
-                    // Check for duplicate property name
-                    $existingByName = Property::where('name', $mappedData['name'])->first();
+                    // Check for duplicate property name (case insensitive and trimmed)
+                    $existingByName = Property::whereRaw('LOWER(TRIM(name)) = ?', [strtolower(trim($mappedData['name']))])->first();
                     if ($existingByName) {
                         throw new \Exception("Property with name '{$mappedData['name']}' already exists");
                     }
 
-                    // Check for duplicate address (street + island combination)
-                    $existingByAddress = Property::where('street', $mappedData['street'])
-                        ->where('island', $mappedData['island'])
-                        ->first();
-                    if ($existingByAddress) {
-                        throw new \Exception("Property with address '{$mappedData['street']}, {$mappedData['island']}' already exists");
-                    }
-
-                    // Create property
-                    Property::create($mappedData);
+                    // Create property - only include fillable fields
+                    $propertyData = [
+                        'name' => $mappedData['name'],
+                        'type' => trim($mappedData['type']),
+                        'street' => $mappedData['street'],
+                        'island' => $mappedData['island'],
+                        'number_of_rental_units' => $mappedData['number_of_rental_units'],
+                        'status' => $mappedData['status'] ?? 'vacant',
+                        'assigned_manager_id' => $mappedData['assigned_manager_id'] ?? $request->user()->id,
+                        'is_active' => true,
+                    ];
+                    Property::create($propertyData);
                     $imported++;
 
                 } catch (\Exception $e) {

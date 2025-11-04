@@ -131,10 +131,19 @@ class RentalUnitController extends Controller
             // Check property capacity
             $property = Property::findOrFail($request->property_id);
             $existingUnits = RentalUnit::where('property_id', $request->property_id)->count();
+            $remainingUnits = $property->number_of_rental_units - $existingUnits;
             
             if ($existingUnits >= $property->number_of_rental_units) {
                 return response()->json([
-                    'message' => 'Property has reached maximum rental unit capacity'
+                    'message' => sprintf(
+                        'Cannot create rental unit. Property "%s" has reached its maximum capacity of %d units. No more units can be added to this property.',
+                        $property->name,
+                        $property->number_of_rental_units
+                    ),
+                    'property_name' => $property->name,
+                    'max_units' => $property->number_of_rental_units,
+                    'existing_units' => $existingUnits,
+                    'remaining_units' => 0
                 ], 400);
             }
 

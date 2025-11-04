@@ -29,7 +29,15 @@ class RentalUnitTypeController extends Controller
                 $query->active();
             }
 
-            $unitTypes = $query->ordered()->get(['id','name','is_active','created_at','updated_at']);
+            // Filter by category (property or unit)
+            if ($request->has('category')) {
+                $category = $request->category;
+                if (in_array($category, ['property', 'unit'])) {
+                    $query->byCategory($category);
+                }
+            }
+
+            $unitTypes = $query->ordered()->get(['id','name','description','category','is_active','created_at','updated_at']);
             
             Log::info('Rental Unit Types Found', [
                 'count' => $unitTypes->count(),
@@ -64,6 +72,7 @@ class RentalUnitTypeController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100|unique:rental_unit_types,name',
             'description' => 'nullable|string|max:500',
+            'category' => 'required|in:property,unit',
             'is_active' => 'nullable'
         ]);
 
@@ -82,6 +91,7 @@ class RentalUnitTypeController extends Controller
             $createData = [
                 'name' => $request->name,
                 'description' => $request->description ?? '',
+                'category' => $request->category ?? 'unit',
                 'is_active' => $request->has('is_active') ? (bool) $request->is_active : true,
             ];
             
@@ -136,6 +146,7 @@ class RentalUnitTypeController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:100|unique:rental_unit_types,name,' . $rentalUnitType->id,
             'description' => 'nullable|string|max:500',
+            'category' => 'sometimes|in:property,unit',
             'is_active' => 'nullable'
         ]);
 
@@ -151,6 +162,7 @@ class RentalUnitTypeController extends Controller
             $updateData = [];
             if ($request->has('name')) $updateData['name'] = $request->name;
             if ($request->has('description')) $updateData['description'] = $request->description ?? '';
+            if ($request->has('category')) $updateData['category'] = $request->category;
             if ($request->has('is_active')) $updateData['is_active'] = (bool) $request->is_active;
             
             $rentalUnitType->update($updateData);

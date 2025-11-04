@@ -35,7 +35,8 @@ import {
   MessageSquare,
   Send,
   FileText as FileTextIcon,
-  Layout
+  Layout,
+  Database
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -61,10 +62,7 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { name: 'Properties', href: '/properties', icon: Building2 },
       { name: 'Rental Units', href: '/rental-units', icon: HomeIcon },
-      { name: 'Rental Unit Types', href: '/rental-unit-types', icon: Building },
-      { name: 'Islands', href: '/islands', icon: Map },
       { name: 'Tenants', href: '/tenants', icon: Users },
-      { name: 'Assets', href: '/assets', icon: Package },
     ]
   },
   {
@@ -100,6 +98,16 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { name: 'Employees', href: '/employees', icon: UserCheck },
       { name: 'Roles', href: '/roles', icon: Shield },
+    ]
+  },
+  {
+    name: 'Master Data',
+    icon: Database,
+    items: [
+      { name: 'Property Types', href: '/property-types', icon: Building2 },
+      { name: 'Rental Unit Types', href: '/rental-unit-types', icon: Building },
+      { name: 'Islands', href: '/islands', icon: Map },
+      { name: 'Assets', href: '/assets', icon: Package },
     ]
   },
   {

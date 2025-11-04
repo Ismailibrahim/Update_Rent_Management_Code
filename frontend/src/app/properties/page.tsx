@@ -17,17 +17,10 @@ interface Property {
   id: number;
   name: string;
   street: string;
-  city: string;
   island: string;
   type: string;
   status: string;
-  number_of_floors: number;
   number_of_rental_units: number;
-  bedrooms: number;
-  bathrooms: number;
-  square_feet: number;
-  year_built: number;
-  description: string;
   created_at: string;
   updated_at: string;
 }
@@ -99,7 +92,6 @@ export default function PropertiesPage() {
   const filteredProperties = properties.filter(property =>
     property.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     property.street.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    property.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
     property.island.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -133,25 +125,9 @@ export default function PropertiesPage() {
         aValue = a.type.toLowerCase();
         bValue = b.type.toLowerCase();
         break;
-      case 'floors':
-        aValue = a.number_of_floors || 0;
-        bValue = b.number_of_floors || 0;
-        break;
       case 'units':
         aValue = a.number_of_rental_units || 0;
         bValue = b.number_of_rental_units || 0;
-        break;
-      case 'bedrooms':
-        aValue = a.bedrooms || 0;
-        bValue = b.bedrooms || 0;
-        break;
-      case 'bathrooms':
-        aValue = a.bathrooms || 0;
-        bValue = b.bathrooms || 0;
-        break;
-      case 'square_feet':
-        aValue = a.square_feet || 0;
-        bValue = b.square_feet || 0;
         break;
       case 'status':
         aValue = a.status.toLowerCase();
@@ -303,7 +279,7 @@ export default function PropertiesPage() {
         <div className="relative">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
           <Input
-            placeholder="Search properties by name, address, city, or island..."
+            placeholder="Search properties by name, address, or island..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-12 pr-4 py-2.5 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg shadow-sm transition-all duration-200"
@@ -325,11 +301,7 @@ export default function PropertiesPage() {
                       <SortableHeader column="name" label="Name" />
                       <SortableHeader column="address" label="Address" />
                       <SortableHeader column="type" label="Type" />
-                      <SortableHeader column="floors" label="Floors" />
                       <SortableHeader column="units" label="Units" />
-                      <SortableHeader column="bedrooms" label="Bedrooms" />
-                      <SortableHeader column="bathrooms" label="Bathrooms" />
-                      <SortableHeader column="square_feet" label="Square Feet" />
                       <SortableHeader column="status" label="Status" />
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -346,13 +318,7 @@ export default function PropertiesPage() {
                         <TableCell>
                           <span className="text-sm capitalize">{property.type}</span>
                         </TableCell>
-                        <TableCell>{property.number_of_floors || 'N/A'}</TableCell>
                         <TableCell>{property.number_of_rental_units || 'N/A'}</TableCell>
-                        <TableCell>{property.bedrooms || 'N/A'}</TableCell>
-                        <TableCell>{property.bathrooms || 'N/A'}</TableCell>
-                        <TableCell>
-                          {property.square_feet ? property.square_feet.toLocaleString() : 'N/A'}
-                        </TableCell>
                         <TableCell>
                           <span className={`px-2 py-1 text-xs rounded-full ${
                             property.status === 'vacant'
@@ -413,14 +379,6 @@ export default function PropertiesPage() {
             <p className="mt-1 text-sm text-gray-500">
               {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property.'}
             </p>
-            <div className="mt-6">
-              <Link href="/properties/new" prefetch={true}>
-                <Button className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
-                  <Plus className="h-4 w-4" />
-                  Add Property
-                </Button>
-              </Link>
-            </div>
           </div>
         )}
       </div>

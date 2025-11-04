@@ -4,67 +4,46 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Plus, Search, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye, EyeOff, Building2 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/UI/Dialog';
 import { rentalUnitTypesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 
-interface RentalUnitType {
+interface PropertyType {
   id: number;
   name: string;
-  description?: string;
   category?: 'property' | 'unit';
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
-function RentalUnitTypesPageContent() {
-  const [unitTypes, setUnitTypes] = useState<RentalUnitType[]>([]);
+function PropertyTypesPageContent() {
+  const [propertyTypes, setPropertyTypes] = useState<PropertyType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [editingType, setEditingType] = useState<RentalUnitType | null>(null);
+  const [editingType, setEditingType] = useState<PropertyType | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
     is_active: true,
   });
 
   useEffect(() => {
-    fetchUnitTypes();
+    fetchPropertyTypes();
   }, []);
 
-  const fetchUnitTypes = async () => {
+  const fetchPropertyTypes = async () => {
     try {
       setLoading(true);
-      console.log('Fetching unit types...');
-      console.log('API base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api');
-      console.log('Token exists:', typeof window !== 'undefined' ? !!localStorage.getItem('token') : 'N/A');
-      
-      const response = await rentalUnitTypesAPI.getAll();
-      console.log('Unit types API response:', response);
-      console.log('Response data:', response.data);
-      console.log('Response data.unitTypes:', response.data?.unitTypes);
-      console.log('Response data.data.unitTypes:', response.data?.data?.unitTypes);
-      
-      const unitTypes = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
-      console.log('Setting unit types:', unitTypes);
-      setUnitTypes(unitTypes);
-      
-      if (unitTypes.length === 0) {
-        console.warn('No unit types found in response');
-      }
+      const response = await rentalUnitTypesAPI.getPropertyTypes();
+      const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
+      setPropertyTypes(types);
     } catch (error: unknown) {
-      console.error('Error fetching unit types:', error);
-      if (error instanceof Error && 'response' in error) {
-        const axiosError = error as { response: { status: number; data: unknown } };
-        console.error('Error status:', axiosError.response.status);
-        console.error('Error data:', axiosError.response.data);
-      }
-      toast.error('Failed to fetch rental unit types');
+      console.error('Error fetching property types:', error);
+      toast.error('Failed to fetch property types');
     } finally {
       setLoading(false);
     }
@@ -74,114 +53,99 @@ function RentalUnitTypesPageContent() {
     e.preventDefault();
     
     if (!formData.name.trim()) {
-      toast.error('Unit type name is required');
+      toast.error('Property type name is required');
       return;
     }
 
     try {
       setLoading(true);
       
-      // Prepare data with defaults for fields not shown in the simplified form
       const submitData = {
         name: formData.name.trim(),
-        description: formData.description?.trim() || '',
-        category: 'unit', // Default to 'unit' category for rental unit types page
-        is_active: formData.is_active ?? true,
+        category: 'property' as const,
+        is_active: formData.is_active,
       };
       
-      console.log('Submitting rental unit type data:', submitData);
-      
       if (editingType) {
-        console.log('Updating unit type:', editingType.id);
-        console.log('Update data being sent:', submitData);
-        const response = await rentalUnitTypesAPI.update(editingType.id, submitData);
-        console.log('Update response:', response);
-        toast.success('Rental unit type updated successfully');
+        await rentalUnitTypesAPI.update(editingType.id, submitData);
+        toast.success('Property type updated successfully');
       } else {
-        console.log('Creating new unit type');
-        console.log('Create data being sent:', submitData);
-        const response = await rentalUnitTypesAPI.create(submitData);
-        console.log('Create response:', response);
-        toast.success('Rental unit type created successfully');
+        await rentalUnitTypesAPI.create(submitData);
+        toast.success('Property type created successfully');
       }
       
       setShowCreateForm(false);
       setEditingType(null);
       setFormData({
         name: '',
-        description: '',
         is_active: true,
       });
       
-      fetchUnitTypes();
+      fetchPropertyTypes();
     } catch (error: unknown) {
-      console.error('Error saving unit type:', error);
+      console.error('Error saving property type:', error);
       const errorMessage = error instanceof Error && 'response' in error 
         ? (error as { response: { data: { message: string } } }).response.data.message 
-        : 'Failed to save rental unit type';
+        : 'Failed to save property type';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = (unitType: RentalUnitType) => {
-    console.log('Editing unit type:', unitType);
-    setEditingType(unitType);
+  const handleEdit = (propertyType: PropertyType) => {
+    setEditingType(propertyType);
     setFormData({
-      name: unitType.name,
-      description: unitType.description || '',
-      is_active: unitType.is_active,
+      name: propertyType.name,
+      is_active: propertyType.is_active,
     });
     setShowCreateForm(true);
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this rental unit type?')) {
+    if (!confirm('Are you sure you want to delete this property type? This action cannot be undone.')) {
       return;
     }
 
     try {
       setLoading(true);
       await rentalUnitTypesAPI.delete(id);
-      toast.success('Rental unit type deleted successfully');
-      fetchUnitTypes();
+      toast.success('Property type deleted successfully');
+      fetchPropertyTypes();
     } catch (error: unknown) {
-      console.error('Error deleting unit type:', error);
+      console.error('Error deleting property type:', error);
       const errorMessage = error instanceof Error && 'response' in error 
         ? (error as { response: { data: { message: string } } }).response.data.message 
-        : 'Failed to delete rental unit type';
+        : 'Failed to delete property type';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleToggleStatus = async (unitType: RentalUnitType) => {
+  const handleToggleStatus = async (propertyType: PropertyType) => {
     try {
       setLoading(true);
-      await rentalUnitTypesAPI.update(unitType.id, {
-        name: unitType.name,
-        description: unitType.description || '',
-        category: (unitType as any).category || 'unit',
-        is_active: !unitType.is_active
+      await rentalUnitTypesAPI.update(propertyType.id, {
+        ...propertyType,
+        is_active: !propertyType.is_active,
+        category: 'property' as const,
       });
-      toast.success(`Rental unit type ${!unitType.is_active ? 'activated' : 'deactivated'} successfully`);
-      fetchUnitTypes();
+      toast.success(`Property type ${!propertyType.is_active ? 'activated' : 'deactivated'} successfully`);
+      fetchPropertyTypes();
     } catch (error: unknown) {
-      console.error('Error updating unit type status:', error);
+      console.error('Error updating property type status:', error);
       const errorMessage = error instanceof Error && 'response' in error 
         ? (error as { response: { data: { message: string } } }).response.data.message 
-        : 'Failed to update rental unit type status';
+        : 'Failed to update property type status';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredUnitTypes = unitTypes.filter(unitType =>
-    unitType.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    unitType.description?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredPropertyTypes = propertyTypes.filter(propertyType =>
+    propertyType.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const resetForm = () => {
@@ -199,15 +163,15 @@ function RentalUnitTypesPageContent() {
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Rental Unit Types</h1>
-            <p className="text-gray-600">Manage different types of rental units</p>
+            <h1 className="text-2xl font-bold text-gray-900">Property Types</h1>
+            <p className="text-gray-600">Manage different types of properties (buildings/complexes)</p>
           </div>
           <Button
             onClick={() => setShowCreateForm(true)}
             className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
           >
             <Plus className="h-4 w-4" />
-            Add Unit Type
+            Add Property Type
           </Button>
         </div>
 
@@ -216,7 +180,7 @@ function RentalUnitTypesPageContent() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
-              placeholder="Search unit types..."
+              placeholder="Search property types..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -229,9 +193,9 @@ function RentalUnitTypesPageContent() {
           <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
             <DialogContent className="max-w-lg w-full">
               <DialogHeader>
-                <DialogTitle>{editingType ? 'Edit Unit Type' : 'Add New Unit Type'}</DialogTitle>
+                <DialogTitle>{editingType ? 'Edit Property Type' : 'Add New Property Type'}</DialogTitle>
                 <DialogDescription>
-                  {editingType ? 'Update the rental unit type details' : 'Create a new rental unit type'}
+                  {editingType ? 'Update the property type details' : 'Create a new property type (e.g., Apartment Building, Mixed-Use Building)'}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -240,7 +204,7 @@ function RentalUnitTypesPageContent() {
                     Name *
                   </label>
                   <Input
-                    placeholder="Unit type name"
+                    placeholder="e.g., Apartment Building, Mixed-Use Building"
                     value={formData.name}
                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                     required
@@ -260,7 +224,7 @@ function RentalUnitTypesPageContent() {
                     disabled={loading}
                     className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {editingType ? 'Update' : 'Create'} Unit Type
+                    {editingType ? 'Update' : 'Create'} Property Type
                   </Button>
                 </DialogFooter>
               </form>
@@ -268,21 +232,25 @@ function RentalUnitTypesPageContent() {
           </Dialog>
         )}
 
-        {/* Unit Types List (Table View) */}
+        {/* Property Types List (Table View) */}
         <Card className="bg-white border border-gray-200">
           <CardHeader>
-            <CardTitle>Unit Types ({filteredUnitTypes.length})</CardTitle>
-            <CardDescription>Manage your rental unit types</CardDescription>
+            <CardTitle>Property Types ({filteredPropertyTypes.length})</CardTitle>
+            <CardDescription>Manage your property types for buildings and complexes</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-2 text-gray-600">Loading unit types...</p>
+                <p className="mt-2 text-gray-600">Loading property types...</p>
               </div>
-            ) : filteredUnitTypes.length === 0 ? (
+            ) : filteredPropertyTypes.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-gray-600">No unit types found</p>
+                <Building2 className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-gray-600 mb-2">No property types found</p>
+                <p className="text-sm text-gray-500">
+                  {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property type.'}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -297,26 +265,30 @@ function RentalUnitTypesPageContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredUnitTypes.map((unitType) => (
-                      <TableRow key={unitType.id}>
-                        <TableCell>#{unitType.id}</TableCell>
-                        <TableCell className="font-medium">{unitType.name}</TableCell>
+                    {filteredPropertyTypes.map((propertyType) => (
+                      <TableRow key={propertyType.id} className="hover:bg-blue-50/50 transition-colors duration-150">
+                        <TableCell>#{propertyType.id}</TableCell>
+                        <TableCell className="font-medium">{propertyType.name}</TableCell>
                         <TableCell>
-                          <span className={`px-2 py-1 rounded-full text-xs ${unitType.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {unitType.is_active ? 'Active' : 'Inactive'}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            propertyType.is_active 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {propertyType.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </TableCell>
-                        <TableCell>{new Date(unitType.created_at).toLocaleDateString()}</TableCell>
+                        <TableCell>{new Date(propertyType.created_at).toLocaleDateString()}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleToggleStatus(unitType)}
+                              onClick={() => handleToggleStatus(propertyType)}
                               className="p-1"
-                              title={unitType.is_active ? 'Deactivate' : 'Activate'}
+                              title={propertyType.is_active ? 'Deactivate' : 'Activate'}
                             >
-                              {unitType.is_active ? (
+                              {propertyType.is_active ? (
                                 <EyeOff className="h-4 w-4 text-orange-600" />
                               ) : (
                                 <Eye className="h-4 w-4 text-green-600" />
@@ -325,7 +297,7 @@ function RentalUnitTypesPageContent() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleEdit(unitType)}
+                              onClick={() => handleEdit(propertyType)}
                               className="p-1"
                               title="Edit"
                             >
@@ -334,7 +306,7 @@ function RentalUnitTypesPageContent() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDelete(unitType.id)}
+                              onClick={() => handleDelete(propertyType.id)}
                               className="p-1"
                               title="Delete"
                             >
@@ -355,6 +327,7 @@ function RentalUnitTypesPageContent() {
   );
 }
 
-export default function RentalUnitTypesPage() {
-  return <RentalUnitTypesPageContent />;
+export default function PropertyTypesPage() {
+  return <PropertyTypesPageContent />;
 }
+

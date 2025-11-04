@@ -10,6 +10,7 @@ class RentalUnitType extends Model
     protected $fillable = [
         'name',
         'description',
+        'category',
         'is_active'
     ];
 
@@ -37,5 +38,20 @@ class RentalUnitType extends Model
     public function scopeOrdered($query)
     {
         return $query->orderBy('id');
+    }
+
+    public function scopePropertyTypes($query)
+    {
+        return $query->where('category', 'property');
+    }
+
+    public function scopeUnitTypes($query)
+    {
+        return $query->where('category', 'unit');
+    }
+
+    public function scopeByCategory($query, string $category)
+    {
+        return $query->where('category', $category);
     }
 }

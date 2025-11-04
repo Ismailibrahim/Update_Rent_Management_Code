@@ -75,6 +75,11 @@ class Tenant extends Model
         return $this->hasMany(TenantLedger::class, 'tenant_id');
     }
 
+    public function notificationPreference()
+    {
+        return $this->hasOne(TenantNotificationPreference::class);
+    }
+
     // Accessors - Now using only new columns
     public function getFirstNameAttribute()
     {

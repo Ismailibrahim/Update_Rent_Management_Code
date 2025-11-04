@@ -16,6 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'auth' => \App\Http\Middleware\Authenticate::class,
         ]);
     })
+    ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
+        // Run reminder sending command daily at 9:00 AM
+        $schedule->command('reminders:send')->dailyAt('09:00');
+    })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();

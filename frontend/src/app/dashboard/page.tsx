@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
-import { Building2, Users, DollarSign, RefreshCw } from 'lucide-react';
-import { propertiesAPI, tenantsAPI, rentalUnitsAPI } from '../../services/api';
+import { Building2, Users, DollarSign, RefreshCw, Mail, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { propertiesAPI, tenantsAPI, rentalUnitsAPI, reminderLogsAPI, ReminderLog } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 
@@ -31,6 +31,13 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reminderLogs, setReminderLogs] = useState<ReminderLog[]>([]);
+  const [reminderStats, setReminderStats] = useState({
+    total: 0,
+    sent: 0,
+    failed: 0,
+    pending: 0,
+  });
 
   useEffect(() => {
     // Only fetch data if user is authenticated
@@ -71,6 +78,27 @@ export default function DashboardPage() {
         monthlyRevenue: 0, // Payments API is not working, set to 0
         maintenanceRequests: 0
       });
+
+      // Fetch reminder logs
+      try {
+        const [logsRes, statsRes] = await Promise.all([
+          reminderLogsAPI.getAll({ per_page: 10 }).catch(() => ({ data: { data: { data: [] } } })),
+          reminderLogsAPI.getStatistics().catch(() => ({ data: { data: { total: 0, sent: 0, failed: 0, pending: 0 } } }))
+        ]);
+
+        const logs = logsRes.data?.data?.data || logsRes.data?.data || [];
+        setReminderLogs(Array.isArray(logs) ? logs : []);
+
+        const stats = statsRes.data?.data || statsRes.data || {};
+        setReminderStats({
+          total: stats.total || 0,
+          sent: stats.sent || 0,
+          failed: stats.failed || 0,
+          pending: stats.pending || 0,
+        });
+      } catch (error) {
+        console.error('Error fetching reminder logs:', error);
+      }
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -316,6 +344,86 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Reminder Logs */}
+        <Card className="bg-white shadow-sm border border-gray-200">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-semibold text-gray-900">Recent Reminder Logs</CardTitle>
+                <CardDescription className="text-gray-600">
+                  Email reminders sent to tenants
+                </CardDescription>
+              </div>
+              <div className="flex gap-2">
+                <div className="text-right">
+                  <div className="text-sm font-medium text-gray-700">Total: {reminderStats.total}</div>
+                  <div className="text-xs text-gray-500">
+                    {reminderStats.sent} sent • {reminderStats.failed} failed • {reminderStats.pending} pending
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {reminderLogs.length === 0 ? (
+              <div className="text-center py-8">
+                <Mail className="mx-auto h-12 w-12 text-gray-400" />
+                <p className="mt-4 text-sm text-gray-600">No reminder logs found</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {reminderLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex items-start space-x-4 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex-shrink-0 mt-1">
+                      {log.status === 'sent' ? (
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                      ) : log.status === 'failed' ? (
+                        <XCircle className="h-5 w-5 text-red-500" />
+                      ) : (
+                        <Clock className="h-5 w-5 text-yellow-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {log.tenant?.full_name || `Tenant #${log.tenant_id}`}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {log.reminder_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} • {log.notification_type.toUpperCase()}
+                          </p>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          log.status === 'sent'
+                            ? 'bg-green-100 text-green-800'
+                            : log.status === 'failed'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {log.status}
+                        </span>
+                      </div>
+                      {log.subject && (
+                        <p className="text-xs text-gray-600 mt-1 truncate">{log.subject}</p>
+                      )}
+                      {log.error_message && (
+                        <p className="text-xs text-red-600 mt-1">{log.error_message}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1">
+                        {new Date(log.created_at).toLocaleString()}
+                        {log.sent_at && ` • Sent: ${new Date(log.sent_at).toLocaleString()}`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -16,10 +16,10 @@ interface Property {
   id: number;
   name: string;
   street: string;
-  city: string;
   island: string;
-  bedrooms: number;
-  bathrooms: number;
+  bedrooms?: number;
+  bathrooms?: number;
+  number_of_rental_units?: number;
 }
 
 interface Asset {
@@ -111,7 +111,7 @@ function NewRentalUnitPageContent() {
 
   const fetchUnitTypes = async () => {
     try {
-      const response = await rentalUnitTypesAPI.getAll({ active_only: true });
+      const response = await rentalUnitTypesAPI.getUnitTypes({ active_only: true });
       const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
       setUnitTypes(types);
     } catch (error) {
@@ -163,7 +163,17 @@ function NewRentalUnitPageContent() {
   }, [user, authLoading, router, propertyIdFromUrl, fetchPropertyDetails]);
 
   const capacity = useMemo(() => {
-    if (!selectedProperty) return { availableRooms: 0, availableToilets: 0, totalRooms: 0, totalToilets: 0, allocatedRooms: 0, allocatedToilets: 0 };
+    if (!selectedProperty) return { 
+      availableRooms: 0, 
+      availableToilets: 0, 
+      totalRooms: 0, 
+      totalToilets: 0, 
+      allocatedRooms: 0, 
+      allocatedToilets: 0,
+      maxUnits: 0,
+      existingUnits: 0,
+      remainingUnits: 0
+    };
     
     const totalRooms = selectedProperty.bedrooms || 0;
     const totalToilets = selectedProperty.bathrooms || 0;
@@ -171,13 +181,21 @@ function NewRentalUnitPageContent() {
     const allocatedRooms = existingRentalUnits.reduce((sum, unit) => sum + unit.number_of_rooms, 0);
     const allocatedToilets = existingRentalUnits.reduce((sum, unit) => sum + unit.number_of_toilets, 0);
     
+    // Get property's max rental units (from properties table)
+    const maxUnits = selectedProperty.number_of_rental_units || 0;
+    const existingUnits = existingRentalUnits.length;
+    const remainingUnits = Math.max(0, maxUnits - existingUnits);
+    
     return {
       availableRooms: totalRooms - allocatedRooms,
       availableToilets: totalToilets - allocatedToilets,
       totalRooms,
       totalToilets,
       allocatedRooms,
-      allocatedToilets
+      allocatedToilets,
+      maxUnits,
+      existingUnits,
+      remainingUnits
     };
   }, [selectedProperty, existingRentalUnits]);
 
@@ -194,18 +212,29 @@ function NewRentalUnitPageContent() {
       return;
     }
 
-    // Validate capacity
-    const requestedRooms = parseInt(formData.number_of_rooms) || 0;
-    const requestedToilets = parseFloat(formData.number_of_toilets) || 0;
-    
-    if (requestedRooms > capacity.availableRooms) {
-      toast.error(`Cannot add ${requestedRooms} rooms. Only ${capacity.availableRooms} rooms available.`);
+    // Validate rental unit capacity
+    if (capacity.remainingUnits <= 0) {
+      toast.error(
+        `Cannot create rental unit. Property "${selectedProperty?.name || 'selected property'}" has reached its maximum capacity of ${capacity.maxUnits} units. No more units can be added to this property.`,
+        { duration: 6000 }
+      );
       return;
     }
-    
-    if (requestedToilets > capacity.availableToilets) {
-      toast.error(`Cannot add ${requestedToilets} toilets. Only ${capacity.availableToilets} toilets available.`);
-      return;
+
+    // Validate capacity (only if property has bedrooms/bathrooms defined)
+    if (selectedProperty?.bedrooms || selectedProperty?.bathrooms) {
+      const requestedRooms = parseInt(formData.number_of_rooms) || 0;
+      const requestedToilets = parseFloat(formData.number_of_toilets) || 0;
+      
+      if (selectedProperty.bedrooms && requestedRooms > capacity.availableRooms) {
+        toast.error(`Cannot add ${requestedRooms} rooms. Only ${capacity.availableRooms} rooms available.`);
+        return;
+      }
+      
+      if (selectedProperty.bathrooms && requestedToilets > capacity.availableToilets) {
+        toast.error(`Cannot add ${requestedToilets} toilets. Only ${capacity.availableToilets} toilets available.`);
+        return;
+      }
     }
 
     try {
@@ -329,17 +358,15 @@ function NewRentalUnitPageContent() {
                       <option value="">Select a property</option>
                       {properties.map((property) => {
                         const street = (property.street || '').trim();
-                        const city = (property.city || '').trim();
                         const island = (property.island || '').trim();
                         
                         let displayText = property.name;
-                        if (street) {
+                        if (street && island) {
+                          displayText = `${property.name} - ${street}, ${island}`;
+                        } else if (street) {
                           displayText = `${property.name} - ${street}`;
-                        } else if (city || island) {
-                          const location = [city, island].filter(Boolean).join(', ');
-                          if (location) {
-                            displayText = `${property.name} - ${location}`;
-                          }
+                        } else if (island) {
+                          displayText = `${property.name} - ${island}`;
                         }
                         
                         return (
@@ -362,14 +389,14 @@ function NewRentalUnitPageContent() {
                         const property = properties.find(p => p.id.toString() === propertyIdFromUrl);
                         if (!property) return 'Loading...';
                         const street = (property.street || '').trim();
-                        const city = (property.city || '').trim();
                         const island = (property.island || '').trim();
                         
-                        if (street) {
+                        if (street && island) {
+                          return `${property.name} - ${street}, ${island}`;
+                        } else if (street) {
                           return `${property.name} - ${street}`;
-                        } else if (city || island) {
-                          const location = [city, island].filter(Boolean).join(', ');
-                          return location ? `${property.name} - ${location}` : property.name;
+                        } else if (island) {
+                          return `${property.name} - ${island}`;
                         }
                         return property.name;
                       })()}
@@ -394,16 +421,38 @@ function NewRentalUnitPageContent() {
                     Unit Type *
                   </label>
                   <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    value={formData.unit_type}
-                    onChange={(e) => setFormData(prev => ({ ...prev, unit_type: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    value={formData.unit_type || ''}
+                    onChange={(e) => {
+                      const selectedValue = e.target.value;
+                      setFormData(prev => ({ ...prev, unit_type: selectedValue }));
+                    }}
                     required
+                    disabled={loading || isLoadingProperty}
                   >
                     <option value="">Select unit type</option>
                     {unitTypes.map((unitType) => {
-                      const value = mapToAllowedUnitType(unitType.name);
+                      // Map unit type names to backend-compatible values
+                      const normalizedName = unitType.name.trim().toLowerCase();
+                      let value = 'other'; // default fallback
+                      
+                      if (normalizedName === 'office') {
+                        value = 'office';
+                      } else if (normalizedName.includes('retail') || normalizedName.includes('shop')) {
+                        value = 'shop';
+                      } else if (normalizedName === 'warehouse') {
+                        value = 'warehouse';
+                      } else if (normalizedName === 'residential' || normalizedName.includes('studio') || normalizedName.includes('br') || normalizedName.includes('penthouse')) {
+                        value = 'residential';
+                      } else if (normalizedName === 'other') {
+                        value = 'other';
+                      } else if (allowedUnitTypes.includes(normalizedName)) {
+                        value = normalizedName;
+                      }
+                      
+                      // Use a unique key based on both id and name to ensure React properly tracks changes
                       return (
-                        <option key={unitType.id} value={value}>
+                        <option key={`${unitType.id}-${unitType.name}`} value={value}>
                           {unitType.name}
                         </option>
                       );
@@ -427,52 +476,92 @@ function NewRentalUnitPageContent() {
                     <h3 className="text-xl font-bold text-blue-900 mb-1" data-testid="property-name-header">
                       {selectedProperty.name || 'Property Name'}
                     </h3>
-                    {(selectedProperty.street || selectedProperty.city || selectedProperty.island) && (
+                    {(selectedProperty.street || selectedProperty.island) && (
                       <p className="text-sm text-blue-700 mt-1">
-                        {[selectedProperty.street, selectedProperty.city, selectedProperty.island].filter(Boolean).join(', ')}
+                        {[selectedProperty.street, selectedProperty.island].filter(Boolean).join(', ')}
                       </p>
                     )}
                   </div>
                   <h4 className="text-sm font-medium text-blue-900 mb-3">Property Capacity</h4>
-                  <div className="grid grid-cols-2 gap-6">
-                    {/* Bedrooms Column */}
-                    <div className="space-y-2">
-                      <h5 className="text-sm font-medium text-blue-800">Bedrooms</h5>
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-blue-700">Total:</span>
-                          <span className="font-medium">{capacity.totalRooms}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-blue-700">Allocated:</span>
-                          <span className="font-medium">{capacity.allocatedRooms}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-green-700 font-medium">Available:</span>
-                          <span className="font-bold text-green-800">{capacity.availableRooms}</span>
-                        </div>
+                  
+                  {/* Rental Units Capacity - Most Important */}
+                  <div className="mb-4 p-3 bg-white rounded-lg border-2 border-blue-300">
+                    <h5 className="text-sm font-semibold text-blue-900 mb-2">Rental Units</h5>
+                    <div className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-blue-700">Maximum Units:</span>
+                        <span className="font-medium">{capacity.maxUnits}</span>
                       </div>
-                    </div>
-                    
-                    {/* Bathrooms Column */}
-                    <div className="space-y-2">
-                      <h5 className="text-sm font-medium text-blue-800">Bathrooms</h5>
-                      <div className="space-y-1">
-                        <div className="flex justify-between">
-                          <span className="text-blue-700">Total:</span>
-                          <span className="font-medium">{capacity.totalToilets}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-blue-700">Allocated:</span>
-                          <span className="font-medium">{capacity.allocatedToilets}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-green-700 font-medium">Available:</span>
-                          <span className="font-bold text-green-800">{capacity.availableToilets}</span>
-                        </div>
+                      <div className="flex justify-between">
+                        <span className="text-blue-700">Existing Units:</span>
+                        <span className="font-medium">{capacity.existingUnits}</span>
                       </div>
+                      <div className="flex justify-between pt-1 border-t border-blue-200">
+                        <span className={`font-medium ${capacity.remainingUnits > 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {capacity.remainingUnits > 0 ? 'Remaining Units:' : '⚠️ At Capacity:'}
+                        </span>
+                        <span className={`font-bold ${capacity.remainingUnits > 0 ? 'text-green-800' : 'text-red-800'}`}>
+                          {capacity.remainingUnits}
+                        </span>
+                      </div>
+                      {capacity.remainingUnits === 0 && (
+                        <p className="text-xs text-red-600 mt-2 font-medium">
+                          ⚠️ Cannot create more units. Property has reached its maximum capacity.
+                        </p>
+                      )}
+                      {capacity.remainingUnits > 0 && capacity.remainingUnits <= 2 && (
+                        <p className="text-xs text-yellow-600 mt-2 font-medium">
+                          ⚠️ Only {capacity.remainingUnits} unit{capacity.remainingUnits !== 1 ? 's' : ''} remaining.
+                        </p>
+                      )}
                     </div>
                   </div>
+
+                  {(selectedProperty.bedrooms || selectedProperty.bathrooms) && (
+                    <div className="grid grid-cols-2 gap-6">
+                      {/* Bedrooms Column */}
+                      {selectedProperty.bedrooms && (
+                        <div className="space-y-2">
+                          <h5 className="text-sm font-medium text-blue-800">Bedrooms</h5>
+                          <div className="space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-blue-700">Total:</span>
+                              <span className="font-medium">{capacity.totalRooms}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-blue-700">Allocated:</span>
+                              <span className="font-medium">{capacity.allocatedRooms}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-green-700 font-medium">Available:</span>
+                              <span className="font-bold text-green-800">{capacity.availableRooms}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Bathrooms Column */}
+                      {selectedProperty.bathrooms && (
+                        <div className="space-y-2">
+                          <h5 className="text-sm font-medium text-blue-800">Bathrooms</h5>
+                          <div className="space-y-1">
+                            <div className="flex justify-between">
+                              <span className="text-blue-700">Total:</span>
+                              <span className="font-medium">{capacity.totalToilets}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-blue-700">Allocated:</span>
+                              <span className="font-medium">{capacity.allocatedToilets}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-green-700 font-medium">Available:</span>
+                              <span className="font-bold text-green-800">{capacity.availableToilets}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -804,8 +893,9 @@ function NewRentalUnitPageContent() {
                 </Button>
                 <Button 
                   type="submit" 
-                  disabled={loading}
+                  disabled={loading || (selectedProperty && capacity.remainingUnits <= 0)}
                   className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={selectedProperty && capacity.remainingUnits <= 0 ? 'Property has reached maximum unit capacity' : ''}
                 >
                   {loading ? (
                     <>

@@ -78,6 +78,8 @@ api.interceptors.response.use(
       const axiosError = error as AxiosError;
       // Only log if it's an actual error (not a normal rejection)
       if (axiosError.response || axiosError.request) {
+        // eslint-disable-next-line no-console
+        // @ts-ignore - console.error is intentionally used for debugging
         console.error('API Error:', {
           message: axiosError.message,
           status: axiosError.response?.status,
@@ -160,6 +162,7 @@ interface RentalUnitType {
   id: number;
   name: string;
   description?: string;
+  category?: 'property' | 'unit';
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -759,6 +762,8 @@ export const settingsAPI = {
 export const rentalUnitTypesAPI = {
   getAll: (params?: Record<string, unknown>) => api.get('/rental-unit-types', { params }),
   getById: (id: number) => api.get(`/rental-unit-types/${id}`),
+  getPropertyTypes: (params?: Record<string, unknown>) => api.get('/rental-unit-types', { params: { ...params, category: 'property' } }),
+  getUnitTypes: (params?: Record<string, unknown>) => api.get('/rental-unit-types', { params: { ...params, category: 'unit' } }),
   create: (data: Partial<RentalUnitType>) => api.post('/rental-unit-types', data),
   update: (id: number, data: Partial<RentalUnitType>) => api.put(`/rental-unit-types/${id}`, data),
   delete: (id: number) => api.delete(`/rental-unit-types/${id}`),
@@ -955,6 +960,108 @@ export const invoiceTemplatesAPI = {
   delete: (id: number) => api.delete(`/invoice-templates/${id}`),
   setDefault: (id: number) => api.post(`/invoice-templates/${id}/set-default`),
   duplicate: (id: number) => api.post(`/invoice-templates/${id}/duplicate`),
+};
+
+// Email Reminder Interfaces
+export interface EmailSetting {
+  id?: number;
+  provider: 'smtp' | 'office365';
+  host?: string;
+  port: number;
+  encryption: 'tls' | 'ssl' | 'none';
+  username: string;
+  password?: string;
+  from_address: string;
+  from_name?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ReminderConfiguration {
+  id?: number;
+  reminder_type: 'rent_due' | 'rent_overdue' | 'payment_due' | 'payment_overdue' | 'maintenance_due' | 'maintenance_overdue';
+  timing_type: 'before' | 'on_date' | 'after';
+  days_offset: number;
+  frequency: 'daily' | 'weekly' | 'once';
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface EmailTemplate {
+  id?: number;
+  reminder_type: 'rent_due' | 'rent_overdue' | 'payment_due' | 'payment_overdue' | 'maintenance_due' | 'maintenance_overdue' | 'default';
+  name: string;
+  subject: string;
+  body_html: string;
+  body_text?: string;
+  is_active: boolean;
+  is_default: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TenantNotificationPreference {
+  id?: number;
+  tenant_id: number;
+  email_enabled: boolean;
+  sms_enabled: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ReminderLog {
+  id: number;
+  tenant_id: number;
+  reminder_type: string;
+  notification_type: 'email' | 'sms' | 'both';
+  recipient_email?: string;
+  recipient_phone?: string;
+  subject?: string;
+  message?: string;
+  status: 'sent' | 'failed' | 'pending';
+  error_message?: string;
+  metadata?: Record<string, unknown>;
+  sent_at?: string;
+  created_at: string;
+  updated_at: string;
+  tenant?: Tenant;
+}
+
+// Email Reminder APIs
+export const emailSettingsAPI = {
+  get: () => api.get('/email-settings'),
+  save: (data: Partial<EmailSetting>) => api.post('/email-settings', data),
+  test: (data: { email: string; name?: string }) => api.post('/email-settings/test', data),
+};
+
+export const reminderConfigurationsAPI = {
+  getAll: () => api.get('/reminder-configurations'),
+  create: (data: Partial<ReminderConfiguration>) => api.post('/reminder-configurations', data),
+  update: (id: number, data: Partial<ReminderConfiguration>) => api.put(`/reminder-configurations/${id}`, data),
+  delete: (id: number) => api.delete(`/reminder-configurations/${id}`),
+};
+
+export const emailTemplatesAPI = {
+  getAll: () => api.get('/email-templates'),
+  getById: (id: number) => api.get(`/email-templates/${id}`),
+  getByType: (reminderType: string) => api.get(`/email-templates/type/${reminderType}`),
+  create: (data: Partial<EmailTemplate>) => api.post('/email-templates', data),
+  update: (id: number, data: Partial<EmailTemplate>) => api.put(`/email-templates/${id}`, data),
+  delete: (id: number) => api.delete(`/email-templates/${id}`),
+};
+
+export const tenantNotificationPreferencesAPI = {
+  get: (tenantId: number) => api.get(`/tenants/${tenantId}/notification-preferences`),
+  update: (tenantId: number, data: Partial<TenantNotificationPreference>) => 
+    api.put(`/tenants/${tenantId}/notification-preferences`, data),
+};
+
+export const reminderLogsAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/reminder-logs', { params }),
+  getStatistics: () => api.get('/reminder-logs/statistics'),
 };
 
 export default api;

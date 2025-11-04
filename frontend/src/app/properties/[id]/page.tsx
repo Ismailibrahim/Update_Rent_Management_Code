@@ -14,17 +14,10 @@ interface Property {
   id: number;
   name: string;
   street: string;
-  city: string;
   island: string;
   type: string;
   status: string;
-  number_of_floors: number;
   number_of_rental_units: number;
-  bedrooms: number;
-  bathrooms: number;
-  square_feet: number;
-  year_built: number;
-  description: string;
   created_at: string;
   updated_at: string;
 }
@@ -246,7 +239,7 @@ export default function PropertyDetailsPage() {
               <h1 className="text-3xl font-bold text-gray-900">{property.name}</h1>
               <p className="mt-2 text-gray-600">
                 <MapPin className="h-4 w-4 inline mr-1" />
-                {property.street}, {property.city}, {property.island}
+                {property.street}, {property.island}
               </p>
             </div>
           </div>
@@ -304,50 +297,16 @@ export default function PropertyDetailsPage() {
                         </span>
                       </div>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Number of Floors</label>
-                      <p className="text-lg font-semibold">{property.number_of_floors}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Rental Units</label>
-                      <p className="text-lg font-semibold">{property.number_of_rental_units}</p>
-                    </div>
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="text-sm font-medium text-gray-600">Bedrooms</label>
-                      <p className="text-lg font-semibold">{property.bedrooms || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Bathrooms</label>
-                      <p className="text-lg font-semibold">{property.bathrooms || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Square Feet</label>
-                      <p className="text-lg font-semibold">
-                        {property.square_feet ? property.square_feet.toLocaleString() : 'N/A'}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-gray-600">Year Built</label>
-                      <p className="text-lg font-semibold">{property.year_built || 'N/A'}</p>
+                      <label className="text-sm font-medium text-gray-600">Total Rental Units</label>
+                      <p className="text-lg font-semibold">{property.number_of_rental_units}</p>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
-
-            {/* Description */}
-            {property.description && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Description</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-700 whitespace-pre-wrap">{property.description}</p>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Rental Units */}
             <Card className="bg-white border border-gray-200">

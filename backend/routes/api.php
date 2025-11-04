@@ -27,6 +27,11 @@ use App\Http\Controllers\Api\SmsSettingController;
 use App\Http\Controllers\Api\SmsLogController;
 use App\Http\Controllers\Api\SmsNotificationController;
 use App\Http\Controllers\Api\InvoiceTemplateController;
+use App\Http\Controllers\Api\EmailSettingController;
+use App\Http\Controllers\Api\ReminderConfigurationController;
+use App\Http\Controllers\Api\EmailTemplateController;
+use App\Http\Controllers\Api\TenantNotificationPreferenceController;
+use App\Http\Controllers\Api\ReminderLogController;
 use App\Http\Controllers\TenantLedgerController;
 
 /*
@@ -172,4 +177,24 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sms-notifications/send', [SmsNotificationController::class, 'sendManual']);
     Route::post('/sms-notifications/preview', [SmsNotificationController::class, 'previewTemplate']);
     Route::get('/sms-notifications/test-connection', [SmsNotificationController::class, 'testConnection']);
+
+    // Email Settings routes
+    Route::get('/email-settings', [EmailSettingController::class, 'index']);
+    Route::post('/email-settings', [EmailSettingController::class, 'store']);
+    Route::post('/email-settings/test', [EmailSettingController::class, 'testEmail']);
+
+    // Reminder Configuration routes
+    Route::apiResource('reminder-configurations', ReminderConfigurationController::class);
+
+    // Email Template routes
+    Route::apiResource('email-templates', EmailTemplateController::class);
+    Route::get('/email-templates/type/{reminderType}', [EmailTemplateController::class, 'getByType']);
+
+    // Tenant Notification Preferences routes
+    Route::get('/tenants/{tenantId}/notification-preferences', [TenantNotificationPreferenceController::class, 'show']);
+    Route::put('/tenants/{tenantId}/notification-preferences', [TenantNotificationPreferenceController::class, 'update']);
+
+    // Reminder Log routes
+    Route::get('/reminder-logs', [ReminderLogController::class, 'index']);
+    Route::get('/reminder-logs/statistics', [ReminderLogController::class, 'statistics']);
 });

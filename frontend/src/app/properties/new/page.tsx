@@ -18,17 +18,10 @@ import SidebarLayout from '@/components/Layout/SidebarLayout';
 interface PropertyFormData {
   name: string;
   street: string;
-  city: string;
   island: string;
   type: string;
   status: string;
-  number_of_floors: number;
   number_of_rental_units: number;
-  bedrooms: number;
-  bathrooms: number;
-  square_feet: number;
-  year_built: number;
-  description?: string;
 }
 
 interface RentalUnitType {
@@ -48,7 +41,6 @@ export default function NewPropertyPage() {
     defaultValues: {
       status: 'vacant',
       type: '',
-      number_of_floors: 1,
       number_of_rental_units: 1
     }
   });
@@ -56,7 +48,7 @@ export default function NewPropertyPage() {
   useEffect(() => {
     const fetchPropertyTypes = async () => {
       try {
-        const response = await rentalUnitTypesAPI.getAll({ active_only: true });
+        const response = await rentalUnitTypesAPI.getPropertyTypes({ active_only: true });
         const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
         setPropertyTypes(types);
       } catch (error) {
@@ -210,19 +202,6 @@ export default function NewPropertyPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      City *
-                    </label>
-                    <Input
-                      placeholder="Enter city"
-                      {...register('city', { required: 'City is required' })}
-                    />
-                    {errors.city && (
-                      <p className="mt-1 text-sm text-red-600">{errors.city.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Island *
                     </label>
                     <Select
@@ -247,28 +226,10 @@ export default function NewPropertyPage() {
 
               {/* Property Details */}
               <FormSection title="Property Details">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Number of Floors *
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="1"
-                      {...register('number_of_floors', { 
-                        required: 'Number of floors is required',
-                        valueAsNumber: true 
-                      })}
-                    />
-                    {errors.number_of_floors && (
-                      <p className="mt-1 text-sm text-red-600">{errors.number_of_floors.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Number of Rental Units *
+                      Total Rental Units *
                     </label>
                     <Input
                       type="number"
@@ -282,70 +243,7 @@ export default function NewPropertyPage() {
                     {errors.number_of_rental_units && (
                       <p className="mt-1 text-sm text-red-600">{errors.number_of_rental_units.message}</p>
                     )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Bedrooms *
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      placeholder="1"
-                      {...register('bedrooms', { 
-                        required: 'Number of bedrooms is required',
-                        min: { value: 1, message: 'At least 1 bedroom is required' },
-                        valueAsNumber: true 
-                      })}
-                    />
-                    {errors.bedrooms && (
-                      <p className="mt-1 text-sm text-red-600">{errors.bedrooms.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Bathrooms *
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      step="0.5"
-                      placeholder="1"
-                      {...register('bathrooms', { 
-                        required: 'Number of bathrooms is required',
-                        min: { value: 1, message: 'At least 1 bathroom is required' },
-                        valueAsNumber: true 
-                      })}
-                    />
-                    {errors.bathrooms && (
-                      <p className="mt-1 text-sm text-red-600">{errors.bathrooms.message}</p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Square Feet
-                    </label>
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      {...register('square_feet', { valueAsNumber: true })}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Year Built
-                    </label>
-                    <Input
-                      type="number"
-                      min="1800"
-                      max={new Date().getFullYear()}
-                      placeholder="2020"
-                      {...register('year_built', { valueAsNumber: true })}
-                    />
+                    <p className="mt-1 text-xs text-gray-500">Maximum number of rental units in this property</p>
                   </div>
                 </div>
               </FormSection>
@@ -364,20 +262,6 @@ export default function NewPropertyPage() {
                       <option value="renovation">Under Renovation</option>
                     </Select>
                   </div>
-                </div>
-              </FormSection>
-
-              {/* Description */}
-              <FormSection title="Description">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
-                  </label>
-                  <Textarea
-                    placeholder="Enter property description..."
-                    rows={4}
-                    {...register('description')}
-                  />
                 </div>
               </FormSection>
 

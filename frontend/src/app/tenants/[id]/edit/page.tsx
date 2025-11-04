@@ -6,8 +6,8 @@ import { Button } from '../../../../components/UI/Button';
 import { Input } from '../../../../components/UI/Input';
 import { Textarea } from '../../../../components/UI/Textarea';
 import { Select } from '../../../../components/UI/Select';
-import { ArrowLeft, Save, X, Home, Upload } from 'lucide-react';
-import { tenantsAPI, rentalUnitsAPI } from '../../../../services/api';
+import { ArrowLeft, Save, X, Home, Upload, Bell, Mail, MessageSquare } from 'lucide-react';
+import { tenantsAPI, rentalUnitsAPI, tenantNotificationPreferencesAPI, TenantNotificationPreference } from '../../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../../components/Layout/SidebarLayout';
 import { useRouter } from 'next/navigation';
@@ -47,6 +47,11 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
     type: string;
     uploaded_at: string;
   }>>([]);
+  const [notificationPreferences, setNotificationPreferences] = useState<TenantNotificationPreference>({
+    tenant_id: parseInt(tenantId),
+    email_enabled: true,
+    sms_enabled: true,
+  });
   const [formData, setFormData] = useState({
     // Tenant type selection
     tenant_type: 'individual' as 'individual' | 'company',
@@ -186,6 +191,17 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
         }
       }
       setExistingDocuments(documents);
+
+      // Fetch notification preferences
+      try {
+        const prefResponse = await tenantNotificationPreferencesAPI.get(parseInt(tenantId));
+        if (prefResponse.data?.success && prefResponse.data.data) {
+          setNotificationPreferences(prefResponse.data.data);
+        }
+      } catch (error) {
+        console.error('Error fetching notification preferences:', error);
+        // If preferences don't exist, they'll be created with defaults
+      }
     } catch (error) {
       console.error('Error fetching tenant:', error);
       toast.error('Failed to fetch tenant details');
@@ -273,6 +289,17 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
       console.log('Files to upload:', files);
       
       await tenantsAPI.update(parseInt(tenantId), submitData, files);
+      
+      // Update notification preferences
+      try {
+        await tenantNotificationPreferencesAPI.update(parseInt(tenantId), {
+          email_enabled: notificationPreferences.email_enabled,
+          sms_enabled: notificationPreferences.sms_enabled,
+        });
+      } catch (error) {
+        console.error('Error updating notification preferences:', error);
+        // Don't fail the whole update if preferences fail
+      }
       
       // Refresh the available units after successful update
       const assignedUnitIds = formData.rental_unit_ids.map(id => parseInt(id));
@@ -635,6 +662,72 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
                     </div>
                   </div>
                 </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Notification Preferences */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Bell className="h-5 w-5 mr-2" />
+                Notification Preferences
+              </CardTitle>
+              <CardDescription>Configure how the tenant wants to receive reminders and notifications</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg">
+                  <div className="flex-shrink-0">
+                    <Mail className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={notificationPreferences.email_enabled}
+                        onChange={(e) => setNotificationPreferences(prev => ({
+                          ...prev,
+                          email_enabled: e.target.checked
+                        }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-3"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">Email Notifications</span>
+                        <p className="text-xs text-gray-500">Receive reminders via email</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg">
+                  <div className="flex-shrink-0">
+                    <MessageSquare className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={notificationPreferences.sms_enabled}
+                        onChange={(e) => setNotificationPreferences(prev => ({
+                          ...prev,
+                          sms_enabled: e.target.checked
+                        }))}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-3"
+                      />
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">SMS Notifications</span>
+                        <p className="text-xs text-gray-500">Receive reminders via SMS</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              {!notificationPreferences.email_enabled && !notificationPreferences.sms_enabled && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Note:</strong> Both notifications are disabled. The tenant will not receive any reminders.
+                  </p>
+                </div>
               )}
             </CardContent>
           </Card>

@@ -4,14 +4,28 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Settings, Save, Building2, DollarSign, Bell, FileText } from 'lucide-react';
+import { Settings, Save, Building2, DollarSign, Bell, FileText, Mail, Send } from 'lucide-react';
 import Link from 'next/link';
-import { settingsAPI } from '../../services/api';
+import { settingsAPI, emailSettingsAPI, EmailSetting } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [testEmailLoading, setTestEmailLoading] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [emailSettings, setEmailSettings] = useState<Partial<EmailSetting>>({
+    provider: 'smtp',
+    host: '',
+    port: 587,
+    encryption: 'tls',
+    username: '',
+    password: '',
+    from_address: '',
+    from_name: '',
+    is_active: true,
+  });
   const [settings, setSettings] = useState({
     company_name: '',
     company_email: '',
@@ -34,6 +48,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetchSettings();
+    fetchEmailSettings();
   }, []);
 
   const fetchSettings = async () => {
@@ -61,6 +76,67 @@ export default function SettingsPage() {
       toast.error('Failed to save settings');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEmailSettings = async () => {
+    try {
+      const response = await emailSettingsAPI.get();
+      if (response.data?.success && response.data.data) {
+        setEmailSettings(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching email settings:', error);
+    }
+  };
+
+  const handleEmailSettingChange = (field: string, value: string | number | boolean) => {
+    setEmailSettings(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveEmailSettings = async () => {
+    setEmailLoading(true);
+    try {
+      const response = await emailSettingsAPI.save(emailSettings);
+      if (response.data?.success) {
+        toast.success('Email settings saved successfully');
+        await fetchEmailSettings();
+      } else {
+        toast.error(response.data?.message || 'Failed to save email settings');
+      }
+    } catch (error: any) {
+      console.error('Error saving email settings:', error);
+      toast.error(error.response?.data?.message || 'Failed to save email settings');
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!testEmailAddress) {
+      toast.error('Please enter an email address');
+      return;
+    }
+    
+    setTestEmailLoading(true);
+    try {
+      const response = await emailSettingsAPI.test({
+        email: testEmailAddress,
+        name: 'Test User'
+      });
+      if (response.data?.success) {
+        toast.success('Test email sent successfully!');
+      } else {
+        toast.error(response.data?.message || 'Failed to send test email');
+      }
+    } catch (error: any) {
+      console.error('Error sending test email:', error);
+      toast.error(error.response?.data?.message || 'Failed to send test email');
+    } finally {
+      setTestEmailLoading(false);
     }
   };
 
@@ -266,6 +342,166 @@ export default function SettingsPage() {
                   className="w-20"
                 />
                 <span className="text-sm text-gray-700">days before due date</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Email Configuration */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-purple-500 rounded-lg">
+                  <Mail className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Email Configuration</CardTitle>
+                  <CardDescription>Configure SMTP or Office 365 for sending email reminders</CardDescription>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Link href="/settings/reminder-settings">
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Bell className="h-4 w-4" />
+                    Reminder Settings
+                  </Button>
+                </Link>
+                <Link href="/settings/email-templates">
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Email Templates
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email Provider</label>
+                <select
+                  value={emailSettings.provider}
+                  onChange={(e) => {
+                    const provider = e.target.value as 'smtp' | 'office365';
+                    handleEmailSettingChange('provider', provider);
+                    if (provider === 'office365') {
+                      handleEmailSettingChange('host', 'smtp.office365.com');
+                      handleEmailSettingChange('port', 587);
+                      handleEmailSettingChange('encryption', 'tls');
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="smtp">SMTP</option>
+                  <option value="office365">Office 365</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">SMTP Host</label>
+                <Input
+                  value={emailSettings.host || ''}
+                  onChange={(e) => handleEmailSettingChange('host', e.target.value)}
+                  placeholder={emailSettings.provider === 'office365' ? 'smtp.office365.com' : 'smtp.example.com'}
+                  disabled={emailSettings.provider === 'office365'}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+                <Input
+                  type="number"
+                  value={emailSettings.port || 587}
+                  onChange={(e) => handleEmailSettingChange('port', parseInt(e.target.value))}
+                  placeholder="587"
+                  disabled={emailSettings.provider === 'office365'}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Encryption</label>
+                <select
+                  value={emailSettings.encryption}
+                  onChange={(e) => handleEmailSettingChange('encryption', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={emailSettings.provider === 'office365'}
+                >
+                  <option value="tls">TLS</option>
+                  <option value="ssl">SSL</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username / Email</label>
+                <Input
+                  type="email"
+                  value={emailSettings.username || ''}
+                  onChange={(e) => handleEmailSettingChange('username', e.target.value)}
+                  placeholder="your-email@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <Input
+                  type="password"
+                  value={emailSettings.password || ''}
+                  onChange={(e) => handleEmailSettingChange('password', e.target.value)}
+                  placeholder="Enter password"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">From Email Address</label>
+                <Input
+                  type="email"
+                  value={emailSettings.from_address || ''}
+                  onChange={(e) => handleEmailSettingChange('from_address', e.target.value)}
+                  placeholder="noreply@company.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">From Name</label>
+                <Input
+                  value={emailSettings.from_name || ''}
+                  onChange={(e) => handleEmailSettingChange('from_name', e.target.value)}
+                  placeholder="Company Name"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={emailSettings.is_active}
+                  onChange={(e) => handleEmailSettingChange('is_active', e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                <label className="text-sm font-medium text-gray-700">Enable email notifications</label>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex gap-2">
+                  <Input
+                    type="email"
+                    value={testEmailAddress}
+                    onChange={(e) => setTestEmailAddress(e.target.value)}
+                    placeholder="test@example.com"
+                    className="w-64"
+                  />
+                  <Button
+                    onClick={handleTestEmail}
+                    disabled={testEmailLoading || !testEmailAddress}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <Send className="h-4 w-4" />
+                    {testEmailLoading ? 'Sending...' : 'Test Email'}
+                  </Button>
+                </div>
+                <Button
+                  onClick={handleSaveEmailSettings}
+                  disabled={emailLoading}
+                  className="flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  {emailLoading ? 'Saving...' : 'Save Email Settings'}
+                </Button>
               </div>
             </div>
           </CardContent>

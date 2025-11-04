@@ -158,7 +158,7 @@ export default function EditRentalUnitPage() {
 
   const fetchUnitTypes = async () => {
     try {
-      const response = await rentalUnitTypesAPI.getAll({ active_only: true });
+      const response = await rentalUnitTypesAPI.getUnitTypes({ active_only: true });
       const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
       setUnitTypes(types);
     } catch (error) {
