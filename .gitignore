@@ -5,6 +5,7 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 yarn.lock
+pnpm-debug.log*
 
 # Build outputs
 dist/
@@ -16,6 +17,10 @@ out/
 # Environment files
 .env
 .env.local
+.env.*.local
+.env.current
+.env.production
+.env.development
 .env.development.local
 .env.test.local
 .env.production.local
@@ -47,6 +52,9 @@ lerna-debug.log*
 .cpcpan/
 .cpan/
 .cphorde/
+
+# Docker
+.docker/
 
 # Development tools
 .vscode/
@@ -89,7 +97,6 @@ temp/
 # Sensitive system files
 .ssh/
 .gnupg/
-.docker/
 .dns
 .emacs
 .ftpquota
@@ -112,11 +119,6 @@ temp/
 .zshrc
 .imunify_patch_id
 
-# cPanel and Perl files
-.cpcpan/
-.cpan/
-.cphorde/
-
 # Git files (should not be in .gitignore but listing for reference)
 # .git/
 
@@ -124,6 +126,16 @@ temp/
 *.sqlite
 *.sqlite3
 *.db
+
+# Backups
+backup-*.sql
+*.sql.bak
+*.backup.*
+.env.backup.*
+
+# Dependencies
+frontend/node_modules/
+backend/vendor/
 
 # Compiled files
 *.com
@@ -135,19 +147,15 @@ temp/
 *.dylib
 
 # IDE
-.vscode/
-.idea/
 *.sublime-project
 *.sublime-workspace
 
 # OS files
-.DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db
 Desktop.ini
 
 # Serverless
@@ -161,3 +169,31 @@ coverage/
 *.pem
 *.key
 *.crt
+
+# Temporary/Debug files
+CHECK_*.md
+DEBUG_*.md
+FIX_*.md
+QUICK_*.md
+URGENT_*.md
+VERIFY_*.md
+TROUBLESHOOT*.md
+INSTALL_*.md
+START_*.md
+SWITCH_*.md
+REBUILD_*.md
+RESTART_*.md
+POPULATE_*.md
+CONSOLIDATE_*.md
+DEV_MODE_*.md
+DIRECT_*.md
+DOCKER_FIX_*.md
+FINAL_*.md
+NODE_VERSION_*.md
+IMMEDIATE_*.md
+PERMANENT-*.md
+
+# Temporary scripts
+*.sh
+!docker-entrypoint.sh
+!fix-docker-permissions.sh
