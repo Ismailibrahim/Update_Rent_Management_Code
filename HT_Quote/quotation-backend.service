@@ -1,0 +1,22 @@
+[Unit]
+Description=Quotation Management System - Laravel Backend
+After=network.target mysql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/quotation-system/quotation-system
+ExecStart=/usr/bin/php artisan serve --host=0.0.0.0 --port=8000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quotation-backend
+
+# Environment variables
+Environment=APP_ENV=production
+Environment=APP_DEBUG=false
+
+[Install]
+WantedBy=multi-user.target

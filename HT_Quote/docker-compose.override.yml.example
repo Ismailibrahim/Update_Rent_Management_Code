@@ -1,0 +1,28 @@
+# Docker Compose Override Example
+# Copy this file to docker-compose.override.yml and customize for your environment
+# This file is automatically loaded by docker-compose
+
+version: '3.8'
+
+services:
+  backend:
+    environment:
+      # Override backend environment variables here
+      - APP_URL=https://your-domain.com
+      - MAIL_MAILER=smtp
+      - MAIL_HOST=your-smtp-host
+      - MAIL_PORT=587
+      - MAIL_USERNAME=your-email@domain.com
+      - MAIL_PASSWORD=your-password
+
+  frontend:
+    environment:
+      # Override frontend environment variables here
+      - NEXT_PUBLIC_API_URL=https://your-domain.com/api
+
+  nginx:
+    volumes:
+      # Mount SSL certificates
+      - ./ssl/certs:/etc/ssl/certs:ro
+      - ./ssl/private:/etc/ssl/private:ro
+

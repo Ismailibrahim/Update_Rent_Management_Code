@@ -84,6 +84,33 @@ temp/
 
 # Cursor IDE files
 .cursor-server/
+.cursor/
+
+# Sensitive system files
+.ssh/
+.gnupg/
+.docker/
+.dns
+.emacs
+.ftpquota
+.gemrc
+.gitconfig
+.kshrc
+.lastlogin
+.lesshst
+.myimunify_id
+.pearrc
+.permslog
+.softaculous/
+.spamassassin/
+.spamassassinboxenable
+.spamassassinenable
+.spamboxenable
+.subaccounts/
+.viminfo
+.wp-toolkit-identifier
+.zshrc
+.imunify_patch_id
 
 # cPanel and Perl files
 .cpcpan/

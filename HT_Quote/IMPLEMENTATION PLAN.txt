@@ -1,0 +1,63 @@
+IMPLEMENTATION PLAN
+PHASE 1: CORE LARAVEL SYSTEM (Weeks 1-3) ✅ COMPLETED
+Laravel project setup ✅
+
+MySQL database setup & migrations ✅
+
+Model relationships ✅
+
+Basic CRUD APIs (quotations, products, customers) ✅
+
+Auto-numbering system ✅
+
+Basic PDF generation with Laravel DomPDF ✅
+
+Database migration from SQLite to MySQL ✅
+
+PHASE 2: ADVANCED FEATURES (Weeks 4-6)
+Node.js PDF service integration
+
+Quotation workflow (draft→sent→accepted/rejected)
+
+AMC line item handling
+
+T&C template selection
+
+Multi-currency support
+
+Discount calculations
+
+PHASE 3: FRONTEND & UI (Weeks 7-8)
+React admin panel
+
+Quotation creation wizard
+
+Product selection with AMC options
+
+Customer management interface
+
+Settings management
+
+PHASE 4: REPORTING & AUTH (Weeks 9-10)
+Reporting dashboard
+
+Charts and statistics
+
+User authentication
+
+Role-based permissions
+
+Email notifications
+
+KEY BUSINESS RULES
+Quotation Numbers: Auto-generated as Q-YYYY-NNN, reset annually
+
+AMC Handling: Optional line items below main products, select from predefined descriptions
+
+Pricing: Services use man-day rates, products use unit pricing
+
+Currency: Base in USD, convert to MVR using exchange rates
+
+Validity: Configurable default (14 days), editable per quotation
+
+T&C: Select multiple templates, auto-suggest based on product types
