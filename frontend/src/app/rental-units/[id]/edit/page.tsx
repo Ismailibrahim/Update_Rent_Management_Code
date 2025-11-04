@@ -225,13 +225,13 @@ export default function EditRentalUnitPage() {
         ...formData,
         property_id: parseInt(formData.property_id),
         unit_type: formData.unit_type,
-        floor_number: parseInt(formData.floor_number),
+        floor_number: formData.floor_number ? parseInt(formData.floor_number) : undefined,
         // New separate columns
         rent_amount: parseFloat(formData.rent_amount),
         deposit_amount: formData.deposit_amount ? parseFloat(formData.deposit_amount) : undefined,
         currency: formData.currency,
-        number_of_rooms: parseInt(formData.number_of_rooms),
-        number_of_toilets: parseInt(formData.number_of_toilets),
+        number_of_rooms: formData.number_of_rooms ? parseInt(formData.number_of_rooms) : undefined,
+        number_of_toilets: formData.number_of_toilets ? parseFloat(formData.number_of_toilets) : undefined,
         square_feet: formData.square_feet ? parseFloat(formData.square_feet) : undefined,
         // Utility meter information - convert empty strings to undefined
         water_meter_number: formData.water_meter_number?.trim() || undefined,
@@ -451,7 +451,7 @@ export default function EditRentalUnitPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Floor Number *
+                    Floor Number
                   </label>
                   <Input
                     type="number"
@@ -459,7 +459,6 @@ export default function EditRentalUnitPage() {
                     value={formData.floor_number}
                     onChange={(e) => setFormData(prev => ({ ...prev, floor_number: e.target.value }))}
                     min="1"
-                    required
                   />
                 </div>
 
@@ -486,7 +485,7 @@ export default function EditRentalUnitPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Number of Rooms *
+                    Number of Rooms
                   </label>
                   <Input
                     type="number"
@@ -497,13 +496,12 @@ export default function EditRentalUnitPage() {
                       number_of_rooms: e.target.value
                     }))}
                     min="0"
-                    required
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Number of Toilets *
+                    Number of Toilets
                   </label>
                   <Input
                     type="number"
@@ -515,7 +513,6 @@ export default function EditRentalUnitPage() {
                     }))}
                     min="0"
                     step="0.5"
-                    required
                   />
                 </div>
 
@@ -575,16 +572,6 @@ export default function EditRentalUnitPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
-                <Input
-                  placeholder="Unit description"
-                  value={formData.notes}
-                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                />
-              </div>
 
               {/* Utility Meter Information */}
               <div className="space-y-4 border-t pt-6">

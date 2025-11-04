@@ -47,6 +47,8 @@ class RentalUnit extends Model
         'square_feet' => 'decimal:2',
         'is_active' => 'boolean',
         'floor_number' => 'integer',
+        'number_of_rooms' => 'integer',
+        'number_of_toilets' => 'integer',
         'property_id' => 'integer',
         'tenant_id' => 'integer',
         'move_in_date' => 'date:Y-m-d',

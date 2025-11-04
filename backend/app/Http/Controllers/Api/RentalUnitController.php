@@ -90,14 +90,26 @@ class RentalUnitController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
+        // Convert empty strings to null for nullable numeric fields
+        $requestData = $request->all();
+        $nullableNumericFields = ['floor_number', 'number_of_rooms', 'number_of_toilets', 'square_feet'];
+        foreach ($nullableNumericFields as $field) {
+            // Handle empty strings, null, or missing values
+            if (isset($requestData[$field])) {
+                if ($requestData[$field] === '' || $requestData[$field] === null) {
+                    unset($requestData[$field]); // Remove from request data - Laravel nullable will handle missing fields
+                }
+            }
+        }
+        
+        $validator = Validator::make($requestData, [
             'property_id' => 'required|exists:properties,id',
             'unit_number' => 'required|string|max:50',
             'unit_type' => ['required', Rule::in(['residential', 'office', 'shop', 'warehouse', 'other'])],
-            'floor_number' => 'required|integer|min:1',
+            'floor_number' => 'nullable|integer|min:1',
             // Updated to match model structure - flat fields
-            'number_of_rooms' => 'required|integer|min:0',
-            'number_of_toilets' => 'required|integer|min:0',
+            'number_of_rooms' => 'nullable|integer|min:0',
+            'number_of_toilets' => 'nullable|numeric|min:0',
             'square_feet' => 'nullable|numeric|min:0',
             // Utility meter information
             'water_meter_number' => 'nullable|string|max:100',
@@ -129,8 +141,8 @@ class RentalUnitController extends Controller
 
         try {
             // Check property capacity
-            $property = Property::findOrFail($request->property_id);
-            $existingUnits = RentalUnit::where('property_id', $request->property_id)->count();
+            $property = Property::findOrFail($requestData['property_id']);
+            $existingUnits = RentalUnit::where('property_id', $requestData['property_id'])->count();
             $remainingUnits = $property->number_of_rental_units - $existingUnits;
             
             if ($existingUnits >= $property->number_of_rental_units) {
@@ -148,8 +160,8 @@ class RentalUnitController extends Controller
             }
 
             // Check for duplicate unit number
-            $existingUnit = RentalUnit::where('property_id', $request->property_id)
-                ->where('unit_number', $request->unit_number)
+            $existingUnit = RentalUnit::where('property_id', $requestData['property_id'])
+                ->where('unit_number', $requestData['unit_number'])
                 ->first();
                 
             if ($existingUnit) {
@@ -159,8 +171,8 @@ class RentalUnitController extends Controller
             }
 
             // Check for duplicate access card numbers
-            if ($request->has('access_card_numbers') && !empty($request->access_card_numbers)) {
-                $inputCards = $request->access_card_numbers;
+            if (isset($requestData['access_card_numbers']) && !empty($requestData['access_card_numbers'])) {
+                $inputCards = $requestData['access_card_numbers'];
                 // Parse comma-separated card numbers
                 $cardNumbers = array_map('trim', explode(',', $inputCards));
                 $cardNumbers = array_filter($cardNumbers, function($card) {
@@ -200,14 +212,45 @@ class RentalUnitController extends Controller
                 }
             }
 
-            $rentalUnitData = $request->all();
+            $rentalUnitData = $requestData;
             $rentalUnitData['status'] = $rentalUnitData['status'] ?? 'available';
 
-            $rentalUnit = RentalUnit::create($rentalUnitData);
+            // Set default values for optional fields if not provided (handles case where migration hasn't been run)
+            // These defaults will be used if the database columns are still NOT NULL
+            if (!isset($rentalUnitData['floor_number'])) {
+                $rentalUnitData['floor_number'] = 1; // Default to floor 1
+            }
+            if (!isset($rentalUnitData['number_of_rooms'])) {
+                $rentalUnitData['number_of_rooms'] = 0; // Default to 0 rooms
+            }
+            if (!isset($rentalUnitData['number_of_toilets'])) {
+                $rentalUnitData['number_of_toilets'] = 0; // Default to 0 toilets
+            }
+
+            try {
+                $rentalUnit = RentalUnit::create($rentalUnitData);
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Log the actual database error for debugging
+                Log::error('Database error creating rental unit', [
+                    'error' => $e->getMessage(),
+                    'code' => $e->getCode(),
+                    'data' => $rentalUnitData
+                ]);
+                
+                // Check if it's a NOT NULL constraint violation
+                if (str_contains($e->getMessage(), 'NOT NULL') || str_contains($e->getMessage(), 'cannot be null')) {
+                    return response()->json([
+                        'message' => 'Database schema error: Please run the migration to make floor_number, number_of_rooms, and number_of_toilets optional. Error: ' . $e->getMessage()
+                    ], 500);
+                }
+                
+                // Re-throw other database errors
+                throw $e;
+            }
 
             // Handle asset assignments
-            if ($request->has('assets') && is_array($request->assets)) {
-                foreach ($request->assets as $assetData) {
+            if (isset($requestData['assets']) && is_array($requestData['assets'])) {
+                foreach ($requestData['assets'] as $assetData) {
                     $assetId = is_array($assetData) ? $assetData['asset_id'] : $assetData;
                     $quantity = is_array($assetData) ? ($assetData['quantity'] ?? 1) : 1;
                     
@@ -259,7 +302,27 @@ class RentalUnitController extends Controller
                 'rentalUnit' => $rentalUnit
             ], 201);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Log the database error
+            Log::error('Database error creating rental unit', [
+                'error' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'sql' => $e->getSql() ?? 'N/A',
+                'bindings' => $e->getBindings() ?? []
+            ]);
+            
+            return response()->json([
+                'message' => 'Database error while creating rental unit',
+                'error' => $e->getMessage(),
+                'hint' => 'If you see a NOT NULL constraint error, please run the migration: php artisan migrate'
+            ], 500);
         } catch (\Exception $e) {
+            // Log the error
+            Log::error('Error creating rental unit', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'message' => 'Failed to create rental unit',
                 'error' => $e->getMessage()
@@ -302,7 +365,9 @@ class RentalUnitController extends Controller
         $validator = Validator::make($request->all(), [
             'unit_number' => 'sometimes|string|max:50',
             'unit_type' => ['sometimes', Rule::in(['residential', 'office', 'shop', 'warehouse', 'other'])],
-            'floor_number' => 'sometimes|integer|min:1',
+            'floor_number' => 'nullable|integer|min:1',
+            'number_of_rooms' => 'nullable|integer|min:0',
+            'number_of_toilets' => 'nullable|numeric|min:0',
             'unit_details' => 'sometimes|array',
             'unit_details.numberOfRooms' => 'sometimes|integer|min:0',
             'unit_details.numberOfToilets' => 'sometimes|numeric|min:0',

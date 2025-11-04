@@ -44,7 +44,8 @@ function RentalUnitTypesPageContent() {
       console.log('API base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api');
       console.log('Token exists:', typeof window !== 'undefined' ? !!localStorage.getItem('token') : 'N/A');
       
-      const response = await rentalUnitTypesAPI.getAll();
+      // Filter by category='unit' to only show rental unit types (not property types)
+      const response = await rentalUnitTypesAPI.getUnitTypes({ active_only: false });
       console.log('Unit types API response:', response);
       console.log('Response data:', response.data);
       console.log('Response data.unitTypes:', response.data?.unitTypes);
@@ -55,7 +56,8 @@ function RentalUnitTypesPageContent() {
       setUnitTypes(unitTypes);
       
       if (unitTypes.length === 0) {
-        console.warn('No unit types found in response');
+        console.warn('No unit types found in response. Make sure unit types are created with category="unit"');
+        toast.error('No unit types found. Please create unit types first.', { duration: 4000 });
       }
     } catch (error: unknown) {
       console.error('Error fetching unit types:', error);

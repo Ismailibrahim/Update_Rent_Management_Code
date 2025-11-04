@@ -78,7 +78,6 @@ function NewRentalUnitPageContent() {
     // Access card numbers
     access_card_numbers: '',
     status: 'available',
-    description: '',
     assets: []
   });
 
@@ -114,8 +113,15 @@ function NewRentalUnitPageContent() {
       const response = await rentalUnitTypesAPI.getUnitTypes({ active_only: true });
       const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
       setUnitTypes(types);
+      
+      if (types.length === 0) {
+        console.warn('No unit types found in database. Using fallback options.');
+      }
     } catch (error) {
       console.error('Error fetching unit types:', error);
+      // Show a warning toast if API fails, but still allow form submission with fallback options
+      toast.error('Failed to load unit types from server. Using default options.', { duration: 3000 });
+      setUnitTypes([]); // Ensure fallback options are shown
     }
   };
 
@@ -239,32 +245,67 @@ function NewRentalUnitPageContent() {
 
     try {
       setLoading(true);
-      const submitData = {
-        ...formData,
+      // Helper function to safely parse numeric values
+      const parseNumericValue = (value: string): number | null => {
+        if (!value || (typeof value === 'string' && value.trim() === '')) {
+          return null;
+        }
+        const parsed = parseFloat(value);
+        return isNaN(parsed) ? null : parsed;
+      };
+
+      const parseIntegerValue = (value: string): number | null => {
+        if (!value || (typeof value === 'string' && value.trim() === '')) {
+          return null;
+        }
+        const parsed = parseInt(value, 10);
+        return isNaN(parsed) ? null : parsed;
+      };
+
+      const submitData: any = {
         property_id: parseInt(formData.property_id),
-        floor_number: parseInt(formData.floor_number),
+        unit_number: formData.unit_number,
+        unit_type: formData.unit_type,
+        floor_number: parseIntegerValue(formData.floor_number),
         // New separate columns
         rent_amount: parseFloat(formData.rent_amount),
         deposit_amount: parseFloat(formData.deposit_amount),
         currency: formData.currency,
-        number_of_rooms: parseInt(formData.number_of_rooms),
-        number_of_toilets: parseInt(formData.number_of_toilets),
-        square_feet: formData.square_feet ? parseFloat(formData.square_feet) : undefined,
-        // Utility meter information - convert empty strings to undefined
-        water_meter_number: formData.water_meter_number?.trim() || undefined,
-        water_billing_account: formData.water_billing_account?.trim() || undefined,
-        electricity_meter_number: formData.electricity_meter_number?.trim() || undefined,
-        electricity_billing_account: formData.electricity_billing_account?.trim() || undefined,
-        // Access card numbers - convert empty strings to undefined
-        access_card_numbers: formData.access_card_numbers?.trim() || undefined,
-        // Include assets with quantities for creation
-        assets: selectedAssets.map(assetId => {
+        number_of_rooms: parseIntegerValue(formData.number_of_rooms),
+        number_of_toilets: parseNumericValue(formData.number_of_toilets),
+        square_feet: parseNumericValue(formData.square_feet),
+        status: formData.status,
+        // Utility meter information - convert empty strings to null
+        water_meter_number: formData.water_meter_number?.trim() || null,
+        water_billing_account: formData.water_billing_account?.trim() || null,
+        electricity_meter_number: formData.electricity_meter_number?.trim() || null,
+        electricity_billing_account: formData.electricity_billing_account?.trim() || null,
+        // Access card numbers - convert empty strings to null
+        access_card_numbers: formData.access_card_numbers?.trim() || null,
+      };
+      
+      // Remove null values from optional fields to keep payload clean
+      const optionalFields = ['floor_number', 'number_of_rooms', 'number_of_toilets', 'square_feet', 'water_meter_number', 'water_billing_account', 'electricity_meter_number', 'electricity_billing_account', 'access_card_numbers'];
+      optionalFields.forEach(field => {
+        if (submitData[field] === null || submitData[field] === undefined) {
+          delete submitData[field];
+        }
+      });
+
+      // Only include assets if there are any selected
+      if (selectedAssets.length > 0) {
+        submitData.assets = selectedAssets.map(assetId => {
           return {
             asset_id: assetId,
             quantity: 1 // Default quantity for new assignments
           };
-        })
-      };
+        });
+      }
+
+      // Debug log in development
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Submitting rental unit data:', submitData);
+      }
 
       await rentalUnitsAPI.create(submitData);
       
@@ -279,15 +320,25 @@ function NewRentalUnitPageContent() {
       console.error('Error creating rental unit:', error);
       
       if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as { response?: { data?: { errors?: Record<string, string[]>; message?: string } } };
+        const axiosError = error as { response?: { data?: { errors?: Record<string, string[]>; message?: string }; status?: number } };
+        
+        // Log full error details for debugging
+        console.error('Full error response:', {
+          status: axiosError.response?.status,
+          statusText: axiosError.response?.statusText,
+          data: axiosError.response?.data,
+        });
+        
         if (axiosError.response?.data?.errors) {
           const errors = axiosError.response.data.errors;
           const errorMessages = Object.values(errors).flat();
           toast.error('Validation failed: ' + errorMessages.join(', '));
         } else {
-          toast.error('Failed to create rental unit: ' + (axiosError.response?.data?.message || 'Unknown error'));
+          const errorMessage = axiosError.response?.data?.message || 'Unknown error';
+          toast.error('Failed to create rental unit: ' + errorMessage);
         }
       } else {
+        console.error('Unexpected error format:', error);
         toast.error('Failed to create rental unit: Unknown error');
       }
     } finally {
@@ -568,7 +619,7 @@ function NewRentalUnitPageContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Floor Number *
+                    Floor Number
                   </label>
                   <Input
                     type="number"
@@ -576,7 +627,6 @@ function NewRentalUnitPageContent() {
                     value={formData.floor_number}
                     onChange={(e) => setFormData(prev => ({ ...prev, floor_number: e.target.value }))}
                     min="1"
-                    required
                   />
                 </div>
 
@@ -603,7 +653,7 @@ function NewRentalUnitPageContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Number of Rooms *
+                    Number of Rooms
                   </label>
                   <Input
                     type="number"
@@ -614,13 +664,12 @@ function NewRentalUnitPageContent() {
                       number_of_rooms: e.target.value
                     }))}
                     min="0"
-                    required
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Number of Toilets *
+                    Number of Toilets
                   </label>
                   <Input
                     type="number"
@@ -632,7 +681,6 @@ function NewRentalUnitPageContent() {
                     }))}
                     min="0"
                     step="0.5"
-                    required
                   />
                 </div>
 
@@ -692,16 +740,6 @@ function NewRentalUnitPageContent() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
-                <Input
-                  placeholder="Unit description"
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                />
-              </div>
 
               {/* Utility Meter Information */}
               <div className="space-y-4 border-t pt-6">
