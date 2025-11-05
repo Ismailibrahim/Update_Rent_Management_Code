@@ -261,6 +261,7 @@ class RentalUnitController extends Controller
                 foreach ($requestData['assets'] as $assetData) {
                     $assetId = is_array($assetData) ? $assetData['asset_id'] : $assetData;
                     $quantity = is_array($assetData) ? ($assetData['quantity'] ?? 1) : 1;
+                    $serialNumbers = is_array($assetData) && isset($assetData['serial_numbers']) ? trim($assetData['serial_numbers']) : null;
                     
                     $asset = Asset::find($assetId);
                     if ($asset) {
@@ -271,7 +272,7 @@ class RentalUnitController extends Controller
                             ->first();
                             
                         if (!$existingAssignment) {
-                            RentalUnitAsset::create([
+                            $assignmentData = [
                                 'rental_unit_id' => $rentalUnit->id,
                                 'asset_id' => $assetId,
                                 'assigned_date' => now(),
@@ -279,7 +280,13 @@ class RentalUnitController extends Controller
                                 'is_active' => true,
                                 'quantity' => $quantity,
                                 'status' => 'working',
-                            ]);
+                            ];
+                            
+                            if ($serialNumbers !== null) {
+                                $assignmentData['serial_numbers'] = $serialNumbers;
+                            }
+                            
+                            RentalUnitAsset::create($assignmentData);
                             
                             Log::info('Asset assigned to rental unit', [
                                 'rental_unit_id' => $rentalUnit->id,
@@ -647,7 +654,36 @@ class RentalUnitController extends Controller
                 'rentalUnit' => $rentalUnit
             ]);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Database error fetching rental unit', [
+                'rental_unit_id' => $rentalUnit->id,
+                'error' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'sql' => $e->getSql() ?? 'N/A',
+            ]);
+            
+            // Check if it's a column not found error
+            if (str_contains($e->getMessage(), "Unknown column 'serial_numbers'") || 
+                str_contains($e->getMessage(), "serial_numbers") ||
+                str_contains($e->getMessage(), "doesn't exist")) {
+                return response()->json([
+                    'message' => 'Database schema error: Please run the migration to add serial_numbers column. Run: php artisan migrate',
+                    'error' => $e->getMessage(),
+                    'hint' => 'Migration file: 2025_12_15_000000_add_serial_numbers_to_rental_unit_assets_table.php'
+                ], 500);
+            }
+            
+            return response()->json([
+                'message' => 'Database error while fetching rental unit',
+                'error' => $e->getMessage()
+            ], 500);
         } catch (\Exception $e) {
+            Log::error('Error fetching rental unit', [
+                'rental_unit_id' => $rentalUnit->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
             return response()->json([
                 'message' => 'Failed to fetch rental unit',
                 'error' => $e->getMessage()
@@ -903,6 +939,7 @@ class RentalUnitController extends Controller
             'assets' => 'required|array',
             'assets.*.asset_id' => 'required|exists:assets,id',
             'assets.*.quantity' => 'required|integer|min:1',
+            'assets.*.serial_numbers' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -922,6 +959,7 @@ class RentalUnitController extends Controller
             foreach ($request->assets as $assetData) {
                 $assetId = $assetData['asset_id'];
                 $quantity = $assetData['quantity'];
+                $serialNumbers = isset($assetData['serial_numbers']) ? trim($assetData['serial_numbers']) : null;
                 
                 $asset = Asset::find($assetId);
                 
@@ -944,13 +982,19 @@ class RentalUnitController extends Controller
                         'new_quantity' => $quantity
                     ]);
                     
-                            $updated = $existingAssignment->update([
+                            $updateData = [
                                 'quantity' => $quantity,
                                 'is_active' => true,
                                 'assigned_date' => now(),
                                 'notes' => 'Updated via API',
                                 'status' => 'working' // Reset to working when updated
-                            ]);
+                            ];
+                            
+                            if ($serialNumbers !== null) {
+                                $updateData['serial_numbers'] = $serialNumbers;
+                            }
+                            
+                            $updated = $existingAssignment->update($updateData);
                     
                     Log::info('Update result', [
                         'updated' => $updated,
@@ -976,7 +1020,7 @@ class RentalUnitController extends Controller
                 }
 
                 // Create new assignment with quantity
-                $assignment = RentalUnitAsset::create([
+                $assignmentData = [
                     'rental_unit_id' => $rentalUnit->id,
                     'asset_id' => $assetId,
                     'quantity' => $quantity,
@@ -984,7 +1028,13 @@ class RentalUnitController extends Controller
                     'notes' => 'Assigned via API',
                     'is_active' => true,
                     'status' => 'working', // Default status
-                ]);
+                ];
+                
+                if ($serialNumbers !== null) {
+                    $assignmentData['serial_numbers'] = $serialNumbers;
+                }
+                
+                $assignment = RentalUnitAsset::create($assignmentData);
 
                 Log::info('Asset assigned successfully', [
                     'rental_unit_id' => $rentalUnit->id,
@@ -1081,6 +1131,7 @@ class RentalUnitController extends Controller
             'status' => ['required', Rule::in(['working', 'maintenance', 'repaired'])],
             'maintenance_notes' => 'nullable|string|max:1000',
             'quantity' => 'nullable|integer|min:1',
+            'serial_numbers' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -1112,6 +1163,10 @@ class RentalUnitController extends Controller
             
             if ($request->has('quantity')) {
                 $updateData['quantity'] = $request->quantity;
+            }
+            
+            if ($request->has('serial_numbers')) {
+                $updateData['serial_numbers'] = $request->serial_numbers ? trim($request->serial_numbers) : null;
             }
 
             $assignment->update($updateData);

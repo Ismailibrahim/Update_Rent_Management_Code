@@ -308,14 +308,9 @@ interface Asset {
 interface Currency {
   id: number;
   code: string;
-  name: string;
-  symbol: string;
-  exchange_rate: number;
-  is_base: boolean;
-  is_active: boolean;
-  decimal_places: number;
-  thousands_separator: string;
-  decimal_separator: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface PaymentType {
@@ -513,10 +508,10 @@ export const assetsAPI = {
           update: (id: number, unitData: Partial<RentalUnit>) => api.put(`/rental-units/${id}`, unitData),
           delete: (id: number) => api.delete(`/rental-units/${id}`),
           getByProperty: (propertyId: number) => api.get(`/rental-units/property/${propertyId}`),
-          addAssets: (unitId: number, assets: Array<{asset_id: number, quantity: number}>) => api.post(`/rental-units/${unitId}/assets`, { assets }),
+          addAssets: (unitId: number, assets: Array<{asset_id: number, quantity: number, serial_numbers?: string}>) => api.post(`/rental-units/${unitId}/assets`, { assets }),
           removeAsset: (unitId: number, assetId: number) => api.delete(`/rental-units/${unitId}/assets/${assetId}`),
           getAssets: (unitId: number) => api.get(`/rental-units/${unitId}/assets`),
-          updateAssetStatus: (unitId: number, assetId: number, data: { status: string; maintenance_notes?: string; quantity?: number }) => api.patch(`/rental-units/${unitId}/assets/${assetId}/status`, data),
+          updateAssetStatus: (unitId: number, assetId: number, data: { status: string; maintenance_notes?: string; quantity?: number; serial_numbers?: string }) => api.patch(`/rental-units/${unitId}/assets/${assetId}/status`, data),
           getMaintenanceAssets: () => api.get('/rental-units/maintenance-assets'),
         };
 
@@ -527,9 +522,7 @@ export const currenciesAPI = {
   create: (currencyData: Partial<Currency>) => api.post('/currencies', currencyData),
   update: (id: number, currencyData: Partial<Currency>) => api.put(`/currencies/${id}`, currencyData),
   delete: (id: number) => api.delete(`/currencies/${id}`),
-  getBase: () => api.get('/currencies/base'),
-  convert: (amount: number, fromCurrency: string, toCurrency: string) => 
-    api.post('/currencies/convert', { amount, from_currency: fromCurrency, to_currency: toCurrency }),
+  getDefault: () => api.get('/currencies/default'),
 };
 
 export const usersAPI = {

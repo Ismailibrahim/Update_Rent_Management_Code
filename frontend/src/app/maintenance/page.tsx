@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Wrench, RefreshCw, Trash2 } from 'lucide-react';
-import { rentalUnitsAPI, maintenanceCostsAPI, maintenanceRequestsAPI } from '../../services/api';
+import { rentalUnitsAPI, maintenanceCostsAPI, maintenanceRequestsAPI, currenciesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 
@@ -21,7 +21,11 @@ interface Asset {
   maintenance_cost?: {
     id: number;
     repair_cost: string;
-    currency: string;
+    currency_id?: number;
+    currency?: {
+      id: number;
+      code: string;
+    };
     repair_date: string;
     description?: string;
     repair_provider?: string;
@@ -50,10 +54,15 @@ export default function MaintenancePage() {
   const [showCostForm, setShowCostForm] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [currencies, setCurrencies] = useState<Array<{ id: number; code: string; is_default: boolean }>>([]);
   const [existingCostData, setExistingCostData] = useState<{
     id: number;
     repair_cost: number;
-    currency: string;
+    currency_id?: number;
+    currency?: {
+      id: number;
+      code: string;
+    };
     description: string;
     repair_date: string;
     repair_provider: string;
@@ -62,13 +71,14 @@ export default function MaintenancePage() {
   } | null>(null);
   const [costForm, setCostForm] = useState({
     repair_cost: '',
-    currency: 'MVR',
+    currency_id: '',
     description: '',
     repair_date: '',
     repair_provider: '',
     notes: '',
     bills: [] as File[]
   });
+  const [currenciesLoading, setCurrenciesLoading] = useState(true);
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
   const allSelected = maintenanceAssets.length > 0 && selectedAssetIds.length === maintenanceAssets.length;
   const partiallySelected = selectedAssetIds.length > 0 && selectedAssetIds.length < maintenanceAssets.length;
@@ -139,7 +149,54 @@ export default function MaintenancePage() {
 
   useEffect(() => {
     fetchMaintenanceAssets();
+    fetchCurrencies();
   }, []);
+
+  // Set default currency when currencies load
+  useEffect(() => {
+    if (currencies.length > 0 && !costForm.currency_id && !currenciesLoading) {
+      const defaultCurrency = currencies.find(c => c.is_default) || currencies[0];
+      if (defaultCurrency) {
+        console.log('Setting default currency:', defaultCurrency);
+        setCostForm(prev => ({ ...prev, currency_id: defaultCurrency.id.toString() }));
+      }
+    }
+  }, [currencies, currenciesLoading]);
+
+  const fetchCurrencies = async () => {
+    try {
+      setCurrenciesLoading(true);
+      console.log('[fetchCurrencies] Starting fetch...');
+      const response = await currenciesAPI.getAll();
+      console.log('[fetchCurrencies] Response received:', response);
+      console.log('[fetchCurrencies] Response data:', response.data);
+      
+      const currenciesList = response.data?.currencies || [];
+      console.log('[fetchCurrencies] Currencies list:', currenciesList);
+      console.log('[fetchCurrencies] Currencies count:', currenciesList.length);
+      
+      if (currenciesList.length === 0) {
+        console.warn('[fetchCurrencies] No currencies found in response');
+        toast.error('No currencies available. Please add currencies in the Currencies page.');
+        setCurrencies([]);
+        return;
+      }
+      
+      setCurrencies(currenciesList);
+      console.log('[fetchCurrencies] Currencies state updated, count:', currenciesList.length);
+      
+    } catch (error: any) {
+      console.error('[fetchCurrencies] Error fetching currencies:', error);
+      console.error('[fetchCurrencies] Error response:', error?.response);
+      console.error('[fetchCurrencies] Error data:', error?.response?.data);
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to fetch currencies';
+      toast.error(errorMessage);
+      setCurrencies([]);
+    } finally {
+      setCurrenciesLoading(false);
+      console.log('[fetchCurrencies] Loading complete, currenciesLoading set to false');
+    }
+  };
 
   const fetchMaintenanceAssets = async () => {
     try {
@@ -227,7 +284,7 @@ export default function MaintenancePage() {
         
         await maintenanceCostsAPI.update(existingCostData.id, {
           repair_cost: repairCost,
-          currency: costForm.currency,
+          currency_id: costForm.currency_id ? parseInt(costForm.currency_id) : undefined,
           description: costForm.description,
           repair_date: costForm.repair_date,
           repair_provider: costForm.repair_provider,
@@ -249,7 +306,7 @@ export default function MaintenancePage() {
         await maintenanceCostsAPI.create({
           rental_unit_asset_id: selectedAsset.id,
           repair_cost: repairCost,
-          currency: costForm.currency,
+          currency_id: costForm.currency_id ? parseInt(costForm.currency_id) : undefined,
           description: costForm.description,
           repair_date: costForm.repair_date,
           repair_provider: costForm.repair_provider,
@@ -346,9 +403,10 @@ export default function MaintenancePage() {
     setSelectedAsset(null);
     setIsEditing(false);
     setExistingCostData(null);
+    const defaultCurrency = currencies.find(c => c.is_default) || currencies[0];
     setCostForm({
       repair_cost: '',
-      currency: 'MVR',
+      currency_id: defaultCurrency ? defaultCurrency.id.toString() : '',
       description: '',
       repair_date: '',
       repair_provider: '',
@@ -363,6 +421,12 @@ export default function MaintenancePage() {
     console.log('Asset Name:', asset.name);
     
     try {
+      // Ensure currencies are loaded before opening form
+      if (currencies.length === 0 && !currenciesLoading) {
+        console.log('Currencies not loaded, fetching...');
+        await fetchCurrencies();
+      }
+      
       // Check if maintenance cost already exists for this asset
       console.log('Checking for existing maintenance cost...');
       const response = await maintenanceCostsAPI.getByRentalUnitAsset(asset.id);
@@ -378,9 +442,11 @@ export default function MaintenancePage() {
         
         // Populate form with existing data
         const formattedDate = existingCost.repair_date ? new Date(existingCost.repair_date).toISOString().split('T')[0] : '';
+        const currencyId = existingCost.currency_id || existingCost.currency?.id;
+        const defaultCurrency = currencies.find(c => c.is_default) || currencies[0];
         setCostForm({
           repair_cost: existingCost.repair_cost?.toString() || '',
-          currency: existingCost.currency || 'MVR',
+          currency_id: currencyId ? currencyId.toString() : (defaultCurrency ? defaultCurrency.id.toString() : ''),
           description: existingCost.description || '',
           repair_date: formattedDate,
           repair_provider: existingCost.repair_provider || '',
@@ -396,9 +462,15 @@ export default function MaintenancePage() {
         setIsEditing(false);
         
         // Reset form to defaults
+        const defaultCurrency = currencies.find(c => c.is_default) || currencies[0];
+        if (!defaultCurrency && currencies.length === 0) {
+          console.warn('No currencies available, cannot set default');
+          toast.error('Please wait for currencies to load or add currencies in the Currencies page.');
+          return;
+        }
         setCostForm({
           repair_cost: '',
-          currency: 'MVR',
+          currency_id: defaultCurrency ? defaultCurrency.id.toString() : '',
           description: '',
           repair_date: '',
           repair_provider: '',
@@ -543,7 +615,8 @@ export default function MaintenancePage() {
                             // Find maintenance cost for this asset
                             const costData = maintenanceAssets.find(a => a.id === asset.id);
                             if (costData && costData.maintenance_cost) {
-                              return `${costData.maintenance_cost.currency} ${parseFloat(costData.maintenance_cost.repair_cost).toLocaleString()}`;
+                              const currencyCode = costData.maintenance_cost.currency?.code || costData.maintenance_cost.currency || 'MVR';
+                              return `${currencyCode} ${parseFloat(costData.maintenance_cost.repair_cost).toLocaleString()}`;
                             }
                             return <span className="text-gray-400">No cost recorded</span>;
                           })()}
@@ -720,15 +793,38 @@ export default function MaintenancePage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Currency
                     </label>
+                    {(() => {
+                      console.log('[Currency Select] Render state:', {
+                        currenciesLoading,
+                        currenciesCount: currencies.length,
+                        currencies: currencies,
+                        currency_id: costForm.currency_id
+                      });
+                      return null;
+                    })()}
                     <select
-                      value={costForm.currency}
-                      onChange={(e) => setCostForm({...costForm, currency: e.target.value})}
+                      value={costForm.currency_id || ''}
+                      onChange={(e) => {
+                        console.log('[Currency Select] Changed to:', e.target.value);
+                        setCostForm({...costForm, currency_id: e.target.value});
+                      }}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      disabled={currenciesLoading || currencies.length === 0}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      required
                     >
-                      <option value="USD">USD</option>
-                      <option value="MVR">MVR</option>
+                      {currenciesLoading ? (
+                        <option value="">Loading currencies...</option>
+                      ) : currencies.length === 0 ? (
+                        <option value="">No currencies available</option>
+                      ) : (
+                        currencies.map((currency) => (
+                          <option key={currency.id} value={currency.id.toString()}>
+                            {currency.code} {currency.is_default ? '(Default)' : ''}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </div>
                 </div>

@@ -110,6 +110,7 @@ const navigationGroups: NavigationGroup[] = [
       { name: 'Islands', href: '/islands', icon: Map },
       { name: 'Nationalities', href: '/nationalities', icon: Globe },
       { name: 'Assets', href: '/assets', icon: Package },
+      { name: 'Currencies', href: '/currencies', icon: Coins },
     ]
   },
   {
@@ -118,7 +119,6 @@ const navigationGroups: NavigationGroup[] = [
     items: [
       { name: 'Settings', href: '/settings', icon: Settings },
       { name: 'Invoice Templates', href: '/settings/invoice-templates', icon: Layout },
-      { name: 'Currencies', href: '/currencies', icon: Coins },
       { name: 'SMS Templates', href: '/sms/templates', icon: MessageSquare },
       { name: 'SMS Settings', href: '/sms/settings', icon: Settings },
       { name: 'Send SMS', href: '/sms/send', icon: Send },
@@ -139,8 +139,19 @@ export default function SidebarLayout({ children }: SidebarProps) {
       const newExpandedGroups = new Set(prevExpandedGroups);
       
       // Find which group contains the current active link
+      // Use exact match to prevent /settings from matching /sms/settings
       navigationGroups.forEach(group => {
-        const hasActiveItem = group.items.some(item => pathname === item.href);
+        const hasActiveItem = group.items.some(item => {
+          // Exact match for the route
+          if (pathname === item.href) {
+            return true;
+          }
+          // For nested routes, check if pathname starts with item.href and is followed by / or end of string
+          if (pathname.startsWith(item.href + '/')) {
+            return true;
+          }
+          return false;
+        });
         if (hasActiveItem) {
           newExpandedGroups.add(group.name);
         }
@@ -215,7 +226,17 @@ export default function SidebarLayout({ children }: SidebarProps) {
             {/* Grouped Navigation */}
             {navigationGroups.map((group) => {
               const isExpanded = expandedGroups.has(group.name);
-              const hasActiveItem = group.items.some(item => pathname === item.href);
+              const hasActiveItem = group.items.some(item => {
+                // Exact match for the route
+                if (pathname === item.href) {
+                  return true;
+                }
+                // For nested routes, check if pathname starts with item.href and is followed by / or end of string
+                if (pathname.startsWith(item.href + '/')) {
+                  return true;
+                }
+                return false;
+              });
               
               return (
                 <div key={group.name} className="space-y-1">
@@ -245,7 +266,12 @@ export default function SidebarLayout({ children }: SidebarProps) {
                   {isExpanded && (
                     <div className="ml-4 space-y-1">
                       {group.items.map((item) => {
-                        const isActive = pathname === item.href;
+                        // Exact match for the route
+                        const isExactMatch = pathname === item.href;
+                        // For nested routes, check if pathname starts with item.href + '/'
+                        // This prevents /settings from matching /sms/settings
+                        const isNestedMatch = pathname.startsWith(item.href + '/');
+                        const isActive = isExactMatch || isNestedMatch;
                         return (
                           <Link
                             key={item.name}
@@ -301,10 +327,10 @@ export default function SidebarLayout({ children }: SidebarProps) {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar */}
-        <div className="bg-white shadow-sm border-b border-gray-200">
-          <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
+        <div className="bg-white shadow-sm border-b border-gray-200 w-full">
+          <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8 max-w-full">
             <button
               onClick={() => setSidebarOpen(true)}
               className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100"
@@ -321,8 +347,8 @@ export default function SidebarLayout({ children }: SidebarProps) {
         </div>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-6">
+          <div className="max-w-7xl mx-auto w-full">
             {children}
           </div>
         </main>

@@ -3,15 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/UI/Card';
 import { Button } from '@/components/UI/Button';
 import { Input } from '@/components/UI/Input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/UI/Table';
-import { Building2, Plus, Search, Edit, Trash2, Eye, Upload, Download, ArrowUp, ArrowDown } from 'lucide-react';
+import { Building2, Plus, Search, Edit, Trash2, Eye, ArrowUp, ArrowDown } from 'lucide-react';
 import { propertiesAPI } from '@/services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '@/components/Layout/SidebarLayout';
 import { useAuth } from '@/contexts/AuthContext';
+import { ResponsiveTable } from '@/components/Responsive/ResponsiveTable';
 
 interface Property {
   id: number;
@@ -178,26 +177,24 @@ export default function PropertiesPage() {
   const SortableHeader = ({ column, label }: { column: string; label: string }) => {
     const isActive = sortColumn === column;
     return (
-      <TableHead 
-        className="cursor-pointer hover:bg-gray-50 select-none transition-colors duration-150 font-semibold text-gray-700" 
+      <div 
+        className="cursor-pointer hover:bg-gray-50 select-none transition-colors duration-150 font-semibold text-gray-700 flex items-center space-x-1.5" 
         onClick={() => handleSort(column)}
       >
-        <div className="flex items-center space-x-1.5">
-          <span>{label}</span>
-          {isActive ? (
-            sortDirection === 'asc' ? (
-              <ArrowUp className="h-3.5 w-3.5 text-blue-600" />
-            ) : (
-              <ArrowDown className="h-3.5 w-3.5 text-blue-600" />
-            )
+        <span>{label}</span>
+        {isActive ? (
+          sortDirection === 'asc' ? (
+            <ArrowUp className="h-3.5 w-3.5 text-blue-600" />
           ) : (
-            <div className="flex flex-col opacity-40">
-              <ArrowUp className="h-2.5 w-2.5 text-gray-400" />
-              <ArrowDown className="h-2.5 w-2.5 text-gray-400 -mt-1" />
-            </div>
-          )}
-        </div>
-      </TableHead>
+            <ArrowDown className="h-3.5 w-3.5 text-blue-600" />
+          )
+        ) : (
+          <div className="flex flex-col opacity-40">
+            <ArrowUp className="h-2.5 w-2.5 text-gray-400" />
+            <ArrowDown className="h-2.5 w-2.5 text-gray-400 -mt-1" />
+          </div>
+        )}
+      </div>
     );
   };
 
@@ -280,15 +277,6 @@ export default function PropertiesPage() {
             </p>
           </div>
           <div className="flex space-x-3">
-            <Link href="/properties/import" prefetch={true}>
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 px-4 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
-              >
-                <Upload className="h-4 w-4" />
-                Import
-              </Button>
-            </Link>
             <Link href="/properties/new" prefetch={true}>
               <Button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
                 <Plus className="h-4 w-4" />
@@ -309,100 +297,119 @@ export default function PropertiesPage() {
           />
         </div>
 
-        {/* Properties Table */}
+        {/* Properties Table - Responsive: Table on desktop, Cards on mobile */}
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
-        ) : sortedProperties.length > 0 ? (
-          <Card className="bg-white shadow-md border border-gray-200">
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <SortableHeader column="name" label="Name" />
-                      <SortableHeader column="address" label="Address" />
-                      <SortableHeader column="type" label="Type" />
-                      <SortableHeader column="units" label="Units" />
-                      <SortableHeader column="status" label="Status" />
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedProperties.map((property) => (
-                      <TableRow key={property.id} className="hover:bg-blue-50/50 transition-colors duration-150 border-b border-gray-100">
-                        <TableCell className="font-medium">{property.name}</TableCell>
-                        <TableCell>
-                          <div className="text-sm text-gray-600">
-                            {property.street}, {property.island}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm capitalize">{property.type}</span>
-                        </TableCell>
-                        <TableCell>{property.number_of_rental_units || 'N/A'}</TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            property.status === 'vacant'
-                              ? 'bg-green-100 text-green-800'
-                              : property.status === 'occupied'
-                              ? 'bg-blue-100 text-blue-800'
-                              : property.status === 'maintenance'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : property.status === 'renovation'
-                              ? 'bg-orange-100 text-orange-800'
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {property.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Link 
-                              href={`/properties/${property.id}`}
-                              prefetch={true}
-                              className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                              title="View Property"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                            <Link 
-                              href={`/properties/${property.id}/edit`}
-                              prefetch={true}
-                              className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                              title="Edit Property"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Link>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleDeleteProperty(property.id)}
-                              className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                              title="Delete Property"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
-
-        {!loading && sortedProperties.length === 0 && (
-          <div className="text-center py-12">
-            <Building2 className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No properties found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property.'}
-            </p>
-          </div>
+        ) : (
+          <ResponsiveTable
+            data={sortedProperties}
+            keyExtractor={(property) => property.id}
+            columns={[
+              {
+                header: (
+                  <SortableHeader column="name" label="Name" />
+                ),
+                accessor: (property) => (
+                  <span className="font-medium">{property.name}</span>
+                ),
+                mobileLabel: 'Name',
+                mobilePriority: 'high',
+              },
+              {
+                header: (
+                  <SortableHeader column="address" label="Address" />
+                ),
+                accessor: (property) => (
+                  <div className="text-sm text-gray-600">
+                    {property.street}, {property.island}
+                  </div>
+                ),
+                mobileLabel: 'Address',
+                mobilePriority: 'high',
+              },
+              {
+                header: (
+                  <SortableHeader column="type" label="Type" />
+                ),
+                accessor: (property) => (
+                  <span className="text-sm capitalize">{property.type}</span>
+                ),
+                mobileLabel: 'Type',
+                mobilePriority: 'high',
+              },
+              {
+                header: (
+                  <SortableHeader column="units" label="Units" />
+                ),
+                accessor: (property) => property.number_of_rental_units || 'N/A',
+                mobileLabel: 'Units',
+                mobilePriority: 'medium',
+              },
+              {
+                header: (
+                  <SortableHeader column="status" label="Status" />
+                ),
+                accessor: (property) => (
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    property.status === 'vacant'
+                      ? 'bg-green-100 text-green-800'
+                      : property.status === 'occupied'
+                      ? 'bg-blue-100 text-blue-800'
+                      : property.status === 'maintenance'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : property.status === 'renovation'
+                      ? 'bg-orange-100 text-orange-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {property.status}
+                  </span>
+                ),
+                mobileLabel: 'Status',
+                mobilePriority: 'high',
+              },
+            ]}
+            actions={(property) => (
+              <>
+                <Link 
+                  href={`/properties/${property.id}`}
+                  prefetch={true}
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="View Property"
+                >
+                  <Eye className="h-4 w-4" />
+                </Link>
+                <Link 
+                  href={`/properties/${property.id}/edit`}
+                  prefetch={true}
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="Edit Property"
+                >
+                  <Edit className="h-4 w-4" />
+                </Link>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => handleDeleteProperty(property.id)}
+                  className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="Delete Property"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property.'}
+            emptyIcon={<Building2 className="mx-auto h-12 w-12 text-gray-400" />}
+            emptyAction={!searchTerm ? (
+              <Link href="/properties/new" prefetch={true}>
+                <Button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+                  <Plus className="h-4 w-4" />
+                  Add Property
+                </Button>
+              </Link>
+            ) : undefined}
+          />
         )}
 
         {/* Pagination */}

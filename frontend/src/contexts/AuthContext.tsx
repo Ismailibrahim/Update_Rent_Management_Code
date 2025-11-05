@@ -55,21 +55,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const token = localStorage.getItem('token');
         if (token) {
           try {
-            // Add timeout to prevent hanging (reduced to 3 seconds)
-            const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Auth check timeout')), 3000)
-            );
+            // Add timeout to prevent hanging (increased to 8 seconds for slower connections)
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                // Use a custom error that we can identify
+                const timeoutError = new Error('Auth check timeout');
+                (timeoutError as any).isTimeout = true;
+                reject(timeoutError);
+              }, 8000);
+            });
             
             const response = await Promise.race([
               authAPI.getMe(),
               timeoutPromise
             ]) as any;
             
-            setUser(response.data.user);
-          } catch (error) {
-            console.error('Auth initialization error:', error);
-            localStorage.removeItem('token');
-            // Don't show error toast on initial load
+            if (response?.data?.user) {
+              setUser(response.data.user);
+            }
+          } catch (error: any) {
+            // Check if it's a timeout error
+            if (error?.isTimeout || error?.message?.includes('timeout') || error?.code === 'ECONNABORTED') {
+              // Timeout - silently fail, only log in development
+              if (process.env.NODE_ENV === 'development') {
+                console.log('Auth check timeout - proceeding without user data');
+              }
+              localStorage.removeItem('token');
+            } else {
+              // Other errors - log for debugging but don't show to user
+              if (process.env.NODE_ENV === 'development') {
+                console.error('Auth initialization error:', error);
+              }
+              localStorage.removeItem('token');
+            }
           }
         }
       }

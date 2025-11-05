@@ -20,6 +20,7 @@ class RentalUnitAsset extends Model
         'quantity',
         'status',
         'maintenance_notes',
+        'serial_numbers',
     ];
 
     protected $casts = [

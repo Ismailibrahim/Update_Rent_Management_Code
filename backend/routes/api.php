@@ -113,8 +113,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Currency routes
     Route::apiResource('currencies', CurrencyController::class);
-    Route::get('/currencies/base', [CurrencyController::class, 'base']);
-    Route::post('/currencies/convert', [CurrencyController::class, 'convert']);
+    Route::get('/currencies/default', [CurrencyController::class, 'default']);
 
     // Payment Mode routes
     Route::apiResource('payment-modes', PaymentModeController::class);

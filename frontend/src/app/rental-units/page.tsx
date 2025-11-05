@@ -262,211 +262,365 @@ export default function RentalUnitsPage() {
           </select>
         </div>
 
-        {/* Rental Units Table */}
-        <Card className="w-full bg-white shadow-md border border-gray-200">
-          <CardContent className="p-0">
-            <div className="w-full overflow-x-auto">
-              <table className="w-full table-auto">
-                <colgroup>
-                  <col className="w-[12%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[6%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[8%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[12%]" />
-                  <col className="w-[14%]" />
-                </colgroup>
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Unit Details
-                    </th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Property
-                    </th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Floor
-                    </th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Rooms/Toilets
-                    </th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Rent Amount
-                    </th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Tenant
-                    </th>
-                    <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Assets
-                    </th>
-                    <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
-                  {filteredRentalUnits.map((unit) => (
-                    <tr key={unit.id} className="hover:bg-blue-50/50 transition-colors duration-150 border-b border-gray-100">
-                      <td className="px-2 py-2 align-top">
-                        <div className="text-sm font-medium text-gray-900 truncate">
-                          Unit {unit.unit_number}
-                        </div>
-                        {unit.unit_type && (
-                          <div className="mt-1">
-                            <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                              {formatUnitType(unit.unit_type)}
-                            </span>
+        {/* Desktop Table View - Hidden on mobile */}
+        <div className="hidden md:block">
+          <Card className="w-full bg-white shadow-md border border-gray-200">
+            <CardContent className="p-0">
+              <div className="w-full overflow-x-auto">
+                <table className="w-full table-auto">
+                  <colgroup>
+                    <col className="w-[12%]" />
+                    <col className="w-[18%]" />
+                    <col className="w-[6%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[12%]" />
+                    <col className="w-[14%]" />
+                  </colgroup>
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Unit Details
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Property
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Floor
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Rooms/Toilets
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Rent Amount
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Tenant
+                      </th>
+                      <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Assets
+                      </th>
+                      <th className="px-2 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {filteredRentalUnits.map((unit) => (
+                      <tr key={unit.id} className="hover:bg-blue-50/50 transition-colors duration-150 border-b border-gray-100">
+                        <td className="px-2 py-2 align-top">
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            Unit {unit.unit_number}
                           </div>
-                        )}
-                        {typeof unit.square_feet === 'number' && (
-                          <div className="mt-1 text-xs text-gray-600 truncate">
-                            Sq Ft: {unit.square_feet}
+                          {unit.unit_type && (
+                            <div className="mt-1">
+                              <span className="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                {formatUnitType(unit.unit_type)}
+                              </span>
+                            </div>
+                          )}
+                          {typeof unit.square_feet === 'number' && (
+                            <div className="mt-1 text-xs text-gray-600 truncate">
+                              Sq Ft: {unit.square_feet}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-2 py-2 align-top">
+                          <div className="text-sm text-gray-900 break-words">
+                            {unit.property?.name || 'Unknown Property'}
                           </div>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <div className="text-sm text-gray-900 break-words">
-                          {unit.property?.name || 'Unknown Property'}
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 align-top text-center">
-                        <div className="text-sm text-gray-900">
-                          {unit.floor_number}
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 align-top text-center">
-                        <div className="text-sm text-gray-900">
-                          {unit.number_of_rooms}/{unit.number_of_toilets}
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <div className="text-sm font-medium text-gray-900 truncate">
-                          {unit.currency} {Math.round(Number(unit.rent_amount || 0)).toLocaleString('en-US')}
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <span className={`inline-flex px-1.5 py-0.5 text-xs font-semibold rounded-full ${
-                          unit.status === 'available' 
-                            ? 'bg-green-100 text-green-800' 
-                            : unit.status === 'occupied'
-                            ? 'bg-red-100 text-red-800'
-                            : unit.status === 'deactivated'
-                            ? 'bg-gray-100 text-gray-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {unit.status}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <div className="text-sm text-gray-900">
-                          {unit.status === 'occupied' && unit.tenant 
-                            ? (
-                              <div>
-                                <div className="font-medium truncate" title={unit.tenant.full_name || `${unit.tenant.first_name} ${unit.tenant.last_name}`}>
-                                  {unit.tenant.full_name || `${unit.tenant.first_name} ${unit.tenant.last_name}`}
-                                </div>
-                                {unit.tenant.phone && (
-                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.phone}</div>
-                                )}
-                                {unit.tenant.email && (
-                                  <div className="text-xs text-gray-500 truncate">{unit.tenant.email}</div>
-                                )}
-                              </div>
-                            )
-                            : unit.status === 'deactivated'
-                            ? 'Deactivated'
-                            : 'Available'
-                          }
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 align-top">
-                        <div className="text-sm text-gray-900">
-                          {unit.assets && unit.assets.length > 0 ? (
-                            <div className="space-y-1">
-                              {unit.assets.slice(0, 2).map((asset) => {
-                                const isMaintenance = asset.pivot?.status === 'maintenance';
-                                const isActiveAssignment = asset.pivot?.is_active !== false;
-                                const qty = asset.pivot?.quantity ?? undefined;
-                                return (
-                                  <div key={asset.id} className="flex items-center space-x-1">
-                                    <span className={`inline-flex px-1 py-0.5 text-xs rounded-full border truncate ${
-                                      isMaintenance
-                                        ? 'bg-orange-50 text-orange-800 border-orange-200'
-                                        : isActiveAssignment
-                                        ? 'bg-green-50 text-green-800 border-green-200'
-                                        : 'bg-gray-50 text-gray-700 border-gray-200'
-                                    }`}>
-                                      {asset.name}
-                                      {typeof qty === 'number' && (
-                                        <span className="ml-1 opacity-80">({qty})</span>
-                                      )}
-                                      {isMaintenance && <span className="ml-1 font-medium">🔧</span>}
-                                    </span>
+                        </td>
+                        <td className="px-2 py-2 align-top text-center">
+                          <div className="text-sm text-gray-900">
+                            {unit.floor_number}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 align-top text-center">
+                          <div className="text-sm text-gray-900">
+                            {unit.number_of_rooms}/{unit.number_of_toilets}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 align-top">
+                          <div className="text-sm font-medium text-gray-900 truncate">
+                            {unit.currency} {Math.round(Number(unit.rent_amount || 0)).toLocaleString('en-US')}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 align-top">
+                          <span className={`inline-flex px-1.5 py-0.5 text-xs font-semibold rounded-full ${
+                            unit.status === 'available' 
+                              ? 'bg-green-100 text-green-800' 
+                              : unit.status === 'occupied'
+                              ? 'bg-red-100 text-red-800'
+                              : unit.status === 'deactivated'
+                              ? 'bg-gray-100 text-gray-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {unit.status}
+                          </span>
+                        </td>
+                        <td className="px-2 py-2 align-top">
+                          <div className="text-sm text-gray-900">
+                            {unit.status === 'occupied' && unit.tenant 
+                              ? (
+                                <div>
+                                  <div className="font-medium truncate" title={unit.tenant.full_name || `${unit.tenant.first_name} ${unit.tenant.last_name}`}>
+                                    {unit.tenant.full_name || `${unit.tenant.first_name} ${unit.tenant.last_name}`}
                                   </div>
-                                );
-                              })}
-                              {unit.assets.length > 2 && (
-                                <div className="text-xs text-gray-500">
-                                  +{unit.assets.length - 2} more
-                                  {unit.assets.filter(a => a.pivot?.status === 'maintenance').length > 0 && (
-                                    <span className="ml-1 text-orange-600">
-                                      ({unit.assets.filter(a => a.pivot?.status === 'maintenance').length} 🔧)
-                                    </span>
+                                  {unit.tenant.phone && (
+                                    <div className="text-xs text-gray-500 truncate">{unit.tenant.phone}</div>
+                                  )}
+                                  {unit.tenant.email && (
+                                    <div className="text-xs text-gray-500 truncate">{unit.tenant.email}</div>
                                   )}
                                 </div>
+                              )
+                              : unit.status === 'deactivated'
+                              ? 'Deactivated'
+                              : 'Available'
+                            }
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 align-top">
+                          <div className="text-sm text-gray-900">
+                            {unit.assets && unit.assets.length > 0 ? (
+                              <div className="space-y-1">
+                                {unit.assets.slice(0, 2).map((asset) => {
+                                  const isMaintenance = asset.pivot?.status === 'maintenance';
+                                  const isActiveAssignment = asset.pivot?.is_active !== false;
+                                  const qty = asset.pivot?.quantity ?? undefined;
+                                  return (
+                                    <div key={asset.id} className="flex items-center space-x-1">
+                                      <span className={`inline-flex px-1 py-0.5 text-xs rounded-full border truncate ${
+                                        isMaintenance
+                                          ? 'bg-orange-50 text-orange-800 border-orange-200'
+                                          : isActiveAssignment
+                                          ? 'bg-green-50 text-green-800 border-green-200'
+                                          : 'bg-gray-50 text-gray-700 border-gray-200'
+                                      }`}>
+                                        {asset.name}
+                                        {typeof qty === 'number' && (
+                                          <span className="ml-1 opacity-80">({qty})</span>
+                                        )}
+                                        {isMaintenance && <span className="ml-1 font-medium">🔧</span>}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                                {unit.assets.length > 2 && (
+                                  <div className="text-xs text-gray-500">
+                                    +{unit.assets.length - 2} more
+                                    {unit.assets.filter(a => a.pivot?.status === 'maintenance').length > 0 && (
+                                      <span className="ml-1 text-orange-600">
+                                        ({unit.assets.filter(a => a.pivot?.status === 'maintenance').length} 🔧)
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">No assets</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-sm font-medium align-top text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Link 
+                              href={`/rental-units/${unit.id}/edit`}
+                              prefetch={true}
+                              className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                              title="Edit"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Link>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleToggleStatus(unit.id, unit.is_active)}
+                              className={`h-9 px-3 rounded-lg text-xs font-medium transition-all duration-200 shadow-sm hover:shadow-md ${
+                                unit.is_active 
+                                  ? 'bg-orange-50 text-orange-600 hover:bg-orange-100 hover:text-orange-700' 
+                                  : 'bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700'
+                              }`}
+                              title={unit.is_active ? 'Deactivate' : 'Activate'}
+                            >
+                              {unit.is_active ? 'Deactivate' : 'Activate'}
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleDeleteRentalUnit(unit.id)}
+                              className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Mobile Card View - Hidden on desktop */}
+        <div className="md:hidden space-y-4">
+          {filteredRentalUnits.map((unit) => (
+            <Card key={unit.id} className="bg-white shadow-md border border-gray-200 hover:shadow-lg transition-shadow">
+              <CardContent className="p-4">
+                <div className="space-y-3">
+                  {/* Header: Unit Number and Status */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Unit {unit.unit_number}
+                        </h3>
+                        {unit.unit_type && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                            {formatUnitType(unit.unit_type)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-600">{unit.property?.name || 'Unknown Property'}</p>
+                    </div>
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                      unit.status === 'available' 
+                        ? 'bg-green-100 text-green-800' 
+                        : unit.status === 'occupied'
+                        ? 'bg-red-100 text-red-800'
+                        : unit.status === 'deactivated'
+                        ? 'bg-gray-100 text-gray-800'
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {unit.status}
+                    </span>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Floor</p>
+                      <p className="text-sm font-medium text-gray-900">{unit.floor_number}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Rooms/Toilets</p>
+                      <p className="text-sm font-medium text-gray-900">{unit.number_of_rooms}/{unit.number_of_toilets}</p>
+                    </div>
+                    {typeof unit.square_feet === 'number' && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Square Feet</p>
+                        <p className="text-sm font-medium text-gray-900">{unit.square_feet}</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Rent Amount</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {unit.currency} {Math.round(Number(unit.rent_amount || 0)).toLocaleString('en-US')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Tenant Info */}
+                  {unit.status === 'occupied' && unit.tenant && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Tenant</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-gray-900">
+                          {unit.tenant.full_name || `${unit.tenant.first_name} ${unit.tenant.last_name}`}
+                        </p>
+                        {unit.tenant.phone && (
+                          <p className="text-xs text-gray-600">{unit.tenant.phone}</p>
+                        )}
+                        {unit.tenant.email && (
+                          <p className="text-xs text-gray-600 truncate">{unit.tenant.email}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Assets */}
+                  {unit.assets && unit.assets.length > 0 && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Assets</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {unit.assets.slice(0, 4).map((asset) => {
+                          const isMaintenance = asset.pivot?.status === 'maintenance';
+                          const isActiveAssignment = asset.pivot?.is_active !== false;
+                          const qty = asset.pivot?.quantity ?? undefined;
+                          return (
+                            <span
+                              key={asset.id}
+                              className={`inline-flex px-2 py-1 text-xs rounded-full border ${
+                                isMaintenance
+                                  ? 'bg-orange-50 text-orange-800 border-orange-200'
+                                  : isActiveAssignment
+                                  ? 'bg-green-50 text-green-800 border-green-200'
+                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              {asset.name}
+                              {typeof qty === 'number' && (
+                                <span className="ml-1 opacity-80">({qty})</span>
                               )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">No assets</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-2 py-2 text-sm font-medium align-top text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <Link 
-                            href={`/rental-units/${unit.id}/edit`}
-                            prefetch={true}
-                            className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                            title="Edit"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Link>
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleToggleStatus(unit.id, unit.is_active)}
-                            className={`h-9 px-3 rounded-lg text-xs font-medium transition-all duration-200 shadow-sm hover:shadow-md ${
-                              unit.is_active 
-                                ? 'bg-orange-50 text-orange-600 hover:bg-orange-100 hover:text-orange-700' 
-                                : 'bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700'
-                            }`}
-                            title={unit.is_active ? 'Deactivate' : 'Activate'}
-                          >
-                            {unit.is_active ? 'Deactivate' : 'Activate'}
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleDeleteRentalUnit(unit.id)}
-                            className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                              {isMaintenance && <span className="ml-1">🔧</span>}
+                            </span>
+                          );
+                        })}
+                        {unit.assets.length > 4 && (
+                          <span className="inline-flex px-2 py-1 text-xs text-gray-600">
+                            +{unit.assets.length - 4} more
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="pt-3 border-t border-gray-200 flex items-center justify-end gap-2">
+                    <Link 
+                      href={`/rental-units/${unit.id}/edit`}
+                      prefetch={true}
+                      className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm"
+                      title="Edit"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Link>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => handleToggleStatus(unit.id, unit.is_active)}
+                      className={`h-9 px-3 rounded-lg text-xs font-medium transition-all duration-200 shadow-sm ${
+                        unit.is_active 
+                          ? 'bg-orange-50 text-orange-600 hover:bg-orange-100 hover:text-orange-700' 
+                          : 'bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700'
+                      }`}
+                      title={unit.is_active ? 'Deactivate' : 'Activate'}
+                    >
+                      {unit.is_active ? 'Deactivate' : 'Activate'}
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => handleDeleteRentalUnit(unit.id)}
+                      className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
         {!loading && filteredRentalUnits.length === 0 && (
           <div className="text-center py-12">

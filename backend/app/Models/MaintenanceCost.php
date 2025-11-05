@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\TenantLedger;
 use App\Models\PaymentType;
 use App\Models\MaintenanceInvoice;
+use App\Models\Currency;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -17,7 +18,7 @@ class MaintenanceCost extends Model
         'maintenance_request_id',
         'maintenance_invoice_id',
         'repair_cost',
-        'currency',
+        'currency_id',
         'description',
         'bill_file_paths',
         'repair_date',
@@ -32,7 +33,6 @@ class MaintenanceCost extends Model
     ];
 
     protected $attributes = [
-        'currency' => 'MVR',
         'status' => 'draft',
     ];
 
@@ -55,7 +55,7 @@ class MaintenanceCost extends Model
             }
             
             // Update maintenance invoice when maintenance cost is updated
-            if ($maintenanceCost->wasChanged(['repair_cost', 'description', 'repair_provider', 'repair_date', 'notes', 'currency'])) {
+            if ($maintenanceCost->wasChanged(['repair_cost', 'description', 'repair_provider', 'repair_date', 'notes', 'currency_id'])) {
                 $maintenanceCost->updateMaintenanceInvoice();
             }
             
@@ -87,10 +87,16 @@ class MaintenanceCost extends Model
         return $this->belongsTo(MaintenanceInvoice::class);
     }
 
+    public function currency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class);
+    }
+
     // Accessor for formatted cost
     public function getFormattedCostAttribute(): string
     {
-        return number_format($this->repair_cost, 2) . ' ' . $this->currency;
+        $currencyCode = $this->currency ? $this->currency->code : 'MVR';
+        return number_format($this->repair_cost, 2) . ' ' . $currencyCode;
     }
 
     /**
@@ -368,7 +374,7 @@ class MaintenanceCost extends Model
                 'due_date' => $dueDate,
                 'maintenance_amount' => $this->repair_cost,
                 'total_amount' => $this->repair_cost,
-                'currency' => $this->currency,
+                'currency' => $this->currency ? $this->currency->code : 'MVR',
                 'status' => 'pending',
                 'description' => "Maintenance Invoice - {$unitNumber} ({$assetName}): {$this->description}",
                 'notes' => $this->notes,
@@ -423,7 +429,7 @@ class MaintenanceCost extends Model
             $maintenanceInvoice->update([
                 'maintenance_amount' => $this->repair_cost,
                 'total_amount' => $this->repair_cost,
-                'currency' => $this->currency,
+                'currency' => $this->currency ? $this->currency->code : 'MVR',
                 'description' => "Maintenance Invoice - {$unitNumber} ({$assetName}): {$this->description}",
                 'notes' => $this->notes,
                 'repair_provider' => $this->repair_provider,

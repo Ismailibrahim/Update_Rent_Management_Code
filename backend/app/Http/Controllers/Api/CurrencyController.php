@@ -14,14 +14,7 @@ class CurrencyController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Currency::query();
-
-        // Filter by active status
-        if ($request->has('active_only') && $request->active_only) {
-            $query->active();
-        }
-
-        $currencies = $query->orderBy('code')->get();
+        $currencies = Currency::query()->orderBy('code')->get();
 
         return response()->json([
             'success' => true,
@@ -36,22 +29,18 @@ class CurrencyController extends Controller
     {
         $validated = $request->validate([
             'code' => 'required|string|max:3|unique:currencies,code',
-            'name' => 'required|string|max:255',
-            'symbol' => 'required|string|max:10',
-            'exchange_rate' => 'required|numeric|min:0',
-            'is_base' => 'boolean',
-            'is_active' => 'boolean',
-            'decimal_places' => 'integer|min:0|max:4',
-            'thousands_separator' => 'string|max:1',
-            'decimal_separator' => 'string|max:1',
+            'is_default' => 'boolean',
         ]);
 
-        // If this is set as base currency, unset others
-        if ($validated['is_base'] ?? false) {
-            Currency::where('is_base', true)->update(['is_base' => false]);
+        // If this is set as default currency, unset others
+        if ($validated['is_default'] ?? false) {
+            Currency::where('is_default', true)->update(['is_default' => false]);
         }
 
-        $currency = Currency::create($validated);
+        $currency = Currency::create([
+            'code' => strtoupper($validated['code']),
+            'is_default' => $validated['is_default'] ?? false,
+        ]);
 
         return response()->json([
             'success' => true,
@@ -82,19 +71,12 @@ class CurrencyController extends Controller
 
         $validated = $request->validate([
             'code' => 'sometimes|string|max:3|unique:currencies,code,' . $id,
-            'name' => 'sometimes|string|max:255',
-            'symbol' => 'sometimes|string|max:10',
-            'exchange_rate' => 'sometimes|numeric|min:0',
-            'is_base' => 'boolean',
-            'is_active' => 'boolean',
-            'decimal_places' => 'integer|min:0|max:4',
-            'thousands_separator' => 'string|max:1',
-            'decimal_separator' => 'string|max:1',
+            'is_default' => 'boolean',
         ]);
 
-        // If this is set as base currency, unset others
-        if ($validated['is_base'] ?? false) {
-            Currency::where('is_base', true)->where('id', '!=', $id)->update(['is_base' => false]);
+        // If this is set as default currency, unset others
+        if ($validated['is_default'] ?? false) {
+            Currency::where('is_default', true)->where('id', '!=', $id)->update(['is_default' => false]);
         }
 
         $currency->update($validated);
@@ -112,15 +94,15 @@ class CurrencyController extends Controller
     public function destroy(string $id): JsonResponse
     {
         $currency = Currency::findOrFail($id);
-
-        // Prevent deletion of base currency
-        if ($currency->is_base) {
+        
+        // Prevent deletion of default currency
+        if ($currency->is_default) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot delete the base currency'
+                'message' => 'Cannot delete the default currency'
             ], 400);
         }
-
+        
         $currency->delete();
 
         return response()->json([
@@ -130,43 +112,16 @@ class CurrencyController extends Controller
     }
 
     /**
-     * Get base currency
+     * Get default currency
      */
-    public function base(): JsonResponse
+    public function default(): JsonResponse
     {
-        $baseCurrency = Currency::base()->first();
+        $defaultCurrency = Currency::default()->first();
 
         return response()->json([
             'success' => true,
-            'currency' => $baseCurrency
+            'currency' => $defaultCurrency
         ]);
     }
 
-    /**
-     * Convert amount between currencies
-     */
-    public function convert(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'amount' => 'required|numeric|min:0',
-            'from_currency' => 'required|string|exists:currencies,code',
-            'to_currency' => 'required|string|exists:currencies,code',
-        ]);
-
-        $fromCurrency = Currency::where('code', $validated['from_currency'])->first();
-        $toCurrency = Currency::where('code', $validated['to_currency'])->first();
-
-        // Convert to base currency first, then to target currency
-        $baseAmount = $validated['amount'] / $fromCurrency->exchange_rate;
-        $convertedAmount = $baseAmount * $toCurrency->exchange_rate;
-
-        return response()->json([
-            'success' => true,
-            'original_amount' => $validated['amount'],
-            'converted_amount' => round($convertedAmount, $toCurrency->decimal_places),
-            'from_currency' => $fromCurrency->code,
-            'to_currency' => $toCurrency->code,
-            'exchange_rate' => $toCurrency->exchange_rate / $fromCurrency->exchange_rate
-        ]);
-    }
 }

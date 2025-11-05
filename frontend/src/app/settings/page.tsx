@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Settings, Save, Building2, DollarSign, Bell, FileText, Mail, Send } from 'lucide-react';
+import { Settings, Save, Building2, DollarSign, Bell, FileText, Mail, Send, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { settingsAPI, emailSettingsAPI, EmailSetting } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -151,21 +151,11 @@ export default function SettingsPage() {
     <SidebarLayout>
       <div className="space-y-8">
         {/* Page Header */}
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-            <p className="mt-2 text-gray-600">
-              Manage your application settings and preferences
-            </p>
-          </div>
-          <Button 
-            onClick={handleSaveSettings}
-            disabled={loading}
-            className="flex items-center"
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {loading ? 'Saving...' : 'Save Settings'}
-          </Button>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+          <p className="mt-2 text-gray-600">
+            Manage your application settings and preferences
+          </p>
         </div>
 
         {/* Company Settings */}
@@ -350,7 +340,7 @@ export default function SettingsPage() {
         {/* Email Configuration */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center space-x-3">
                 <div className="p-2 bg-purple-500 rounded-lg">
                   <Mail className="h-5 w-5 text-white" />
@@ -360,15 +350,15 @@ export default function SettingsPage() {
                   <CardDescription>Configure SMTP or Office 365 for sending email reminders</CardDescription>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Link href="/settings/reminder-settings">
-                  <Button variant="outline" className="flex items-center gap-2">
+                  <Button variant="outline" className="flex items-center gap-2 whitespace-nowrap">
                     <Bell className="h-4 w-4" />
                     Reminder Settings
                   </Button>
                 </Link>
                 <Link href="/settings/email-templates">
-                  <Button variant="outline" className="flex items-center gap-2">
+                  <Button variant="outline" className="flex items-center gap-2 whitespace-nowrap">
                     <FileText className="h-4 w-4" />
                     Email Templates
                   </Button>
@@ -465,7 +455,7 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+            <div className="flex flex-col gap-4 pt-4 border-t border-gray-200">
               <div className="flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -475,33 +465,75 @@ export default function SettingsPage() {
                 />
                 <label className="text-sm font-medium text-gray-700">Enable email notifications</label>
               </div>
-              <div className="flex gap-2">
-                <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2 w-full">
+                <div className="flex flex-col sm:flex-row gap-2 flex-1 min-w-0">
                   <Input
                     type="email"
                     value={testEmailAddress}
                     onChange={(e) => setTestEmailAddress(e.target.value)}
                     placeholder="test@example.com"
-                    className="w-64"
+                    className="flex-1 min-w-0"
                   />
                   <Button
                     onClick={handleTestEmail}
                     disabled={testEmailLoading || !testEmailAddress}
                     variant="outline"
-                    className="flex items-center gap-2"
+                    className="flex items-center justify-center gap-2 whitespace-nowrap flex-shrink-0"
                   >
                     <Send className="h-4 w-4" />
-                    {testEmailLoading ? 'Sending...' : 'Test Email'}
+                    <span className="hidden sm:inline">{testEmailLoading ? 'Sending...' : 'Test Email'}</span>
+                    <span className="sm:hidden">{testEmailLoading ? 'Sending...' : 'Test'}</span>
                   </Button>
                 </div>
                 <Button
                   onClick={handleSaveEmailSettings}
                   disabled={emailLoading}
-                  className="flex items-center gap-2"
+                  className="flex items-center justify-center gap-2 whitespace-nowrap flex-shrink-0 w-full sm:w-auto"
                 >
                   <Save className="h-4 w-4" />
-                  {emailLoading ? 'Saving...' : 'Save Email Settings'}
+                  <span className="hidden sm:inline">{emailLoading ? 'Saving...' : 'Save Email Settings'}</span>
+                  <span className="sm:hidden">{emailLoading ? 'Saving...' : 'Save'}</span>
                 </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Property Import */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-indigo-500 rounded-lg">
+                <Upload className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Property Import</CardTitle>
+                <CardDescription>Import properties from a CSV file</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <p className="text-sm text-gray-600 mb-2">
+                Import multiple properties at once using a CSV file. Download the template to see the required format.
+              </p>
+              <p className="text-xs text-gray-500">
+                Supported fields: Name, Type, Street, Island, Number of Rental Units, Status
+              </p>
+            </div>
+            <div className="flex flex-col gap-4 pt-4 border-t border-gray-200">
+              <div className="flex flex-col sm:flex-row gap-2 w-full justify-end">
+                <Link href="/properties/import" className="flex-shrink-0 w-full sm:w-auto">
+                  <Button
+                    variant="outline"
+                    className="flex items-center justify-center gap-2 px-4 py-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium w-full sm:w-auto whitespace-nowrap"
+                    title="Import Properties"
+                  >
+                    <Upload className="h-4 w-4" />
+                    <span className="hidden sm:inline">Import Properties</span>
+                    <span className="sm:hidden">Import</span>
+                  </Button>
+                </Link>
               </div>
             </div>
           </CardContent>
@@ -537,20 +569,20 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Invoice Template</label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <select
                     value={settings.invoice_template}
                     onChange={(e) => handleInputChange('invoice_template', e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="default">Default Template</option>
                     <option value="modern">Modern Template</option>
                     <option value="classic">Classic Template</option>
                   </select>
-                  <Link href="/settings/invoice-templates">
+                  <Link href="/settings/invoice-templates" className="flex-shrink-0">
                     <Button
                       variant="outline"
-                      className="flex items-center gap-2 px-4 py-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
+                      className="flex items-center justify-center gap-2 px-4 py-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium w-full sm:w-auto whitespace-nowrap"
                       title="Manage Templates"
                     >
                       <FileText className="h-4 w-4" />
@@ -558,6 +590,19 @@ export default function SettingsPage() {
                     </Button>
                   </Link>
                 </div>
+              </div>
+            </div>
+            <div className="flex flex-col gap-4 pt-4 border-t border-gray-200">
+              <div className="flex flex-col sm:flex-row gap-2 w-full justify-end">
+                <Button
+                  onClick={handleSaveSettings}
+                  disabled={loading}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto whitespace-nowrap"
+                >
+                  <Save className="h-4 w-4" />
+                  <span className="hidden sm:inline">{loading ? 'Saving...' : 'Save Settings'}</span>
+                  <span className="sm:hidden">{loading ? 'Saving...' : 'Save'}</span>
+                </Button>
               </div>
             </div>
           </CardContent>

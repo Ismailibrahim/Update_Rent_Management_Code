@@ -8,30 +8,15 @@ class Currency extends Model
 {
     protected $fillable = [
         'code',
-        'name',
-        'symbol',
-        'exchange_rate',
-        'is_base',
-        'is_active',
-        'decimal_places',
-        'thousands_separator',
-        'decimal_separator',
+        'is_default',
     ];
 
     protected $casts = [
-        'exchange_rate' => 'decimal:4',
-        'is_base' => 'boolean',
-        'is_active' => 'boolean',
-        'decimal_places' => 'integer',
+        'is_default' => 'boolean',
     ];
 
-    public function scopeActive($query)
+    public function scopeDefault($query)
     {
-        return $query->where('is_active', true);
-    }
-
-    public function scopeBase($query)
-    {
-        return $query->where('is_base', true);
+        return $query->where('is_default', true);
     }
 }

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\Schema;
 
 class RentalUnit extends Model
 {
@@ -77,8 +78,27 @@ class RentalUnit extends Model
 
     public function assets(): BelongsToMany
     {
+        // Use a static cache to avoid checking schema on every call
+        static $hasSerialNumbersColumn = null;
+        
+        $pivotColumns = ['assigned_date', 'notes', 'is_active', 'quantity', 'status', 'maintenance_notes'];
+        
+        // Check if serial_numbers column exists (cached)
+        if ($hasSerialNumbersColumn === null) {
+            try {
+                $hasSerialNumbersColumn = Schema::hasColumn('rental_unit_assets', 'serial_numbers');
+            } catch (\Exception $e) {
+                // If schema check fails, assume column doesn't exist
+                $hasSerialNumbersColumn = false;
+            }
+        }
+        
+        if ($hasSerialNumbersColumn) {
+            $pivotColumns[] = 'serial_numbers';
+        }
+        
         return $this->belongsToMany(Asset::class, 'rental_unit_assets')
-            ->withPivot(['assigned_date', 'notes', 'is_active', 'quantity', 'status', 'maintenance_notes'])
+            ->withPivot($pivotColumns)
             ->withTimestamps()
             ->wherePivot('is_active', true)
             ->orderBy('rental_unit_assets.updated_at', 'desc');

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
-import { Building2, Users, DollarSign, RefreshCw, Mail, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Building2, Users, DollarSign, RefreshCw, Mail, CheckCircle, XCircle, Clock, Home, Wrench } from 'lucide-react';
 import { dashboardAPI, reminderLogsAPI, ReminderLog } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
@@ -171,25 +171,25 @@ export default function DashboardPage() {
   return (
     <SidebarLayout>
       <div className="space-y-8">
-          {/* Page Header */}
-          <div className="mb-8 flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-              <p className="mt-2 text-gray-600">
-                Welcome to your rental property management dashboard
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                fetchDashboardData();
-              }}
-              className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
+        {/* Page Header */}
+        <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <p className="mt-2 text-gray-600">
+              Welcome to your rental property management dashboard
+            </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              fetchDashboardData();
+            }}
+            className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium w-full sm:w-auto"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -233,7 +233,7 @@ export default function DashboardPage() {
                 Rental Units
               </CardTitle>
               <div className="p-2 bg-gray-100 rounded-lg">
-                <Building2 className="h-5 w-5 text-gray-600" />
+                <Home className="h-5 w-5 text-gray-600" />
               </div>
             </CardHeader>
             <CardContent>
@@ -265,8 +265,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Additional Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-white border border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card className="bg-white border border-gray-200 hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg font-semibold text-gray-900">Occupancy Rate</CardTitle>
             </CardHeader>
@@ -280,7 +280,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white border border-gray-200">
+          <Card className="bg-white border border-gray-200 hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg font-semibold text-gray-900">Available Units</CardTitle>
             </CardHeader>
@@ -292,7 +292,7 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white border border-gray-200">
+          <Card className="bg-white border border-gray-200 hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="text-lg font-semibold text-gray-900">Average Revenue</CardTitle>
             </CardHeader>
@@ -305,10 +305,25 @@ export default function DashboardPage() {
               </p>
             </CardContent>
           </Card>
+
+          <Card className="bg-white border border-gray-200 hover:shadow-lg transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="text-lg font-semibold text-gray-900">Maintenance Requests</CardTitle>
+              <div className="p-2 bg-gray-100 rounded-lg">
+                <Wrench className="h-5 w-5 text-gray-600" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900 mb-1">{stats.maintenanceRequests}</div>
+              <p className="text-sm text-gray-500">
+                Active requests
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Recent Activity */}
-        <Card className="bg-white shadow-sm border border-gray-200">
+        <Card className="bg-white shadow-sm border border-gray-200 hover:shadow-lg transition-shadow">
           <CardHeader className="pb-4">
             <CardTitle className="text-xl font-semibold text-gray-900">System Overview</CardTitle>
             <CardDescription className="text-gray-600">
@@ -317,29 +332,29 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <div className="w-3 h-3 bg-gray-400 rounded-full flex-shrink-0"></div>
+              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
+                <div className="w-3 h-3 bg-blue-500 rounded-full flex-shrink-0"></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">Properties Management</p>
                   <p className="text-xs text-gray-500">Managing {stats.totalProperties} properties across the system</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <div className="w-3 h-3 bg-gray-400 rounded-full flex-shrink-0"></div>
+              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
+                <div className="w-3 h-3 bg-green-500 rounded-full flex-shrink-0"></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">Tenant Relations</p>
                   <p className="text-xs text-gray-500">{stats.totalTenants} active tenants in the system</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <div className="w-3 h-3 bg-gray-400 rounded-full flex-shrink-0"></div>
+              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
+                <div className="w-3 h-3 bg-yellow-500 rounded-full flex-shrink-0"></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">Unit Availability</p>
                   <p className="text-xs text-gray-500">{stats.availableUnits} units available for rent</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100">
-                <div className="w-3 h-3 bg-gray-400 rounded-full flex-shrink-0"></div>
+              <div className="flex items-center space-x-4 p-3 rounded-lg bg-gray-50 border border-gray-100 hover:bg-gray-100 transition-colors">
+                <div className="w-3 h-3 bg-purple-500 rounded-full flex-shrink-0"></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">Revenue Tracking</p>
                   <p className="text-xs text-gray-500">Total revenue: MVR {stats.monthlyRevenue.toLocaleString()}</p>
@@ -350,7 +365,7 @@ export default function DashboardPage() {
         </Card>
 
         {/* Reminder Logs */}
-        <Card className="bg-white shadow-sm border border-gray-200">
+        <Card className="bg-white shadow-sm border border-gray-200 hover:shadow-lg transition-shadow">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <div>

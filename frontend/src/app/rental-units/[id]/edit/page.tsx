@@ -28,6 +28,7 @@ interface Asset {
   status?: string;
   maintenance_notes?: string;
   quantity?: number;
+  serial_numbers?: string; // Serial numbers for items assigned to this rental unit
 }
 
 interface Tenant {
@@ -51,6 +52,7 @@ export default function EditRentalUnitPage() {
   const [selectedAssets, setSelectedAssets] = useState<number[]>([]);
   const [originalAssets, setOriginalAssets] = useState<number[]>([]); // Track originally assigned assets
   const [maintenanceNotes, setMaintenanceNotes] = useState<{[key: number]: {notes: string}}>({});
+  const [serialNumbers, setSerialNumbers] = useState<{[key: number]: string}>({});
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [formData, setFormData] = useState({
@@ -118,13 +120,15 @@ export default function EditRentalUnitPage() {
         // Update asset quantities and status from the unit's assets
         setAssets(prevAssets => {
           return prevAssets.map(asset => {
-            const unitAsset = unit.assets.find((ua: { id: number; pivot?: { quantity?: number; status?: string } }) => ua.id === asset.id);
+            const unitAsset = unit.assets.find((ua: { id: number; pivot?: { quantity?: number; status?: string; serial_numbers?: string } }) => ua.id === asset.id);
             if (unitAsset) {
               console.log(`Asset ${asset.id} pivot data:`, unitAsset.pivot);
               return { 
                 ...asset, 
                 quantity: unitAsset.pivot?.quantity || 1,
-                status: unitAsset.pivot?.status || 'working'
+                status: unitAsset.pivot?.status || 'working',
+                // Handle serial_numbers gracefully - it might not exist if migration hasn't run
+                serial_numbers: (unitAsset.pivot && 'serial_numbers' in unitAsset.pivot) ? (unitAsset.pivot.serial_numbers || '') : ''
               };
             }
             return asset;
@@ -133,12 +137,17 @@ export default function EditRentalUnitPage() {
 
         // Initialize maintenance notes state from pivot data
         const initialNotes: { [key: number]: { notes: string } } = {};
-        unit.assets.forEach((ua: { id: number; pivot?: { maintenance_notes?: string } }) => {
+        const initialSerialNumbers: { [key: number]: string } = {};
+        unit.assets.forEach((ua: { id: number; pivot?: { maintenance_notes?: string; serial_numbers?: string } }) => {
           if (ua.pivot && typeof ua.pivot.maintenance_notes === 'string' && ua.pivot.maintenance_notes.length > 0) {
             initialNotes[ua.id] = { notes: ua.pivot.maintenance_notes };
           }
+          if (ua.pivot && typeof ua.pivot.serial_numbers === 'string' && ua.pivot.serial_numbers.length > 0) {
+            initialSerialNumbers[ua.id] = ua.pivot.serial_numbers;
+          }
         });
         setMaintenanceNotes(initialNotes);
+        setSerialNumbers(initialSerialNumbers);
       } else {
         setSelectedAssets([]);
         setOriginalAssets([]);
@@ -292,14 +301,22 @@ export default function EditRentalUnitPage() {
       // Add newly selected assets
       if (assetsToAdd.length > 0) {
         try {
-          // Prepare assets with quantities
+          // Prepare assets with quantities and serial numbers
           const assetsWithQuantities = assetsToAdd.map(assetId => {
             const asset = assets.find(a => a.id === assetId);
             console.log(`Asset ${assetId}:`, asset);
-            return {
+            const assetData: { asset_id: number; quantity: number; serial_numbers?: string } = {
               asset_id: assetId,
               quantity: asset?.quantity || 1
             };
+            
+            // Include serial numbers if provided
+            const serialNumbersValue = serialNumbers[assetId] || asset?.serial_numbers || '';
+            if (serialNumbersValue.trim()) {
+              assetData.serial_numbers = serialNumbersValue.trim();
+            }
+            
+            return assetData;
           });
           
           console.log('Adding assets to rental unit:', assetsWithQuantities);
@@ -323,15 +340,15 @@ export default function EditRentalUnitPage() {
         toast.success('Rental unit updated successfully');
       }
 
-      // Handle asset status updates
+      // Handle asset status updates and serial numbers for existing assets
       const statusUpdates = assets.filter(asset => 
-        selectedAssets.includes(asset.id) && asset.status
+        selectedAssets.includes(asset.id)
       );
       
       if (statusUpdates.length > 0) {
         try {
           for (const asset of statusUpdates) {
-            const updateData: { status: string; maintenance_notes?: string; quantity?: number } = {
+            const updateData: { status: string; maintenance_notes?: string; quantity?: number; serial_numbers?: string } = {
               status: asset.status || 'working',
               quantity: asset.quantity || 1
             };
@@ -339,6 +356,12 @@ export default function EditRentalUnitPage() {
             // Include maintenance notes if status is maintenance
             if (asset.status === 'maintenance' && maintenanceNotes[asset.id]) {
               updateData.maintenance_notes = maintenanceNotes[asset.id].notes;
+            }
+            
+            // Include serial numbers if provided
+            const serialNumbersValue = serialNumbers[asset.id] || asset.serial_numbers || '';
+            if (serialNumbersValue.trim()) {
+              updateData.serial_numbers = serialNumbersValue.trim();
             }
             
             await rentalUnitsAPI.updateAssetStatus(parseInt(rentalUnitId), asset.id, updateData);
@@ -791,9 +814,14 @@ export default function EditRentalUnitPage() {
                                 setSelectedAssets(prev => [...prev, assetId]);
                                 // Set default quantity to 1 for new assets
                                 const updatedAssets = assets.map(asset => 
-                                  asset.id === assetId ? { ...asset, quantity: 1 } : asset
+                                  asset.id === assetId ? { ...asset, quantity: 1, serial_numbers: '' } : asset
                                 );
                                 setAssets(updatedAssets);
+                                // Initialize serial numbers for this asset
+                                setSerialNumbers(prev => ({
+                                  ...prev,
+                                  [assetId]: ''
+                                }));
                               }
                               e.target.value = ''; // Reset dropdown
                             }
@@ -819,9 +847,10 @@ export default function EditRentalUnitPage() {
                                 <tr>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Asset Name</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Brand</th>
-                                  <th className="text-left py-3 px-4 font-medium text-gray-600">Serial No</th>
+                                  <th className="text-left py-3 px-4 font-medium text-gray-600">Asset Serial No</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Category</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Quantity</th>
+                                  <th className="text-left py-3 px-4 font-medium text-gray-600">Serial Numbers</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Maintenance Notes</th>
                                   <th className="text-right py-3 px-4 font-medium text-gray-600">Actions</th>
@@ -861,6 +890,20 @@ export default function EditRentalUnitPage() {
                                             console.log('Updated assets:', updatedAssets);
                                           }}
                                           className="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        <textarea
+                                          placeholder="Enter serial numbers (one per line or comma-separated)"
+                                          value={serialNumbers[assetId] || asset.serial_numbers || ''}
+                                          onChange={(e) => {
+                                            setSerialNumbers(prev => ({
+                                              ...prev,
+                                              [assetId]: e.target.value
+                                            }));
+                                          }}
+                                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                                          rows={2}
                                         />
                                       </td>
                                       <td className="py-3 px-4">

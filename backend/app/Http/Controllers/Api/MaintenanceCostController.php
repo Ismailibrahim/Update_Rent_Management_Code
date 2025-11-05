@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\MaintenanceCost;
 use App\Models\RentalUnitAsset;
+use App\Models\Currency;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -19,7 +20,7 @@ class MaintenanceCostController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
-            $query = MaintenanceCost::with(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property']);
+            $query = MaintenanceCost::with(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property', 'currency']);
 
             // Status filter
             if ($request->has('status') && $request->status) {
@@ -71,7 +72,7 @@ class MaintenanceCostController extends Controller
             'rental_unit_asset_id' => 'required|exists:rental_unit_assets,id',
             'maintenance_request_id' => 'nullable|exists:maintenance_requests,id',
             'repair_cost' => 'required|numeric|min:0',
-            'currency' => 'nullable|string|max:3',
+            'currency_id' => 'nullable|exists:currencies,id',
             'description' => 'nullable|string|max:1000',
             'repair_date' => 'nullable|date',
             'repair_provider' => 'nullable|string|max:255',
@@ -101,11 +102,22 @@ class MaintenanceCostController extends Controller
                 }
             }
 
+            // Get default currency if currency_id not provided
+            $currencyId = $request->currency_id;
+            if (!$currencyId) {
+                $defaultCurrency = Currency::where('is_default', true)->first();
+                if (!$defaultCurrency) {
+                    // Fallback to first currency or MVR
+                    $defaultCurrency = Currency::where('code', 'MVR')->first() ?? Currency::first();
+                }
+                $currencyId = $defaultCurrency ? $defaultCurrency->id : null;
+            }
+
             $maintenanceCost = MaintenanceCost::create([
                 'rental_unit_asset_id' => $request->rental_unit_asset_id,
                 'maintenance_request_id' => $request->maintenance_request_id,
                 'repair_cost' => $request->repair_cost,
-                'currency' => $request->currency ?? 'MVR',
+                'currency_id' => $currencyId,
                 'description' => $request->description,
                 'bill_file_paths' => implode(',', $attachedBills),
                 'repair_date' => $request->repair_date,
@@ -114,7 +126,7 @@ class MaintenanceCostController extends Controller
                 'notes' => $request->notes,
             ]);
 
-            $maintenanceCost->load(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property']);
+            $maintenanceCost->load(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property', 'currency']);
 
             return response()->json([
                 'success' => true,
@@ -137,7 +149,7 @@ class MaintenanceCostController extends Controller
     public function show(MaintenanceCost $maintenanceCost): JsonResponse
     {
         try {
-            $maintenanceCost->load(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property']);
+            $maintenanceCost->load(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property', 'currency']);
 
             return response()->json([
                 'success' => true,
@@ -161,7 +173,7 @@ class MaintenanceCostController extends Controller
         $validator = Validator::make($request->all(), [
             'maintenance_request_id' => 'nullable|exists:maintenance_requests,id',
             'repair_cost' => 'sometimes|numeric|min:0',
-            'currency' => 'nullable|string|max:3',
+            'currency_id' => 'nullable|exists:currencies,id',
             'description' => 'nullable|string|max:1000',
             'repair_date' => 'nullable|date',
             'repair_provider' => 'nullable|string|max:255',
@@ -186,7 +198,7 @@ class MaintenanceCostController extends Controller
             if ($isJson) {
                 // Handle JSON request
                 $updateData = $request->only([
-                    'maintenance_request_id', 'repair_cost', 'currency', 'description', 'repair_date', 
+                    'maintenance_request_id', 'repair_cost', 'currency_id', 'description', 'repair_date', 
                     'repair_provider', 'status', 'notes'
                 ]);
                 
@@ -210,10 +222,10 @@ class MaintenanceCostController extends Controller
                     $updateData['repair_cost'] = $repairCost;
                 }
                 
-                // Get currency
-                $currency = $_POST['currency'] ?? null;
-                if ($currency !== null && $currency !== '') {
-                    $updateData['currency'] = $currency;
+                // Get currency_id
+                $currencyId = $_POST['currency_id'] ?? null;
+                if ($currencyId !== null && $currencyId !== '') {
+                    $updateData['currency_id'] = $currencyId;
                 }
                 
                 // Get description
@@ -248,7 +260,7 @@ class MaintenanceCostController extends Controller
 
                 Log::info('🔍 DEBUG: FormData processing with $_POST', [
                     'repair_cost' => $repairCost,
-                    'currency' => $currency,
+                    'currency_id' => $currencyId,
                     'description' => $description,
                     'repair_date' => $repairDate,
                     'repair_provider' => $repairProvider,
@@ -285,7 +297,7 @@ class MaintenanceCostController extends Controller
             }
 
             $maintenanceCost->update($updateData);
-            $maintenanceCost->load(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property']);
+            $maintenanceCost->load(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property', 'currency']);
 
             Log::info('Maintenance Cost Updated Successfully', [
                 'id' => $maintenanceCost->id,
@@ -343,7 +355,7 @@ class MaintenanceCostController extends Controller
     public function getByRentalUnitAsset($rentalUnitAssetId): JsonResponse
     {
         try {
-            $maintenanceCosts = MaintenanceCost::with(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property'])
+            $maintenanceCosts = MaintenanceCost::with(['rentalUnitAsset.asset', 'rentalUnitAsset.rentalUnit.property', 'currency'])
                 ->where('rental_unit_asset_id', $rentalUnitAssetId)
                 ->orderBy('created_at', 'desc')
                 ->get();
