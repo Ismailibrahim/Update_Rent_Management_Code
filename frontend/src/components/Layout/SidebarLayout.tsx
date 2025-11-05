@@ -36,7 +36,8 @@ import {
   Send,
   FileText as FileTextIcon,
   Layout,
-  Database
+  Database,
+  Globe
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -107,6 +108,7 @@ const navigationGroups: NavigationGroup[] = [
       { name: 'Property Types', href: '/property-types', icon: Building2 },
       { name: 'Rental Unit Types', href: '/rental-unit-types', icon: Building },
       { name: 'Islands', href: '/islands', icon: Map },
+      { name: 'Nationalities', href: '/nationalities', icon: Globe },
       { name: 'Assets', href: '/assets', icon: Package },
     ]
   },

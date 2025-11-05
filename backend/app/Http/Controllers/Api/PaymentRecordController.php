@@ -48,11 +48,17 @@ class PaymentRecordController extends Controller
                 $query->where('is_active', $request->get('status') === 'completed' ? 1 : 0);
             }
             
-            $paymentRecords = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $paymentRecords = $query->orderBy('created_at', 'desc')->paginate($perPage, ['*'], 'page', $page);
             
             // Debug: Log payment records and their relationships
             Log::info('Payment Records Debug:', [
-                'total_records' => $paymentRecords->count(),
+                'total_records' => $paymentRecords->total(),
+                'current_page' => $paymentRecords->currentPage(),
+                'per_page' => $paymentRecords->perPage(),
                 'sample_record' => $paymentRecords->first() ? [
                     'id' => $paymentRecords->first()->id,
                     'unit_id' => $paymentRecords->first()->unit_id,
@@ -64,7 +70,7 @@ class PaymentRecordController extends Controller
             ]);
             
             // Transform the data to match frontend expectations
-            $transformedRecords = $paymentRecords->map(function($record) {
+            $transformedRecords = $paymentRecords->getCollection()->map(function($record) {
                 // Debug logging to see what we're getting
                 Log::info('Payment Record Debug', [
                     'record_id' => $record->id,
@@ -127,7 +133,13 @@ class PaymentRecordController extends Controller
             
             return response()->json([
                 'success' => true,
-                'payment_records' => $transformedRecords
+                'payment_records' => $transformedRecords->values(),
+                'pagination' => [
+                    'current_page' => $paymentRecords->currentPage(),
+                    'last_page' => $paymentRecords->lastPage(),
+                    'per_page' => $paymentRecords->perPage(),
+                    'total' => $paymentRecords->total(),
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([

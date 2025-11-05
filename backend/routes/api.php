@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\MaintenanceCostController;
 use App\Http\Controllers\Api\MaintenanceInvoiceController;
 use App\Http\Controllers\Api\RentalUnitTypeController;
 use App\Http\Controllers\Api\IslandController;
+use App\Http\Controllers\Api\NationalityController;
 use App\Http\Controllers\Api\SmsTemplateController;
 use App\Http\Controllers\Api\SmsSettingController;
 use App\Http\Controllers\Api\SmsLogController;
@@ -84,6 +85,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('rental-units', RentalUnitController::class)->parameters([
         'rental-units' => 'rentalUnit'
     ]);
+    Route::post('/rental-units/bulk', [RentalUnitController::class, 'bulkStore']);
     Route::get('/rental-units/property/{property}', [RentalUnitController::class, 'getByProperty']);
     Route::post('/rental-units/{rentalUnit}/assets', [RentalUnitController::class, 'addAssets']);
     Route::delete('/rental-units/{rentalUnit}/assets/{asset}', [RentalUnitController::class, 'removeAsset']);
@@ -161,6 +163,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Island routes
     Route::apiResource('islands', IslandController::class);
+
+    // Nationality routes
+    Route::apiResource('nationalities', NationalityController::class);
 
     // SMS Template routes
     Route::apiResource('sms-templates', SmsTemplateController::class);

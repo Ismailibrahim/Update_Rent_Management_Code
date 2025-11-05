@@ -75,21 +75,65 @@ api.interceptors.response.use(
   (error: unknown) => {
     // Enhanced error logging for debugging
     if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_API === 'true') {
+      // Log raw error first to see structure
+      console.error('Raw API Error:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error constructor:', error?.constructor?.name);
+      
       const axiosError = error as AxiosError;
+      
+      // Log all properties of the error object
+      if (error && typeof error === 'object') {
+        console.error('Error keys:', Object.keys(error));
+        console.error('Error has response:', 'response' in error);
+        console.error('Error has request:', 'request' in error);
+        console.error('Error has message:', 'message' in error);
+        console.error('Error has config:', 'config' in error);
+      }
+      
       // Only log if it's an actual error (not a normal rejection)
       if (axiosError.response || axiosError.request) {
         // eslint-disable-next-line no-console
         // @ts-ignore - console.error is intentionally used for debugging
-        console.error('API Error:', {
-          message: axiosError.message,
-          status: axiosError.response?.status,
-          statusText: axiosError.response?.statusText,
-          data: axiosError.response?.data,
-          url: axiosError.config?.url,
-          baseURL: axiosError.config?.baseURL,
-          method: axiosError.config?.method,
-          hasToken: !!axiosError.config?.headers?.Authorization
-        });
+        try {
+          const errorInfo: Record<string, unknown> = {};
+          
+          // Always log these if they exist
+          if (axiosError.message) {
+            errorInfo.message = axiosError.message;
+          }
+          
+          if (axiosError.response) {
+            errorInfo.status = axiosError.response.status;
+            errorInfo.statusText = axiosError.response.statusText;
+            errorInfo.data = axiosError.response.data;
+            errorInfo.headers = axiosError.response.headers;
+          }
+          
+          if (axiosError.config) {
+            errorInfo.url = axiosError.config.url;
+            errorInfo.baseURL = axiosError.config.baseURL;
+            errorInfo.method = axiosError.config.method;
+            errorInfo.hasToken = !!axiosError.config.headers?.Authorization;
+          }
+          
+          if (axiosError.request) {
+            errorInfo.request = 'Request object exists';
+          }
+          
+          // Only log if we have some info
+          if (Object.keys(errorInfo).length > 0) {
+            console.error('API Error Details:', errorInfo);
+          } else {
+            console.error('API Error: Empty error object - check raw error above');
+          }
+        } catch (logError) {
+          // Fallback if error logging fails
+          console.error('API Error (could not serialize):', error);
+          console.error('Logging error:', logError);
+        }
+      } else {
+        console.error('API Error: No response or request object');
       }
     }
     
@@ -465,6 +509,7 @@ export const assetsAPI = {
           getAll: (params?: Record<string, unknown>) => api.get('/rental-units', { params }),
           getById: (id: number) => api.get(`/rental-units/${id}`),
           create: (unitData: Partial<RentalUnit>) => api.post('/rental-units', unitData),
+          bulkCreate: (data: { property_id: number; units: Array<Partial<RentalUnit>> }) => api.post('/rental-units/bulk', data),
           update: (id: number, unitData: Partial<RentalUnit>) => api.put(`/rental-units/${id}`, unitData),
           delete: (id: number) => api.delete(`/rental-units/${id}`),
           getByProperty: (propertyId: number) => api.get(`/rental-units/property/${propertyId}`),
@@ -802,6 +847,22 @@ export const islandsAPI = {
   create: (data: Partial<Island>) => api.post('/islands', data),
   update: (id: number, data: Partial<Island>) => api.put(`/islands/${id}`, data),
   delete: (id: number) => api.delete(`/islands/${id}`),
+};
+
+export interface Nationality {
+  id: number;
+  nationality: string;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export const nationalitiesAPI = {
+  getAll: (params?: Record<string, unknown>) => api.get('/nationalities', { params }),
+  getById: (id: number) => api.get(`/nationalities/${id}`),
+  create: (data: Partial<Nationality>) => api.post('/nationalities', data),
+  update: (id: number, data: Partial<Nationality>) => api.put(`/nationalities/${id}`, data),
+  delete: (id: number) => api.delete(`/nationalities/${id}`),
 };
 
 export const maintenanceRequestsAPI = {

@@ -52,6 +52,7 @@ export default function EditRentalUnitPage() {
   const [originalAssets, setOriginalAssets] = useState<number[]>([]); // Track originally assigned assets
   const [maintenanceNotes, setMaintenanceNotes] = useState<{[key: number]: {notes: string}}>({});
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [formData, setFormData] = useState({
     property_id: '',
     unit_number: '',
@@ -78,21 +79,24 @@ export default function EditRentalUnitPage() {
 
   const fetchRentalUnit = useCallback(async () => {
     try {
+      setDataLoading(true);
       const response = await rentalUnitsAPI.getById(parseInt(rentalUnitId));
       const unit = response.data.rentalUnit;
       
+      console.log('Fetched rental unit data:', unit);
+      
       setFormData({
-        property_id: unit.property_id.toString(),
-        unit_number: unit.unit_number,
+        property_id: unit.property_id?.toString() || '',
+        unit_number: unit.unit_number || '',
         unit_type: unit.unit_type || '',
-        floor_number: unit.floor_number.toString(),
+        floor_number: (unit.floor_number !== null && unit.floor_number !== undefined) ? unit.floor_number.toString() : '',
         // New separate columns
-        rent_amount: unit.rent_amount.toString(),
-        deposit_amount: unit.deposit_amount ? unit.deposit_amount.toString() : '',
-        currency: unit.currency,
-        number_of_rooms: unit.number_of_rooms.toString(),
-        number_of_toilets: unit.number_of_toilets.toString(),
-        square_feet: unit.square_feet ? unit.square_feet.toString() : '',
+        rent_amount: (unit.rent_amount !== null && unit.rent_amount !== undefined) ? unit.rent_amount.toString() : '',
+        deposit_amount: (unit.deposit_amount !== null && unit.deposit_amount !== undefined) ? unit.deposit_amount.toString() : '',
+        currency: unit.currency || 'MVR',
+        number_of_rooms: (unit.number_of_rooms !== null && unit.number_of_rooms !== undefined) ? unit.number_of_rooms.toString() : '',
+        number_of_toilets: (unit.number_of_toilets !== null && unit.number_of_toilets !== undefined) ? unit.number_of_toilets.toString() : '',
+        square_feet: (unit.square_feet !== null && unit.square_feet !== undefined) ? unit.square_feet.toString() : '',
         // Utility meter information
         water_meter_number: unit.water_meter_number || '',
         water_billing_account: unit.water_billing_account || '',
@@ -100,8 +104,8 @@ export default function EditRentalUnitPage() {
         electricity_billing_account: unit.electricity_billing_account || '',
         // Access card numbers
         access_card_numbers: unit.access_card_numbers || '',
-        status: unit.status,
-        tenant_id: unit.tenant_id ? unit.tenant_id.toString() : '',
+        status: unit.status || 'available',
+        tenant_id: (unit.tenant_id !== null && unit.tenant_id !== undefined) ? unit.tenant_id.toString() : '',
         notes: unit.notes || ''
       });
 
@@ -139,19 +143,31 @@ export default function EditRentalUnitPage() {
         setSelectedAssets([]);
         setOriginalAssets([]);
       }
+      
+      setDataLoading(false);
     } catch (error) {
       console.error('Error fetching rental unit:', error);
       toast.error('Failed to fetch rental unit details');
+      setDataLoading(false);
     }
   }, [rentalUnitId]);
 
   useEffect(() => {
     const loadData = async () => {
-      await fetchAssets();
-      await fetchUnitTypes();
-      await fetchRentalUnit();
-      await fetchProperties();
-      await fetchTenants();
+      try {
+        // Load all data in parallel for better performance
+        await Promise.all([
+          fetchAssets(),
+          fetchUnitTypes(),
+          fetchProperties(),
+          fetchTenants()
+        ]);
+        // Then fetch the rental unit data after everything else is loaded
+        await fetchRentalUnit();
+      } catch (error) {
+        console.error('Error loading data:', error);
+        toast.error('Failed to load some data');
+      }
     };
     loadData();
   }, [rentalUnitId, fetchRentalUnit]);
@@ -361,6 +377,16 @@ export default function EditRentalUnitPage() {
     router.push('/rental-units');
   };
 
+  if (dataLoading) {
+    return (
+      <SidebarLayout>
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600"></div>
+        </div>
+      </SidebarLayout>
+    );
+  }
+
   return (
     <SidebarLayout>
       <div className="space-y-6">
@@ -439,14 +465,38 @@ export default function EditRentalUnitPage() {
                     <option value="">Select unit type</option>
                     {unitTypes.map((unitType) => {
                       const allowed = ['residential','office','shop','warehouse','other'];
-                      const value = (unitType.name || '').trim().toLowerCase();
-                      const mapped = allowed.includes(value) ? value : 'other';
+                      const normalizedName = (unitType.name || '').trim().toLowerCase();
+                      let value = 'other'; // default fallback
+                      
+                      if (normalizedName === 'office') {
+                        value = 'office';
+                      } else if (normalizedName.includes('retail') || normalizedName.includes('shop')) {
+                        value = 'shop';
+                      } else if (normalizedName === 'warehouse') {
+                        value = 'warehouse';
+                      } else if (normalizedName === 'residential' || normalizedName.includes('studio') || normalizedName.includes('br') || normalizedName.includes('penthouse')) {
+                        value = 'residential';
+                      } else if (normalizedName === 'other') {
+                        value = 'other';
+                      } else if (allowed.includes(normalizedName)) {
+                        value = normalizedName;
+                      }
+                      
                       return (
-                        <option key={unitType.id} value={mapped}>
+                        <option key={unitType.id} value={value}>
                           {unitType.name}
                         </option>
                       );
                     })}
+                    {unitTypes.length === 0 && (
+                      <>
+                        <option value="residential">Residential</option>
+                        <option value="office">Office</option>
+                        <option value="shop">Shop</option>
+                        <option value="warehouse">Warehouse</option>
+                        <option value="other">Other</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>
@@ -478,6 +528,24 @@ export default function EditRentalUnitPage() {
                     <option value="MVR">MVR</option>
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Status *
+                  </label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="available">Available</option>
+                    <option value="occupied">Occupied</option>
+                    <option value="maintenance">Maintenance</option>
+                    <option value="renovation">Renovation</option>
+                    <option value="deactivated">Deactivated</option>
                   </select>
                 </div>
               </div>

@@ -7,7 +7,7 @@ import { Input } from '../../../../components/UI/Input';
 import { Textarea } from '../../../../components/UI/Textarea';
 import { Select } from '../../../../components/UI/Select';
 import { ArrowLeft, Save, X, Home, Upload, Bell, Mail, MessageSquare } from 'lucide-react';
-import { tenantsAPI, rentalUnitsAPI, tenantNotificationPreferencesAPI, TenantNotificationPreference } from '../../../../services/api';
+import { tenantsAPI, rentalUnitsAPI, nationalitiesAPI, tenantNotificationPreferencesAPI, TenantNotificationPreference, type Nationality } from '../../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../../components/Layout/SidebarLayout';
 import { useRouter } from 'next/navigation';
@@ -40,6 +40,8 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
   const [availableUnits, setAvailableUnits] = useState<RentalUnit[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
+  const [nationalities, setNationalities] = useState<Nationality[]>([]);
+  const [nationalitiesLoading, setNationalitiesLoading] = useState(true);
   const [existingDocuments, setExistingDocuments] = useState<Array<{
     name: string;
     path: string;
@@ -110,6 +112,19 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
       toast.error('Failed to fetch rental units');
     } finally {
       setUnitsLoading(false);
+    }
+  }, []);
+
+  const fetchNationalities = useCallback(async () => {
+    try {
+      setNationalitiesLoading(true);
+      const response = await nationalitiesAPI.getAll();
+      setNationalities(response.data.data || []);
+    } catch (error) {
+      console.error('Error fetching nationalities:', error);
+      toast.error('Failed to fetch nationalities');
+    } finally {
+      setNationalitiesLoading(false);
     }
   }, []);
 
@@ -212,7 +227,8 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
 
   useEffect(() => {
     fetchTenant();
-  }, [tenantId, fetchTenant]);
+    fetchNationalities();
+  }, [tenantId, fetchTenant, fetchNationalities]);
 
   useEffect(() => {
     // Fetch available units after tenant data is loaded
@@ -370,7 +386,7 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" suppressHydrationWarning>
           {/* Tenant Type Selection */}
           <Card>
             <CardHeader>
@@ -476,11 +492,18 @@ export default function EditTenantPage({ params }: { params: Promise<{ id: strin
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Nationality
                 </label>
-                <Input
-                  placeholder="Enter nationality"
+                <Select
                   value={formData.nationality}
                   onChange={(e) => handleInputChange('nationality', e.target.value)}
-                />
+                  disabled={nationalitiesLoading}
+                >
+                  <option value="">Select nationality</option>
+                  {nationalities.map((nationality) => (
+                    <option key={nationality.id} value={nationality.nationality}>
+                      {nationality.nationality}
+                    </option>
+                  ))}
+                </Select>
               </div>
             </CardContent>
           </Card>

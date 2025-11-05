@@ -27,7 +27,11 @@ class PropertyController extends Controller
                 'request_params' => $request->all()
             ]);
             
-            $query = Property::with(['assignedManager', 'rentalUnits']);
+            // Optimize eager loading - only load necessary fields
+            $query = Property::with([
+                'assignedManager:id,name,email',
+                'rentalUnits:id,property_id,unit_number,status,tenant_id'
+            ]);
 
             // Role-based filtering
             $user = $request->user();

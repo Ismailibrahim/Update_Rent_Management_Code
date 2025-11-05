@@ -77,23 +77,57 @@ return new class extends Migration
                         ]);
                 } elseif ($unitCount > 0 && $propertyCount == 0) {
                     // Only used as unit type
-                    DB::table('rental_unit_types')
-                        ->where('id', $existing->id)
-                        ->update([
-                            'category' => 'unit',
-                            'name' => $mappings['unit'] ?? $existing->name,
-                            'updated_at' => now()
-                        ]);
-                } else {
-                    // Used in both or neither - default to unit and rename
-                    if ($mappings['unit']) {
+                    $newName = $mappings['unit'] ?? $existing->name;
+                    // Check if the new name already exists (avoid duplicate)
+                    $nameExists = DB::table('rental_unit_types')
+                        ->whereRaw('LOWER(name) = ?', [strtolower($newName)])
+                        ->where('id', '!=', $existing->id)
+                        ->exists();
+                    
+                    if (!$nameExists) {
                         DB::table('rental_unit_types')
                             ->where('id', $existing->id)
                             ->update([
                                 'category' => 'unit',
-                                'name' => $mappings['unit'],
+                                'name' => $newName,
                                 'updated_at' => now()
                             ]);
+                    } else {
+                        // Just update category if name already exists
+                        DB::table('rental_unit_types')
+                            ->where('id', $existing->id)
+                            ->update([
+                                'category' => 'unit',
+                                'updated_at' => now()
+                            ]);
+                    }
+                } else {
+                    // Used in both or neither - default to unit and rename
+                    if ($mappings['unit']) {
+                        $newName = $mappings['unit'];
+                        // Check if the new name already exists (avoid duplicate)
+                        $nameExists = DB::table('rental_unit_types')
+                            ->whereRaw('LOWER(name) = ?', [strtolower($newName)])
+                            ->where('id', '!=', $existing->id)
+                            ->exists();
+                        
+                        if (!$nameExists) {
+                            DB::table('rental_unit_types')
+                                ->where('id', $existing->id)
+                                ->update([
+                                    'category' => 'unit',
+                                    'name' => $newName,
+                                    'updated_at' => now()
+                                ]);
+                        } else {
+                            // Just update category if name already exists
+                            DB::table('rental_unit_types')
+                                ->where('id', $existing->id)
+                                ->update([
+                                    'category' => 'unit',
+                                    'updated_at' => now()
+                                ]);
+                        }
                     }
                 }
             }

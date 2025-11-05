@@ -3,7 +3,7 @@
 import React, { useState, useEffect, use, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/UI/Card';
 import { Button } from '../../../components/UI/Button';
-import { ArrowLeft, Edit, Building, Phone, Mail, Calendar, FileText } from 'lucide-react';
+import { ArrowLeft, Edit, Building, Phone, Mail, Calendar, FileText, User, IdCard, MapPin, Globe } from 'lucide-react';
 import { tenantsAPI } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
@@ -213,38 +213,84 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
             {/* Company Information - Show for company tenants */}
             {tenant.tenant_type === 'company' && (
               <Card>
-                <CardHeader>
-                  <CardTitle>Company Information</CardTitle>
-                  <CardDescription>Company details and registration information</CardDescription>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Company Information</CardTitle>
+                  <CardDescription className="text-xs">Company details and registration information</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-                      <p className="text-sm text-gray-900">{tenant.company_name || 'N/A'}</p>
+                <CardContent className="pt-0">
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <Building className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          Company Name
+                        </label>
+                        <p className="text-sm text-gray-900 truncate">
+                          {tenant.company_name || <span className="text-gray-400">—</span>}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Registration Number</label>
-                      <p className="text-sm text-gray-900">{tenant.company_registration_number || 'N/A'}</p>
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <IdCard className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          Registration Number
+                        </label>
+                        <p className="text-sm font-mono text-gray-900">
+                          {tenant.company_registration_number || <span className="text-gray-400">—</span>}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Company Address</label>
-                    <p className="text-sm text-gray-900">{tenant.company_address || 'N/A'}</p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">GST TIN</label>
-                      <p className="text-sm text-gray-900">{tenant.company_gst_tin || 'N/A'}</p>
+                    {tenant.company_address && (
+                      <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                        <MapPin className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                            Company Address
+                          </label>
+                          <p className="text-sm text-gray-900">
+                            {tenant.company_address}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                        <IdCard className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                            GST TIN
+                          </label>
+                          <p className="text-sm font-mono text-gray-900">
+                            {tenant.company_gst_tin || <span className="text-gray-400">—</span>}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                        <Phone className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                            Company Telephone
+                          </label>
+                          <p className="text-sm text-gray-900">
+                            {tenant.company_telephone || <span className="text-gray-400">—</span>}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Company Telephone</label>
-                      <p className="text-sm text-gray-900">{tenant.company_telephone || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Company Email</label>
-                    <p className="text-sm text-gray-900">{tenant.company_email || 'N/A'}</p>
+                    {tenant.company_email && (
+                      <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                        <Mail className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                            Company Email
+                          </label>
+                          <p className="text-sm text-gray-900 truncate">
+                            {tenant.company_email}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -252,156 +298,265 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
 
             {/* Personal Information - Show for all tenants */}
             <Card>
-              <CardHeader>
-                <CardTitle>Personal Information</CardTitle>
-                <CardDescription>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Personal Information</CardTitle>
+                <CardDescription className="text-xs">
                   {tenant.tenant_type === 'company' 
                     ? 'Contact person details' 
                     : 'Basic personal details of the tenant'
                   }
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                    <p className="text-sm text-gray-900">{tenant.first_name || 'N/A'}</p>
+              <CardContent className="pt-0">
+                <div className="space-y-3">
+                  {/* Name Section */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <User className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          First Name
+                        </label>
+                        <p className="text-sm text-gray-900 truncate">
+                          {tenant.first_name || <span className="text-gray-400">—</span>}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <User className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          Last Name
+                        </label>
+                        <p className="text-sm text-gray-900 truncate">
+                          {tenant.last_name || <span className="text-gray-400">—</span>}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
-                    <p className="text-sm text-gray-900">{tenant.last_name || 'N/A'}</p>
+
+                  {/* Identity Section */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <Calendar className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          Date of Birth
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {formatDate(tenant.date_of_birth)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <User className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          Gender
+                        </label>
+                        <p className="text-sm text-gray-900 capitalize">
+                          {tenant.gender || <span className="text-gray-400">—</span>}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <Globe className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          Nationality
+                        </label>
+                        <p className="text-sm text-gray-900">
+                          {tenant.nationality || <span className="text-gray-400">—</span>}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-                    <p className="text-sm text-gray-900">{formatDate(tenant.date_of_birth)}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
-                    <p className="text-sm text-gray-900">{tenant.gender || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nationality</label>
-                    <p className="text-sm text-gray-900">{tenant.nationality || 'N/A'}</p>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ID Number</label>
-                  <p className="text-sm text-gray-900">{tenant.national_id || 'N/A'}</p>
+
+                  {/* ID Number Section */}
+                  {tenant.national_id && (
+                    <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                      <IdCard className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                          National ID Number
+                        </label>
+                        <p className="text-sm font-mono text-gray-900">
+                          {tenant.national_id}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
             {/* Contact Information */}
             <Card>
-              <CardHeader>
-                <CardTitle>Contact Information</CardTitle>
-                <CardDescription>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Contact Information</CardTitle>
+                <CardDescription className="text-xs">
                   {tenant.tenant_type === 'company' ? 'Personal and company contact details' : 'How to reach the tenant'}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {tenant.tenant_type === 'company' ? (
-                  <>
-                    {/* Personal Contact */}
-                    <div className="border-b pb-4">
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">Personal Contact</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="flex items-center space-x-2">
-                          <Mail className="h-4 w-4 text-gray-500" />
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Personal Email</label>
-                            <p className="text-sm text-gray-900">{tenant.email || 'N/A'}</p>
+              <CardContent className="pt-0">
+                <div className="space-y-3">
+                  {tenant.tenant_type === 'company' ? (
+                    <>
+                      {/* Personal Contact */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <Mail className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Personal Email
+                            </label>
+                            <p className="text-sm text-gray-900 truncate">
+                              {tenant.email || <span className="text-gray-400">—</span>}
+                            </p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Phone className="h-4 w-4 text-gray-500" />
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Personal Phone</label>
-                            <p className="text-sm text-gray-900">{tenant.phone || 'N/A'}</p>
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <Phone className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Personal Phone
+                            </label>
+                            <p className="text-sm text-gray-900">
+                              {tenant.phone || <span className="text-gray-400">—</span>}
+                            </p>
                           </div>
                         </div>
                       </div>
                       {tenant.address && (
-                        <div className="mt-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Personal Address</label>
-                          <p className="text-sm text-gray-900">{tenant.address}</p>
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <MapPin className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Personal Address
+                            </label>
+                            <p className="text-sm text-gray-900">
+                              {tenant.address}
+                            </p>
+                          </div>
                         </div>
                       )}
-                    </div>
-                    
-                    {/* Company Contact */}
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">Company Contact</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="flex items-center space-x-2">
-                          <Mail className="h-4 w-4 text-gray-500" />
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Company Email</label>
-                            <p className="text-sm text-gray-900">{tenant.company_email || 'N/A'}</p>
+                      {/* Company Contact */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <Mail className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Company Email
+                            </label>
+                            <p className="text-sm text-gray-900 truncate">
+                              {tenant.company_email || <span className="text-gray-400">—</span>}
+                            </p>
                           </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Phone className="h-4 w-4 text-gray-500" />
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Company Phone</label>
-                            <p className="text-sm text-gray-900">{tenant.company_telephone || 'N/A'}</p>
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <Phone className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Company Phone
+                            </label>
+                            <p className="text-sm text-gray-900">
+                              {tenant.company_telephone || <span className="text-gray-400">—</span>}
+                            </p>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="flex items-center space-x-2">
-                        <Mail className="h-4 w-4 text-gray-500" />
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Email</label>
-                          <p className="text-sm text-gray-900">{tenant.email || 'N/A'}</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <Mail className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Email
+                            </label>
+                            <p className="text-sm text-gray-900 truncate">
+                              {tenant.email || <span className="text-gray-400">—</span>}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <Phone className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Phone
+                            </label>
+                            <p className="text-sm text-gray-900">
+                              {tenant.phone || <span className="text-gray-400">—</span>}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <Phone className="h-4 w-4 text-gray-500" />
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Phone</label>
-                          <p className="text-sm text-gray-900">{tenant.phone || 'N/A'}</p>
+                      {tenant.address && (
+                        <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                          <MapPin className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                              Address
+                            </label>
+                            <p className="text-sm text-gray-900">
+                              {tenant.address}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                    {tenant.address && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                        <p className="text-sm text-gray-900">{tenant.address}</p>
-                      </div>
-                    )}
-                  </>
-                )}
+                      )}
+                    </>
+                  )}
+                </div>
               </CardContent>
             </Card>
 
             {/* Emergency Contact - Show for all tenants when available */}
             {(tenant.emergency_contact_name || tenant.emergency_contact_phone) && (
               <Card>
-                <CardHeader>
-                  <CardTitle>Emergency Contact</CardTitle>
-                  <CardDescription>Emergency contact information</CardDescription>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Emergency Contact</CardTitle>
+                  <CardDescription className="text-xs">Emergency contact information</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                      <p className="text-sm text-gray-900">{tenant.emergency_contact_name || 'N/A'}</p>
+                <CardContent className="pt-0">
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                        <User className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                            Name
+                          </label>
+                          <p className="text-sm text-gray-900">
+                            {tenant.emergency_contact_name || <span className="text-gray-400">—</span>}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                        <Phone className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                            Phone
+                          </label>
+                          <p className="text-sm text-gray-900">
+                            {tenant.emergency_contact_phone || <span className="text-gray-400">—</span>}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                      <p className="text-sm text-gray-900">{tenant.emergency_contact_phone || 'N/A'}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Relationship</label>
-                    <p className="text-sm text-gray-900">{tenant.emergency_contact_relationship || 'N/A'}</p>
+                    {tenant.emergency_contact_relationship && (
+                      <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                        <User className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                            Relationship
+                          </label>
+                          <p className="text-sm text-gray-900">
+                            {tenant.emergency_contact_relationship}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -426,11 +581,11 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
               
               return documents.length > 0 ? (
                 <Card>
-                  <CardHeader>
-                    <CardTitle>Documents & Agreements</CardTitle>
-                    <CardDescription>Attached documents and agreements</CardDescription>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg">Documents & Agreements</CardTitle>
+                    <CardDescription className="text-xs">Attached documents and agreements</CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="pt-0">
                     <div className="space-y-3">
                       {documents.map((document: unknown, index: number) => {
                         // Parse document if it's a JSON string
@@ -442,11 +597,11 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
                         }
                         
                         return (
-                          <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <FileText className="h-5 w-5 text-blue-500" />
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">{docData.name || 'Document'}</p>
+                          <div key={index} className="flex items-center justify-between py-2 border-b border-gray-200 last:border-b-0">
+                            <div className="flex items-center space-x-2 flex-1 min-w-0">
+                              <FileText className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{docData.name || 'Document'}</p>
                                 <p className="text-xs text-gray-500">
                                   {docData.size ? `${Math.round(docData.size / 1024)} KB` : 'Unknown size'}
                                 </p>
@@ -455,6 +610,7 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
                             <Button
                               variant="outline"
                               size="sm"
+                              className="ml-2 flex-shrink-0"
                               onClick={() => window.open(`http://localhost:8000/storage/${docData.path}`, '_blank')}
                             >
                               View
@@ -471,11 +627,14 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
             {/* Notes */}
             {tenant.notes && (
               <Card>
-                <CardHeader>
-                  <CardTitle>Notes</CardTitle>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Notes</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-900">{tenant.notes}</p>
+                <CardContent className="pt-0">
+                  <div className="flex items-start space-x-2 py-2">
+                    <FileText className="h-3.5 w-3.5 text-gray-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-sm text-gray-900">{tenant.notes}</p>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -485,40 +644,57 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
           <div className="space-y-6">
             {/* Status */}
             <Card>
-              <CardHeader>
-                <CardTitle>Status</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Status</CardTitle>
               </CardHeader>
-              <CardContent>
-                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                  tenant.status === 'active' 
-                    ? 'bg-green-100 text-green-800' 
-                    : tenant.status === 'inactive'
-                    ? 'bg-gray-100 text-gray-800'
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                  {tenant.status.charAt(0).toUpperCase() + tenant.status.slice(1)}
-                </span>
+              <CardContent className="pt-0">
+                <div className="flex items-center space-x-2 py-2">
+                  <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
+                    tenant.status === 'active' 
+                      ? 'bg-green-600' 
+                      : tenant.status === 'inactive'
+                      ? 'bg-gray-400'
+                      : 'bg-gray-600'
+                  }`} />
+                  <p className={`text-sm font-medium capitalize ${
+                    tenant.status === 'active' 
+                      ? 'text-green-700' 
+                      : 'text-gray-900'
+                  }`}>
+                    {tenant.status}
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
             {/* Lease Information */}
             <Card>
-              <CardHeader>
-                <CardTitle>Lease Information</CardTitle>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Lease Information</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <Calendar className="h-4 w-4 text-gray-500" />
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Start Date</label>
-                    <p className="text-sm text-gray-900">{formatDate(tenant.lease_start_date)}</p>
+              <CardContent className="pt-0">
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                    <Calendar className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                        Start Date
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {formatDate(tenant.lease_start_date)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Calendar className="h-4 w-4 text-gray-500" />
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">End Date</label>
-                    <p className="text-sm text-gray-900">{formatDate(tenant.lease_end_date)}</p>
+                  <div className="flex items-center space-x-2 py-2 border-b border-gray-200">
+                    <Calendar className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-xs font-medium text-gray-500 mb-0.5">
+                        End Date
+                      </label>
+                      <p className="text-sm text-gray-900">
+                        {formatDate(tenant.lease_end_date)}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </CardContent>
@@ -526,42 +702,42 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
 
             {/* Rental Units */}
             <Card>
-              <CardHeader>
-                <CardTitle>Rental Units</CardTitle>
-                <CardDescription>{tenant.rental_units?.length || 0} unit(s) assigned</CardDescription>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Rental Units</CardTitle>
+                <CardDescription className="text-xs">{tenant.rental_units?.length || 0} unit(s) assigned</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="pt-0">
                 {tenant.rental_units && tenant.rental_units.length > 0 ? (
                   <div className="space-y-3">
                     {tenant.rental_units.map((unit) => (
-                      <div key={unit.id} className="border rounded-lg p-3">
+                      <div key={unit.id} className="py-2 border-b border-gray-200 last:border-b-0">
                         <div className="flex items-center space-x-2 mb-2">
-                          <Building className="h-4 w-4 text-blue-500" />
+                          <Building className="h-3.5 w-3.5 text-gray-500 flex-shrink-0" />
                           <span className="text-sm font-medium text-gray-900">
                             {unit.property?.name || 'Unknown Property'} - Unit {unit.unit_number}
                           </span>
                         </div>
-                        <div className="text-xs text-gray-600 space-y-1">
+                        <div className="grid grid-cols-2 gap-2 ml-5 text-xs text-gray-600">
                           <div>Floor: {unit.floor_number}</div>
                           <div>Rent: {formatCurrency(unit.rent_amount, unit.currency)}</div>
-                          <div>Status: {unit.status}</div>
+                          <div>Status: <span className="capitalize">{unit.status}</span></div>
                           {unit.move_in_date && (
                             <div>Move-in: {formatDate(unit.move_in_date)}</div>
                           )}
                         </div>
                       </div>
                     ))}
-                    <div className="pt-2 border-t">
+                    <div className="pt-2 mt-2 border-t border-gray-200">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700">Total Monthly Rent:</span>
-                        <span className="text-sm font-bold text-green-600">
+                        <span className="text-xs font-medium text-gray-500">Total Monthly Rent:</span>
+                        <span className="text-sm font-semibold text-gray-900">
                           {formatCurrency(calculateTotalRent(tenant.rental_units), tenant.rental_units?.[0]?.currency || 'MVR')}
                         </span>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-500">No rental units assigned</p>
+                  <p className="text-sm text-gray-500 py-2">No rental units assigned</p>
                 )}
               </CardContent>
             </Card>
@@ -571,3 +747,4 @@ export default function TenantDetailsPage({ params }: { params: Promise<{ id: st
     </SidebarLayout>
   );
 }
+

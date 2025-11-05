@@ -32,10 +32,25 @@ class TenantController extends Controller
                 $query->search($search);
             }
 
-            $tenants = $query->with('rentalUnits.property')->orderBy('created_at', 'desc')->get();
+            // Use pagination and optimize eager loading - only load what's needed
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $tenants = $query->with(['rentalUnits' => function($q) {
+                $q->select('id', 'tenant_id', 'property_id', 'unit_number', 'status')
+                  ->with(['property' => function($q) {
+                      $q->select('id', 'name');
+                  }]);
+            }])->orderBy('created_at', 'desc')->paginate($perPage, ['*'], 'page', $page);
 
             return response()->json([
-                'tenants' => $tenants
+                'tenants' => $tenants->items(),
+                'pagination' => [
+                    'current_page' => $tenants->currentPage(),
+                    'last_page' => $tenants->lastPage(),
+                    'per_page' => $tenants->perPage(),
+                    'total' => $tenants->total(),
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -168,7 +183,10 @@ class TenantController extends Controller
                 ]);
             }
             
-            $tenant->load('rentalUnits');
+            // Load rental units with their property relationship
+            $tenant->load(['rentalUnits.property' => function($query) {
+                $query->select('id', 'name');
+            }]);
 
             return response()->json([
                 'message' => 'Tenant created successfully',
@@ -195,7 +213,10 @@ class TenantController extends Controller
     public function show(Tenant $tenant): JsonResponse
     {
         try {
-            $tenant->load('rentalUnits');
+            // Load rental units with their property relationship
+            $tenant->load(['rentalUnits.property' => function($query) {
+                $query->select('id', 'name');
+            }]);
 
             return response()->json([
                 'tenant' => $tenant
@@ -361,7 +382,11 @@ class TenantController extends Controller
             Log::info('Updating tenant with data', ['update_data' => $updateData]);
             
             $tenant->update($updateData);
-            $tenant->load('rentalUnits');
+            
+            // Load rental units with their property relationship
+            $tenant->load(['rentalUnits.property' => function($query) {
+                $query->select('id', 'name');
+            }]);
             
             Log::info('Tenant updated successfully', ['tenant_id' => $tenant->id]);
 

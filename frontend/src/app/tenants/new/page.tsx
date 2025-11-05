@@ -7,7 +7,7 @@ import { Input } from '../../../components/UI/Input';
 import { Textarea } from '../../../components/UI/Textarea';
 import { Select } from '../../../components/UI/Select';
 import { ArrowLeft, Save, X, Home, Upload } from 'lucide-react';
-import { tenantsAPI, rentalUnitsAPI, type Tenant } from '../../../services/api';
+import { tenantsAPI, rentalUnitsAPI, nationalitiesAPI, type Tenant, type Nationality } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
 import { useRouter } from 'next/navigation';
@@ -35,6 +35,8 @@ export default function NewTenantPage() {
   const [availableUnits, setAvailableUnits] = useState<RentalUnit[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
+  const [nationalities, setNationalities] = useState<Nationality[]>([]);
+  const [nationalitiesLoading, setNationalitiesLoading] = useState(true);
   const [formData, setFormData] = useState({
     // Tenant type selection
     tenant_type: 'individual', // 'individual' or 'company'
@@ -76,6 +78,7 @@ export default function NewTenantPage() {
 
   useEffect(() => {
     fetchAvailableUnits();
+    fetchNationalities();
   }, []);
 
   const fetchAvailableUnits = async () => {
@@ -88,6 +91,19 @@ export default function NewTenantPage() {
       toast.error('Failed to fetch available rental units');
     } finally {
       setUnitsLoading(false);
+    }
+  };
+
+  const fetchNationalities = async () => {
+    try {
+      setNationalitiesLoading(true);
+      const response = await nationalitiesAPI.getAll();
+      setNationalities(response.data.data || []);
+    } catch (error) {
+      console.error('Error fetching nationalities:', error);
+      toast.error('Failed to fetch nationalities');
+    } finally {
+      setNationalitiesLoading(false);
     }
   };
 
@@ -129,14 +145,15 @@ export default function NewTenantPage() {
     setLoading(true);
 
     try {
-      // Create tenant first with files (without rental_unit_ids)
-      const { rental_unit_ids: selectedUnitIds, ...tenantData } = formData;
+      // Convert rental_unit_ids to numbers for the API
+      const rentalUnitIds = formData.rental_unit_ids.map(id => parseInt(id));
       
       // Convert string fields to numbers where needed and handle company fields
       const processedTenantData: Partial<Tenant> = {
-        ...tenantData,
-        tenant_type: tenantData.tenant_type as 'individual' | 'company',
-        employment_salary: tenantData.employment_salary ? parseFloat(tenantData.employment_salary) : undefined,
+        ...formData,
+        tenant_type: formData.tenant_type as 'individual' | 'company',
+        employment_salary: formData.employment_salary ? parseFloat(formData.employment_salary) : undefined,
+        rental_unit_ids: rentalUnitIds, // Include rental_unit_ids so backend handles assignment efficiently
         // Keep personal and company information separate - don't map company fields to personal fields
       };
       
@@ -158,39 +175,13 @@ export default function NewTenantPage() {
            });
            console.log('Files:', files);
       
+      // Backend will handle rental unit assignment efficiently in a single query
       const tenantResponse = await tenantsAPI.create(processedTenantData, files);
       const tenant = tenantResponse.data.tenant;
       
-      // Assign the tenant to all selected rental units
-      const assignmentResults = [];
-      for (const unitId of selectedUnitIds) {
-        try {
-          await rentalUnitsAPI.update(parseInt(unitId), {
-            tenant_id: tenant.id,
-            status: 'occupied',
-            move_in_date: formData.lease_start_date || new Date().toISOString().split('T')[0],
-            lease_end_date: formData.lease_end_date
-          });
-          assignmentResults.push({ unitId, success: true });
-        } catch (unitError: unknown) {
-          console.error(`Error assigning tenant to rental unit ${unitId}:`, unitError);
-          const errorMessage = unitError && typeof unitError === 'object' && 'message' in unitError 
-            ? (unitError as { message: string }).message 
-            : 'Unknown error';
-          assignmentResults.push({ unitId, success: false, error: errorMessage });
-        }
-      }
-      
-      const successfulAssignments = assignmentResults.filter(r => r.success).length;
-      const failedAssignments = assignmentResults.filter(r => !r.success).length;
-      
-      if (successfulAssignments === selectedUnitIds.length) {
-        toast.success(`Tenant created and assigned to ${successfulAssignments} rental unit(s) successfully`);
-      } else if (successfulAssignments > 0) {
-        toast.success(`Tenant created and assigned to ${successfulAssignments} of ${selectedUnitIds.length} rental units. ${failedAssignments} assignments failed.`);
-      } else {
-        toast.error('Tenant created but failed to assign to any rental units. Please manually assign the tenant.');
-      }
+      // Success - backend already assigned the tenant to all rental units
+      const unitCount = rentalUnitIds.length;
+      toast.success(`Tenant created and assigned to ${unitCount} rental unit(s) successfully`);
       
       router.push('/tenants');
         } catch (error: unknown) {
@@ -243,7 +234,7 @@ export default function NewTenantPage() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6" suppressHydrationWarning>
           {/* Tenant Type Selection */}
           <Card>
             <CardHeader>
@@ -349,11 +340,18 @@ export default function NewTenantPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Nationality
                 </label>
-                <Input
-                  placeholder="Enter nationality"
+                <Select
                   value={formData.nationality}
                   onChange={(e) => handleInputChange('nationality', e.target.value)}
-                />
+                  disabled={nationalitiesLoading}
+                >
+                  <option value="">Select nationality</option>
+                  {nationalities.map((nationality) => (
+                    <option key={nationality.id} value={nationality.nationality}>
+                      {nationality.nationality}
+                    </option>
+                  ))}
+                </Select>
               </div>
             </CardContent>
           </Card>

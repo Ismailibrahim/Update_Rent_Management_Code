@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class TenantLedgerController extends Controller
@@ -66,38 +67,96 @@ class TenantLedgerController extends Controller
         }
 
         $perPage = $request->get('per_page', 15);
+        
+        // Eager load rental unit and property relationships upfront to avoid N+1 queries
+        $query->with(['rentalUnit.property']);
+        
+        // Also eager load invoices that might be referenced
         $ledgerEntries = $query->paginate($perPage);
-
-        // Add rental unit information to each entry
-        $ledgerEntries->getCollection()->transform(function ($entry) {
+        
+        // Collect all reference numbers and rental unit IDs for batch loading
+        $referenceNos = $ledgerEntries->getCollection()
+            ->pluck('reference_no')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+        
+        $rentalUnitIds = $ledgerEntries->getCollection()
+            ->pluck('rental_unit_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+        
+        $tenantIds = $ledgerEntries->getCollection()
+            ->pluck('tenant_id')
+            ->unique()
+            ->values()
+            ->toArray();
+        
+        // Batch load invoices by reference number
+        $invoicesByReference = [];
+        if (!empty($referenceNos)) {
+            $invoices = RentInvoice::whereIn('invoice_number', $referenceNos)
+                ->with('rentalUnit.property')
+                ->get();
+            foreach ($invoices as $invoice) {
+                $invoicesByReference[$invoice->invoice_number] = $invoice;
+            }
+        }
+        
+        // Batch load rental units by ID (for direct references)
+        $rentalUnitsById = [];
+        if (!empty($rentalUnitIds)) {
+            $rentalUnits = RentalUnit::whereIn('id', $rentalUnitIds)
+                ->with('property')
+                ->get();
+            foreach ($rentalUnits as $unit) {
+                $rentalUnitsById[$unit->id] = $unit;
+            }
+        }
+        
+        // Batch load first occupied rental unit per tenant (for fallback)
+        $occupiedUnitsByTenant = [];
+        if (!empty($tenantIds)) {
+            $occupiedUnits = RentalUnit::whereIn('tenant_id', $tenantIds)
+                ->where('status', 'occupied')
+                ->with('property')
+                ->get()
+                ->groupBy('tenant_id');
+            foreach ($occupiedUnits as $tenantId => $units) {
+                $occupiedUnitsByTenant[$tenantId] = $units->first();
+            }
+        }
+        
+        // Add rental unit information to each entry using pre-loaded data
+        $ledgerEntries->getCollection()->transform(function ($entry) use ($rentalUnitsById, $invoicesByReference, $occupiedUnitsByTenant) {
             $rentalUnit = null;
             
-            // First, try to use the direct rental_unit_id relationship
-            if ($entry->rental_unit_id) {
-                $rentalUnit = RentalUnit::with('property')->find($entry->rental_unit_id);
+            // First, try to use the direct rental_unit_id relationship (pre-loaded)
+            if ($entry->rental_unit_id && isset($rentalUnitsById[$entry->rental_unit_id])) {
+                $rentalUnit = $rentalUnitsById[$entry->rental_unit_id];
             }
             
-            // Fallback: try to find the rental unit through the invoice reference
-            if (!$rentalUnit && $entry->reference_no) {
-                $invoice = RentInvoice::where('invoice_number', $entry->reference_no)->first();
-                if ($invoice) {
-                    $rentalUnit = RentalUnit::with('property')->find($invoice->rental_unit_id);
+            // Fallback: try to find the rental unit through the invoice reference (pre-loaded)
+            if (!$rentalUnit && $entry->reference_no && isset($invoicesByReference[$entry->reference_no])) {
+                $invoice = $invoicesByReference[$entry->reference_no];
+                if ($invoice->rentalUnit) {
+                    $rentalUnit = $invoice->rentalUnit;
                 }
             }
             
-            // Final fallback: Get the first occupied rental unit for this tenant
-            if (!$rentalUnit) {
-                $rentalUnit = RentalUnit::with('property')
-                    ->where('tenant_id', $entry->tenant_id)
-                    ->where('status', 'occupied')
-                    ->first();
+            // Final fallback: Get the first occupied rental unit for this tenant (pre-loaded)
+            if (!$rentalUnit && isset($occupiedUnitsByTenant[$entry->tenant_id])) {
+                $rentalUnit = $occupiedUnitsByTenant[$entry->tenant_id];
             }
             
             if ($rentalUnit) {
                 $entry->rental_unit = [
                     'unit_number' => $rentalUnit->unit_number,
                     'property' => [
-                        'name' => $rentalUnit->property->name
+                        'name' => $rentalUnit->property->name ?? null
                     ]
                 ];
             } else {
@@ -362,17 +421,41 @@ class TenantLedgerController extends Controller
     public function getAllTenantBalances(Request $request): JsonResponse
     {
         try {
-            $query = Tenant::with(['ledgerEntries' => function($q) {
-                $q->orderByTransactionDate('desc')->limit(1);
-            }]);
+            $query = Tenant::query();
 
             // Filter by status
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             }
 
-            $tenants = $query->get()->map(function($tenant) {
-                $currentBalance = TenantLedger::getTenantBalance($tenant->id);
+            $tenants = $query->get();
+            
+            // Batch load all balances efficiently instead of N queries
+            $tenantIds = $tenants->pluck('id')->toArray();
+            
+            // Get the latest balance for each tenant using a more compatible approach
+            $balancesByTenant = [];
+            if (!empty($tenantIds)) {
+                // Use a subquery approach that works across MySQL versions
+                $latestEntries = DB::table('tenant_ledgers as tl1')
+                    ->select('tl1.tenant_id', 'tl1.balance')
+                    ->whereIn('tl1.tenant_id', $tenantIds)
+                    ->whereRaw('tl1.ledger_id = (
+                        SELECT tl2.ledger_id 
+                        FROM tenant_ledgers tl2 
+                        WHERE tl2.tenant_id = tl1.tenant_id 
+                        ORDER BY tl2.transaction_date DESC, tl2.ledger_id DESC 
+                        LIMIT 1
+                    )')
+                    ->get();
+                
+                foreach ($latestEntries as $entry) {
+                    $balancesByTenant[$entry->tenant_id] = (float) $entry->balance;
+                }
+            }
+            
+            $tenants = $tenants->map(function($tenant) use ($balancesByTenant) {
+                $currentBalance = $balancesByTenant[$tenant->id] ?? 0.00;
                 return [
                     'id' => $tenant->id,
                     'name' => $tenant->full_name,

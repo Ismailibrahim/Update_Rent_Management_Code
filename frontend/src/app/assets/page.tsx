@@ -431,12 +431,6 @@ export default function AssetsPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first asset.'}
                 </p>
-                <div className="mt-6">
-                  <Button onClick={handleAddAsset} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
-                    <Plus className="h-4 w-4" />
-                    Add Asset
-                  </Button>
-                </div>
               </div>
             )}
           </CardContent>

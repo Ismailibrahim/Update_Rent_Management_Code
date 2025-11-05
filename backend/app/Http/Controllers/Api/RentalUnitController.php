@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class RentalUnitController extends Controller
@@ -45,9 +46,13 @@ class RentalUnitController extends Controller
                 $query->where('status', 'available')->whereNull('tenant_id');
             }
 
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
             $rentalUnits = $query->orderBy('floor_number', 'asc')
                 ->orderBy('unit_number', 'asc')
-                ->get();
+                ->paginate($perPage, ['*'], 'page', $page);
 
             // Log asset details for debugging
             foreach ($rentalUnits as $unit) {
@@ -69,12 +74,20 @@ class RentalUnitController extends Controller
             }
 
             Log::info('Rental Units Index Response', [
-                'total_units' => $rentalUnits->count(),
+                'total_units' => $rentalUnits->total(),
+                'current_page' => $rentalUnits->currentPage(),
+                'per_page' => $rentalUnits->perPage(),
                 'units_with_assets' => $rentalUnits->filter(fn($unit) => $unit->assets->count() > 0)->count()
             ]);
 
             return response()->json([
-                'rentalUnits' => $rentalUnits
+                'rentalUnits' => $rentalUnits->items(),
+                'pagination' => [
+                    'current_page' => $rentalUnits->currentPage(),
+                    'last_page' => $rentalUnits->lastPage(),
+                    'per_page' => $rentalUnits->perPage(),
+                    'total' => $rentalUnits->total(),
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -325,6 +338,303 @@ class RentalUnitController extends Controller
             
             return response()->json([
                 'message' => 'Failed to create rental unit',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Bulk store multiple rental units with upfront capacity validation
+     */
+    public function bulkStore(Request $request): JsonResponse
+    {
+        $requestData = $request->all();
+
+        // Validate the request structure
+        $validator = Validator::make($requestData, [
+            'property_id' => 'required|exists:properties,id',
+            'units' => 'required|array|min:1',
+            'units.*.unit_number' => 'required|string|max:50',
+            'units.*.unit_type' => ['required', Rule::in(['residential', 'office', 'shop', 'warehouse', 'other'])],
+            'units.*.floor_number' => 'nullable|integer|min:1',
+            'units.*.number_of_rooms' => 'nullable|integer|min:0',
+            'units.*.number_of_toilets' => 'nullable|numeric|min:0',
+            'units.*.square_feet' => 'nullable|numeric|min:0',
+            'units.*.water_meter_number' => 'nullable|string|max:100',
+            'units.*.water_billing_account' => 'nullable|string|max:100',
+            'units.*.electricity_meter_number' => 'nullable|string|max:100',
+            'units.*.electricity_billing_account' => 'nullable|string|max:100',
+            'units.*.access_card_numbers' => 'nullable|string|max:500',
+            'units.*.rent_amount' => 'required|numeric|min:0',
+            'units.*.deposit_amount' => 'required|numeric|min:0',
+            'units.*.currency' => 'required|string|max:10',
+            'units.*.status' => ['sometimes', Rule::in(['available', 'occupied', 'maintenance', 'renovation', 'deactivated'])],
+            'units.*.tenant_id' => 'nullable|exists:tenants,id',
+            'units.*.move_in_date' => 'nullable|date',
+            'units.*.lease_end_date' => 'nullable|date|after:units.*.move_in_date',
+            'units.*.amenities' => 'nullable|array',
+            'units.*.photos' => 'nullable|array',
+            'units.*.notes' => 'nullable|string',
+            'units.*.assets' => 'nullable|array',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 400);
+        }
+
+        try {
+            $propertyId = $requestData['property_id'];
+            $units = $requestData['units'];
+            $unitsToCreate = count($units);
+
+            // Get property and check capacity UPFRONT
+            $property = Property::findOrFail($propertyId);
+            $existingUnits = RentalUnit::where('property_id', $propertyId)->count();
+            $remainingUnits = $property->number_of_rental_units - $existingUnits;
+
+            // Check if property has enough capacity for all units
+            if ($remainingUnits < $unitsToCreate) {
+                return response()->json([
+                    'message' => sprintf(
+                        'Cannot create %d rental unit(s). Property "%s" only has %d unit(s) remaining (maximum capacity: %d, existing: %d).',
+                        $unitsToCreate,
+                        $property->name,
+                        $remainingUnits,
+                        $property->number_of_rental_units,
+                        $existingUnits
+                    ),
+                    'property_name' => $property->name,
+                    'max_units' => $property->number_of_rental_units,
+                    'existing_units' => $existingUnits,
+                    'remaining_units' => $remainingUnits,
+                    'requested_units' => $unitsToCreate
+                ], 400);
+            }
+
+            // Get all existing unit numbers for this property to check duplicates
+            $existingUnitNumbers = RentalUnit::where('property_id', $propertyId)
+                ->pluck('unit_number')
+                ->toArray();
+
+            // Check for duplicate unit numbers within the request and with existing units
+            $requestUnitNumbers = [];
+            $duplicateInRequest = [];
+            $duplicateWithExisting = [];
+
+            foreach ($units as $index => $unit) {
+                $unitNumber = $unit['unit_number'];
+                
+                // Check for duplicates within the request
+                if (in_array($unitNumber, $requestUnitNumbers)) {
+                    $duplicateInRequest[] = $unitNumber;
+                } else {
+                    $requestUnitNumbers[] = $unitNumber;
+                }
+
+                // Check for duplicates with existing units
+                if (in_array($unitNumber, $existingUnitNumbers)) {
+                    $duplicateWithExisting[] = $unitNumber;
+                }
+            }
+
+            if (!empty($duplicateInRequest)) {
+                return response()->json([
+                    'message' => 'Duplicate unit numbers found within the request',
+                    'errors' => [
+                        'units' => ['The following unit numbers appear multiple times: ' . implode(', ', array_unique($duplicateInRequest))]
+                    ],
+                    'duplicate_units' => array_unique($duplicateInRequest)
+                ], 400);
+            }
+
+            if (!empty($duplicateWithExisting)) {
+                return response()->json([
+                    'message' => 'Some unit numbers already exist for this property',
+                    'errors' => [
+                        'units' => ['The following unit numbers already exist: ' . implode(', ', array_unique($duplicateWithExisting))]
+                    ],
+                    'duplicate_units' => array_unique($duplicateWithExisting)
+                ], 400);
+            }
+
+            // Check for duplicate access card numbers across all units (request + existing)
+            $allAccessCards = [];
+            $existingAccessCards = RentalUnit::whereNotNull('access_card_numbers')
+                ->where('access_card_numbers', '!=', '')
+                ->with('property')
+                ->get();
+
+            foreach ($existingAccessCards as $existingUnit) {
+                if ($existingUnit->access_card_numbers) {
+                    $cards = array_map('trim', explode(',', $existingUnit->access_card_numbers));
+                    $cards = array_filter($cards, function($card) {
+                        return !empty($card);
+                    });
+                    $allAccessCards = array_merge($allAccessCards, $cards);
+                }
+            }
+
+            $duplicateAccessCards = [];
+            foreach ($units as $unit) {
+                if (isset($unit['access_card_numbers']) && !empty($unit['access_card_numbers'])) {
+                    $inputCards = array_map('trim', explode(',', $unit['access_card_numbers']));
+                    $inputCards = array_filter($inputCards, function($card) {
+                        return !empty($card);
+                    });
+                    
+                    foreach ($inputCards as $card) {
+                        if (in_array($card, $allAccessCards)) {
+                            $duplicateAccessCards[] = $card;
+                        } else {
+                            $allAccessCards[] = $card;
+                        }
+                    }
+                }
+            }
+
+            if (!empty($duplicateAccessCards)) {
+                return response()->json([
+                    'message' => 'Some access card numbers are already assigned',
+                    'errors' => [
+                        'access_card_numbers' => ['The following access card numbers are already assigned: ' . implode(', ', array_unique($duplicateAccessCards))]
+                    ],
+                    'duplicate_access_cards' => array_unique($duplicateAccessCards)
+                ], 400);
+            }
+
+            // All validations passed - create all units in a transaction
+            DB::beginTransaction();
+
+            try {
+                $createdUnits = [];
+                $errors = [];
+
+                foreach ($units as $index => $unitData) {
+                    try {
+                        // Clean up null/empty values
+                        $nullableNumericFields = ['floor_number', 'number_of_rooms', 'number_of_toilets', 'square_feet'];
+                        foreach ($nullableNumericFields as $field) {
+                            if (isset($unitData[$field]) && ($unitData[$field] === '' || $unitData[$field] === null)) {
+                                unset($unitData[$field]);
+                            }
+                        }
+
+                        // Set defaults
+                        $unitData['property_id'] = $propertyId;
+                        $unitData['status'] = $unitData['status'] ?? 'available';
+                        
+                        if (!isset($unitData['floor_number'])) {
+                            $unitData['floor_number'] = 1;
+                        }
+                        if (!isset($unitData['number_of_rooms'])) {
+                            $unitData['number_of_rooms'] = 0;
+                        }
+                        if (!isset($unitData['number_of_toilets'])) {
+                            $unitData['number_of_toilets'] = 0;
+                        }
+
+                        // Store assets separately if provided
+                        $assets = $unitData['assets'] ?? null;
+                        unset($unitData['assets']);
+
+                        $rentalUnit = RentalUnit::create($unitData);
+
+                        // Handle asset assignments
+                        if ($assets && is_array($assets)) {
+                            foreach ($assets as $assetData) {
+                                $assetId = is_array($assetData) ? $assetData['asset_id'] : $assetData;
+                                $quantity = is_array($assetData) ? ($assetData['quantity'] ?? 1) : 1;
+                                
+                                $asset = Asset::find($assetId);
+                                if ($asset) {
+                                    $existingAssignment = RentalUnitAsset::where('rental_unit_id', $rentalUnit->id)
+                                        ->where('asset_id', $assetId)
+                                        ->where('is_active', true)
+                                        ->first();
+                                    
+                                    if (!$existingAssignment) {
+                                        RentalUnitAsset::create([
+                                            'rental_unit_id' => $rentalUnit->id,
+                                            'asset_id' => $assetId,
+                                            'assigned_date' => now(),
+                                            'notes' => 'Assigned during bulk unit creation',
+                                            'is_active' => true,
+                                            'quantity' => $quantity,
+                                            'status' => 'working',
+                                        ]);
+                                    }
+                                }
+                            }
+                        }
+
+                        $rentalUnit->load(['property', 'tenant', 'assets']);
+                        $createdUnits[] = $rentalUnit;
+
+                    } catch (\Exception $e) {
+                        Log::error('Error creating unit in bulk operation', [
+                            'unit_index' => $index,
+                            'unit_number' => $unitData['unit_number'] ?? 'unknown',
+                            'error' => $e->getMessage()
+                        ]);
+                        $errors[] = [
+                            'unit_number' => $unitData['unit_number'] ?? 'unknown',
+                            'error' => $e->getMessage()
+                        ];
+                    }
+                }
+
+                // If any errors occurred, rollback and return error
+                if (!empty($errors)) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Failed to create some rental units',
+                        'errors' => $errors,
+                        'created_count' => count($createdUnits),
+                        'failed_count' => count($errors)
+                    ], 400);
+                }
+
+                // All units created successfully
+                DB::commit();
+
+                Log::info('Bulk rental units created successfully', [
+                    'property_id' => $propertyId,
+                    'property_name' => $property->name,
+                    'units_created' => count($createdUnits),
+                    'unit_numbers' => array_column($createdUnits, 'unit_number')
+                ]);
+
+                return response()->json([
+                    'message' => sprintf(
+                        'Successfully created %d rental unit(s) for property "%s"',
+                        count($createdUnits),
+                        $property->name
+                    ),
+                    'created_count' => count($createdUnits),
+                    'rental_units' => $createdUnits
+                ], 201);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'message' => 'Property not found'
+            ], 404);
+        } catch (\Exception $e) {
+            Log::error('Error in bulk rental unit creation', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'property_id' => $requestData['property_id'] ?? null
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to create rental units',
                 'error' => $e->getMessage()
             ], 500);
         }

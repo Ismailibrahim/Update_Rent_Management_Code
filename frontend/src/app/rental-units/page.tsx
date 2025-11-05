@@ -188,12 +188,20 @@ export default function RentalUnitsPage() {
               Manage rental units and their details
             </p>
           </div>
-          <Link href="/rental-units/new" prefetch={true}>
-            <Button className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
-              <Plus className="h-4 w-4" />
-              Add Rental Unit
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/rental-units/bulk-new" prefetch={true}>
+              <Button variant="outline" className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium">
+                <Plus className="h-4 w-4" />
+                Bulk Create
+              </Button>
+            </Link>
+            <Link href="/rental-units/new" prefetch={true}>
+              <Button className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+                <Plus className="h-4 w-4" />
+                Add Rental Unit
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Statistics Cards */}
