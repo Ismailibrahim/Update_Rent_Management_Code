@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../../components/UI/Button';
 import { Input } from '../../../components/UI/Input';
 import { ArrowLeft, Save, X } from 'lucide-react';
-import { rentalUnitsAPI, propertiesAPI, assetsAPI, rentalUnitTypesAPI } from '../../../services/api';
+import { rentalUnitsAPI, propertiesAPI, assetsAPI, rentalUnitTypesAPI, currenciesAPI } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -38,6 +38,14 @@ interface RentalUnitType {
   updated_at?: string;
 }
 
+interface Currency {
+  id: number;
+  code: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 interface RentalUnit {
   id: number;
   number_of_rooms: number;
@@ -52,14 +60,16 @@ function NewRentalUnitPageContent() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [unitTypes, setUnitTypes] = useState<RentalUnitType[]>([]);
-  const [selectedAssets, setSelectedAssets] = useState<number[]>([]);
+  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<Array<{assetId: number, quantity: number}>>([]);
   const [loading, setLoading] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [existingRentalUnits, setExistingRentalUnits] = useState<RentalUnit[]>([]);
   const [isLoadingProperty, setIsLoadingProperty] = useState(false);
   const lastFetchedPropertyId = useRef<number | null>(null);
+  const [selectedDepositMonths, setSelectedDepositMonths] = useState<number | null>(null);
   const [formData, setFormData] = useState({
-    property_id: propertyIdFromUrl || '',
+    property_id: '',
     unit_number: '',
     unit_type: '',
     floor_number: '',
@@ -80,6 +90,7 @@ function NewRentalUnitPageContent() {
     status: 'available',
     assets: []
   });
+  const [isMounted, setIsMounted] = useState(false);
 
   const allowedUnitTypes = ['residential', 'office', 'shop', 'warehouse', 'other'];
   const mapToAllowedUnitType = (name: string): string => {
@@ -125,6 +136,27 @@ function NewRentalUnitPageContent() {
     }
   };
 
+  const fetchCurrencies = async () => {
+    try {
+      const response = await currenciesAPI.getAll();
+      const fetchedCurrencies = response.data.currencies || [];
+      setCurrencies(fetchedCurrencies);
+      
+      // Set default currency to the one marked as is_default, or use the first currency
+      // Only update if formData.currency is still the default 'MVR' (initial state)
+      if (fetchedCurrencies.length > 0 && formData.currency === 'MVR') {
+        const defaultCurrency = fetchedCurrencies.find((c: Currency) => c.is_default);
+        const currencyToUse = defaultCurrency || fetchedCurrencies[0];
+        if (currencyToUse.code !== 'MVR') {
+          setFormData(prev => ({ ...prev, currency: currencyToUse.code }));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching currencies:', error);
+      toast.error('Failed to fetch currencies');
+    }
+  };
+
   const fetchPropertyDetails = useCallback(async (propertyId: number) => {
     if (isLoadingProperty || lastFetchedPropertyId.current === propertyId) {
       return; // Prevent duplicate calls
@@ -150,6 +182,14 @@ function NewRentalUnitPageContent() {
     }
   }, [isLoadingProperty]);
 
+  // Set mounted state and initialize property_id from URL after mount
+  useEffect(() => {
+    setIsMounted(true);
+    if (propertyIdFromUrl) {
+      setFormData(prev => ({ ...prev, property_id: propertyIdFromUrl }));
+    }
+  }, [propertyIdFromUrl]);
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/login');
@@ -160,6 +200,7 @@ function NewRentalUnitPageContent() {
       fetchProperties();
       fetchAssets();
       fetchUnitTypes();
+      fetchCurrencies();
       
       // If coming from a property page, fetch property details
       if (propertyIdFromUrl) {
@@ -167,6 +208,17 @@ function NewRentalUnitPageContent() {
       }
     }
   }, [user, authLoading, router, propertyIdFromUrl, fetchPropertyDetails]);
+
+  // Calculate deposit amount when checkbox is checked or rent amount changes
+  useEffect(() => {
+    if (selectedDepositMonths && formData.rent_amount) {
+      const rentAmount = parseFloat(formData.rent_amount);
+      if (!isNaN(rentAmount) && rentAmount > 0) {
+        const depositAmount = rentAmount * selectedDepositMonths;
+        setFormData(prev => ({ ...prev, deposit_amount: depositAmount.toFixed(2) }));
+      }
+    }
+  }, [selectedDepositMonths, formData.rent_amount]);
 
   const capacity = useMemo(() => {
     if (!selectedProperty) return { 
@@ -294,10 +346,10 @@ function NewRentalUnitPageContent() {
 
       // Only include assets if there are any selected
       if (selectedAssets.length > 0) {
-        submitData.assets = selectedAssets.map(assetId => {
+        submitData.assets = selectedAssets.map(asset => {
           return {
-            asset_id: assetId,
-            quantity: 1 // Default quantity for new assignments
+            asset_id: asset.assetId,
+            quantity: asset.quantity || 1
           };
         });
       }
@@ -310,7 +362,8 @@ function NewRentalUnitPageContent() {
       await rentalUnitsAPI.create(submitData);
       
       if (selectedAssets.length > 0) {
-        toast.success(`Rental unit created successfully with ${selectedAssets.length} asset(s) assigned`);
+        const totalAssets = selectedAssets.reduce((sum, asset) => sum + asset.quantity, 0);
+        toast.success(`Rental unit created successfully with ${totalAssets} asset item(s) assigned`);
       } else {
         toast.success('Rental unit created successfully');
       }
@@ -393,7 +446,7 @@ function NewRentalUnitPageContent() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6" suppressHydrationWarning>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {!propertyIdFromUrl && (
                   <div>
@@ -405,6 +458,7 @@ function NewRentalUnitPageContent() {
                       onChange={(e) => handlePropertyChange(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                       required
+                      suppressHydrationWarning
                     >
                       <option value="">Select a property</option>
                       {properties.map((property) => {
@@ -480,6 +534,7 @@ function NewRentalUnitPageContent() {
                     }}
                     required
                     disabled={loading || isLoadingProperty}
+                    suppressHydrationWarning
                   >
                     <option value="">Select unit type</option>
                     {unitTypes.map((unitType) => {
@@ -642,10 +697,21 @@ function NewRentalUnitPageContent() {
                     }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     required
+                    suppressHydrationWarning
                   >
-                    <option value="MVR">MVR</option>
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
+                    {currencies.length > 0 ? (
+                      currencies.map((currency) => (
+                        <option key={currency.id} value={currency.code}>
+                          {currency.code}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="MVR">MVR</option>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -722,17 +788,52 @@ function NewRentalUnitPageContent() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Deposit Amount *
-                  </label>
+                  <div className="flex items-center gap-3 mb-1 flex-wrap">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Deposit Amount *
+                    </label>
+                    <div className="flex items-center gap-4">
+                      {[1, 2, 3].map((months) => (
+                        <label key={months} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={selectedDepositMonths === months}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedDepositMonths(months);
+                                if (formData.rent_amount) {
+                                  const rentAmount = parseFloat(formData.rent_amount);
+                                  if (!isNaN(rentAmount) && rentAmount > 0) {
+                                    const depositAmount = rentAmount * months;
+                                    setFormData(prev => ({ ...prev, deposit_amount: depositAmount.toFixed(2) }));
+                                  }
+                                }
+                              } else {
+                                setSelectedDepositMonths(null);
+                                setFormData(prev => ({ ...prev, deposit_amount: '' }));
+                              }
+                            }}
+                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700">{months} Month{months > 1 ? 's' : ''}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                   <Input
                     type="number"
                     placeholder="Deposit amount"
                     value={formData.deposit_amount}
-                    onChange={(e) => setFormData(prev => ({ 
-                      ...prev, 
-                      deposit_amount: e.target.value
-                    }))}
+                    onChange={(e) => {
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        deposit_amount: e.target.value
+                      }));
+                      // Clear selection if user manually edits deposit
+                      if (selectedDepositMonths !== null) {
+                        setSelectedDepositMonths(null);
+                      }
+                    }}
                     min="0"
                     step="0.01"
                     required
@@ -815,6 +916,7 @@ function NewRentalUnitPageContent() {
                     onChange={(e) => setFormData(prev => ({ ...prev, access_card_numbers: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[80px]"
                     maxLength={500}
+                    suppressHydrationWarning
                   />
                   {formData.access_card_numbers && (
                     <div className="mt-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
@@ -845,7 +947,7 @@ function NewRentalUnitPageContent() {
                     Assign Assets (Optional)
                   </label>
                   <p className="text-sm text-gray-500 mb-3">
-                    Select assets from the dropdown to assign to this rental unit
+                    Select assets from the dropdown to assign to this rental unit. You can specify the quantity for each asset.
                   </p>
                   
                   {assets.length > 0 ? (
@@ -857,16 +959,23 @@ function NewRentalUnitPageContent() {
                           onChange={(e) => {
                             if (e.target.value) {
                               const assetId = parseInt(e.target.value);
-                              if (!selectedAssets.includes(assetId)) {
-                                setSelectedAssets(prev => [...prev, assetId]);
+                              // Check if asset is already selected
+                              const isAlreadySelected = selectedAssets.some(a => a.assetId === assetId);
+                              if (!isAlreadySelected) {
+                                setSelectedAssets(prev => [...prev, { assetId, quantity: 1 }]);
+                              } else {
+                                toast.error('This asset is already added. Please update the quantity if needed.');
                               }
                               e.target.value = ''; // Reset dropdown
                             }
                           }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          suppressHydrationWarning
                         >
                           <option value="">Select an asset to add...</option>
-                          {assets.map((asset) => (
+                          {assets
+                            .filter(asset => !selectedAssets.some(sa => sa.assetId === asset.id))
+                            .map((asset) => (
                             <option key={asset.id} value={asset.id.toString()}>
                               {asset.name} {asset.brand && `(${asset.brand})`} - {asset.category}
                             </option>
@@ -879,30 +988,53 @@ function NewRentalUnitPageContent() {
                         <div className="space-y-2">
                           <h4 className="text-sm font-medium text-gray-700">Selected Assets:</h4>
                           <div className="space-y-2">
-                            {selectedAssets.map((assetId) => {
-                              const asset = assets.find(a => a.id === assetId);
+                            {selectedAssets.map((selectedAsset, index) => {
+                              const asset = assets.find(a => a.id === selectedAsset.assetId);
                               if (!asset) return null;
                               
                               return (
                                 <div
-                                  key={assetId}
-                                  className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg"
+                                  key={selectedAsset.assetId}
+                                  className="flex items-center justify-between gap-4 p-3 bg-gray-50 border border-gray-200 rounded-lg"
                                 >
-                                  <div>
+                                  <div className="flex-1">
                                     <div className="font-medium text-gray-900">{asset.name}</div>
                                     <div className="text-sm text-gray-500">
                                       {asset.brand && `${asset.brand} • `}{asset.category}
                                     </div>
                                   </div>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setSelectedAssets(prev => prev.filter(id => id !== assetId))}
-                                    className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
+                                  <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
+                                      <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                                        QTY:
+                                      </label>
+                                      <Input
+                                        type="number"
+                                        min="1"
+                                        value={selectedAsset.quantity}
+                                        onChange={(e) => {
+                                          const quantity = parseInt(e.target.value) || 1;
+                                          if (quantity > 0) {
+                                            setSelectedAssets(prev => 
+                                              prev.map((sa, idx) => 
+                                                idx === index ? { ...sa, quantity } : sa
+                                              )
+                                            );
+                                          }
+                                        }}
+                                        className="w-20 px-2 py-1 text-center border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => setSelectedAssets(prev => prev.filter((_, idx) => idx !== index))}
+                                      className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                               );
                             })}
