@@ -39,11 +39,22 @@ class AssetController extends Controller
                 });
             }
 
-            $assets = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $assets = $query->orderBy('created_at', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
 
             return response()->json([
                 'success' => true,
-                'assets' => $assets
+                'assets' => $assets->items(),
+                'pagination' => [
+                    'current_page' => $assets->currentPage(),
+                    'last_page' => $assets->lastPage(),
+                    'per_page' => $assets->perPage(),
+                    'total' => $assets->total(),
+                ]
             ]);
 
         } catch (\Exception $e) {

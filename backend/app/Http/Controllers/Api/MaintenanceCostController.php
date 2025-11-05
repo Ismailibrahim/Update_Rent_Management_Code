@@ -35,11 +35,22 @@ class MaintenanceCostController extends Controller
                 $query->where('repair_date', '<=', $request->date_to);
             }
 
-            $maintenanceCosts = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $maintenanceCosts = $query->orderBy('created_at', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
 
             return response()->json([
                 'success' => true,
-                'maintenance_costs' => $maintenanceCosts
+                'maintenance_costs' => $maintenanceCosts->items(),
+                'pagination' => [
+                    'current_page' => $maintenanceCosts->currentPage(),
+                    'last_page' => $maintenanceCosts->lastPage(),
+                    'per_page' => $maintenanceCosts->perPage(),
+                    'total' => $maintenanceCosts->total(),
+                ]
             ]);
 
         } catch (\Exception $e) {

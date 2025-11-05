@@ -55,7 +55,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const token = localStorage.getItem('token');
         if (token) {
           try {
-            const response = await authAPI.getMe();
+            // Add timeout to prevent hanging (reduced to 3 seconds)
+            const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Auth check timeout')), 3000)
+            );
+            
+            const response = await Promise.race([
+              authAPI.getMe(),
+              timeoutPromise
+            ]) as any;
+            
             setUser(response.data.user);
           } catch (error) {
             console.error('Auth initialization error:', error);
@@ -64,7 +73,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         }
       }
-      setLoading(false);
+      // Always set loading to false quickly, even if there was an error
+      // Use setTimeout to ensure it doesn't block rendering
+      setTimeout(() => {
+        setLoading(false);
+      }, 100);
     };
 
     initAuth();

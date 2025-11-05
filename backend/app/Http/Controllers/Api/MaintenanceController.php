@@ -45,11 +45,22 @@ class MaintenanceController extends Controller
                 $query->where('property_id', $request->get('property_id'));
             }
             
-            $maintenanceRequests = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $maintenanceRequests = $query->orderBy('created_at', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
             
             return response()->json([
                 'success' => true,
-                'maintenance_requests' => $maintenanceRequests
+                'maintenance_requests' => $maintenanceRequests->items(),
+                'pagination' => [
+                    'current_page' => $maintenanceRequests->currentPage(),
+                    'last_page' => $maintenanceRequests->lastPage(),
+                    'per_page' => $maintenanceRequests->perPage(),
+                    'total' => $maintenanceRequests->total(),
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([

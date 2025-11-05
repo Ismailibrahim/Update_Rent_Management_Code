@@ -31,11 +31,22 @@ class PaymentModeController extends Controller
                 $query->where('is_active', $request->get('status') === 'active');
             }
             
-            $paymentModes = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $paymentModes = $query->orderBy('created_at', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
             
             return response()->json([
                 'success' => true,
-                'payment_modes' => $paymentModes
+                'payment_modes' => $paymentModes->items(),
+                'pagination' => [
+                    'current_page' => $paymentModes->currentPage(),
+                    'last_page' => $paymentModes->lastPage(),
+                    'per_page' => $paymentModes->perPage(),
+                    'total' => $paymentModes->total(),
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([

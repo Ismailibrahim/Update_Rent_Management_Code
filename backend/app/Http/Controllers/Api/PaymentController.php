@@ -155,14 +155,44 @@ class PaymentController extends Controller
      */
     public function statistics(Request $request): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'statistics' => [
-                'total_amount' => 0,
-                'completed_payments' => 0,
-                'pending_payments' => 0,
-                'failed_payments' => 0,
-            ]
-        ]);
+        try {
+            $query = Payment::query();
+            
+            // Apply filters if provided
+            if ($request->has('tenant_id')) {
+                $query->where('tenant_id', $request->tenant_id);
+            }
+            
+            if ($request->has('property_id')) {
+                $query->where('property_id', $request->property_id);
+            }
+            
+            if ($request->has('from_date')) {
+                $query->where('payment_date', '>=', $request->from_date);
+            }
+            
+            if ($request->has('to_date')) {
+                $query->where('payment_date', '<=', $request->to_date);
+            }
+            
+            $statistics = [
+                'total_amount' => (float) $query->sum('amount'),
+                'completed_payments' => (int) $query->where('status', 'completed')->count(),
+                'pending_payments' => (int) $query->where('status', 'pending')->count(),
+                'failed_payments' => (int) $query->where('status', 'failed')->count(),
+                'total_payments' => (int) $query->count(),
+            ];
+            
+            return response()->json([
+                'success' => true,
+                'statistics' => $statistics
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch payment statistics',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

@@ -38,11 +38,22 @@ class UserController extends Controller
                 $query->where('is_active', $request->get('status') === 'active');
             }
             
-            $users = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $users = $query->orderBy('created_at', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
             
             return response()->json([
                 'success' => true,
-                'users' => $users
+                'users' => $users->items(),
+                'pagination' => [
+                    'current_page' => $users->currentPage(),
+                    'last_page' => $users->lastPage(),
+                    'per_page' => $users->perPage(),
+                    'total' => $users->total(),
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/UI/Button';
@@ -11,9 +11,27 @@ import { Building2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { login } = useAuth();
   
+  // Mount component immediately, don't wait for auth
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
   const { register, handleSubmit, formState: { errors } } = useForm<{ email: string; password: string }>();
+  
+  // Show loading only during initial mount
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <Building2 className="h-12 w-12 text-blue-600 mx-auto mb-4 animate-pulse" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const onSubmit = async (data: { email: string; password: string }) => {
     setLoading(true);

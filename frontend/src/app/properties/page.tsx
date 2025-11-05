@@ -33,6 +33,10 @@ export default function PropertiesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const perPage = 15;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -40,15 +44,37 @@ export default function PropertiesPage() {
       return;
     }
     if (user) {
-      fetchProperties();
+      fetchProperties(1);
     }
   }, [user, authLoading, router]);
 
-  const fetchProperties = async () => {
+  // Debounce search
+  useEffect(() => {
+    if (!user || authLoading) return;
+    
+    const timer = setTimeout(() => {
+      fetchProperties(1);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const fetchProperties = async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const response = await propertiesAPI.getAll();
+      const response = await propertiesAPI.getAll({
+        page,
+        limit: perPage,
+        ...(searchTerm && { search: searchTerm })
+      });
       setProperties(response.data.properties || []);
+      
+      // Update pagination info
+      if (response.data.pagination) {
+        setCurrentPage(response.data.pagination.current || page);
+        setTotalPages(response.data.pagination.pages || 1);
+        setTotal(response.data.pagination.total || 0);
+      }
     } catch (error: unknown) {
       console.error('Error fetching properties:', error);
       
@@ -89,11 +115,8 @@ export default function PropertiesPage() {
     }
   };
 
-  const filteredProperties = properties.filter(property =>
-    property.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    property.street.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    property.island.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter is now handled server-side, but keep client-side filtering for local sorting
+  const filteredProperties = properties;
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -184,7 +207,7 @@ export default function PropertiesPage() {
     try {
       await propertiesAPI.delete(id);
       toast.success('Property deleted successfully');
-      fetchProperties();
+      fetchProperties(currentPage);
     } catch (error: unknown) {
       console.error('Error deleting property:', error);
       
@@ -379,6 +402,79 @@ export default function PropertiesPage() {
             <p className="mt-1 text-sm text-gray-500">
               {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property.'}
             </p>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+            <div className="flex flex-1 justify-between sm:hidden">
+              <Button
+                variant="outline"
+                onClick={() => fetchProperties(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => fetchProperties(currentPage + 1)}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </Button>
+            </div>
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-gray-700">
+                  Showing <span className="font-medium">{(currentPage - 1) * perPage + 1}</span> to{' '}
+                  <span className="font-medium">{Math.min(currentPage * perPage, total)}</span> of{' '}
+                  <span className="font-medium">{total}</span> results
+                </p>
+              </div>
+              <div>
+                <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchProperties(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="rounded-l-md"
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        onClick={() => fetchProperties(pageNum)}
+                        className={currentPage === pageNum ? "z-10 bg-blue-600 text-white" : ""}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchProperties(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="rounded-r-md"
+                  >
+                    Next
+                  </Button>
+                </nav>
+              </div>
+            </div>
           </div>
         )}
       </div>

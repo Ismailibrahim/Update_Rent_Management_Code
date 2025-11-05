@@ -11,6 +11,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 
 class PropertyController extends Controller
@@ -27,43 +28,61 @@ class PropertyController extends Controller
                 'request_params' => $request->all()
             ]);
             
-            // Optimize eager loading - only load necessary fields
-            $query = Property::with([
-                'assignedManager:id,name,email',
-                'rentalUnits:id,property_id,unit_number,status,tenant_id'
-            ]);
-
-            // Role-based filtering
-            $user = $request->user();
-            if ($user && $user->role && $user->role->name === 'property_manager') {
-                $query->where('assigned_manager_id', $user->id);
-            }
-
-            // Search filter
-            if ($request->has('search') && $request->search) {
-                $search = $request->search;
-                $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('street', 'like', "%{$search}%");
-                });
-            }
-
-            // Type filter
-            if ($request->has('type') && $request->type) {
-                $query->where('type', $request->type);
-            }
-
-            // Status filter
-            if ($request->has('status') && $request->status) {
-                $query->where('status', $request->status);
-            }
-
-            // Pagination
-            $page = $request->get('page', 1);
-            $limit = $request->get('limit', 10);
+            // Build cache key based on request parameters
+            $cacheKey = 'properties_index_' . md5(json_encode([
+                'user_id' => $request->user()?->id,
+                'role' => $request->user()?->role?->name,
+                'search' => $request->get('search'),
+                'type' => $request->get('type'),
+                'status' => $request->get('status'),
+                'page' => $request->get('page', 1),
+                'limit' => $request->get('limit', 10),
+            ]));
             
-            $properties = $query->orderBy('created_at', 'desc')
-                ->paginate($limit, ['*'], 'page', $page);
+            // Cache for 2 minutes (shorter cache for list views)
+            $result = Cache::remember($cacheKey, 120, function () use ($request) {
+                // Optimize eager loading - only load necessary fields
+                $query = Property::with([
+                    'assignedManager:id,name,email',
+                    'rentalUnits:id,property_id,unit_number,status,tenant_id'
+                ]);
+
+                // Role-based filtering
+                $user = $request->user();
+                if ($user && $user->role && $user->role->name === 'property_manager') {
+                    $query->where('assigned_manager_id', $user->id);
+                }
+
+                // Search filter
+                if ($request->has('search') && $request->search) {
+                    $search = $request->search;
+                    $query->where(function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                          ->orWhere('street', 'like', "%{$search}%");
+                    });
+                }
+
+                // Type filter
+                if ($request->has('type') && $request->type) {
+                    $query->where('type', $request->type);
+                }
+
+                // Status filter
+                if ($request->has('status') && $request->status) {
+                    $query->where('status', $request->status);
+                }
+
+                // Pagination
+                $page = $request->get('page', 1);
+                $limit = $request->get('limit', 10);
+                
+                $properties = $query->orderBy('created_at', 'desc')
+                    ->paginate($limit, ['*'], 'page', $page);
+
+                return $properties;
+            });
+            
+            $properties = $result;
 
             // Update property statuses based on rental unit occupancy
             foreach ($properties->items() as $property) {
@@ -184,6 +203,9 @@ class PropertyController extends Controller
             $property = Property::create($propertyData);
             $property->load('assignedManager');
 
+            // Clear cache after creating property - targeted invalidation
+            $this->clearPropertyCache();
+
             return response()->json([
                 'message' => 'Property created successfully',
                 'property' => $property
@@ -303,6 +325,9 @@ class PropertyController extends Controller
             $property->update($request->all());
             $property->load('assignedManager');
 
+            // Clear cache after updating property - targeted invalidation
+            $this->clearPropertyCache($property->id);
+
             return response()->json([
                 'message' => 'Property updated successfully',
                 'property' => $property
@@ -369,6 +394,9 @@ class PropertyController extends Controller
             }
 
             $property->delete();
+
+            // Clear cache after deleting property - targeted invalidation
+            $this->clearPropertyCache();
 
             return response()->json([
                 'message' => 'Property deleted successfully'
@@ -824,6 +852,48 @@ class PropertyController extends Controller
                 'message' => 'Import failed',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Clear property-related cache with targeted invalidation
+     */
+    private function clearPropertyCache(?int $propertyId = null): void
+    {
+        // Clear property list caches using pattern matching
+        $cachePrefix = 'properties_index_';
+        
+        // Get all cache keys that start with our prefix
+        // Note: This works with Redis and Memcached, but not with file cache
+        // For file cache, we'd need to use cache tags if available
+        try {
+            if (Cache::getStore() instanceof \Illuminate\Cache\RedisStore || 
+                Cache::getStore() instanceof \Illuminate\Cache\MemcachedStore) {
+                // Clear all property index cache keys
+                // This is a simplified approach - in production, consider using cache tags
+                $keys = Cache::getStore()->getRedis()->keys('*' . $cachePrefix . '*');
+                if ($keys) {
+                    foreach ($keys as $key) {
+                        Cache::forget(str_replace(config('cache.prefix') . ':', '', $key));
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            // If cache driver doesn't support key scanning, clear dashboard cache instead
+            // This is a fallback that's safer than flushing everything
+            Log::warning('Could not clear property cache selectively', ['error' => $e->getMessage()]);
+        }
+        
+        // Clear dashboard statistics cache (property changes affect dashboard)
+        $user = auth()->user();
+        if ($user) {
+            Cache::forget('dashboard_statistics_' . $user->id);
+        }
+        Cache::forget('dashboard_statistics_guest');
+        
+        // Clear specific property cache if ID provided
+        if ($propertyId) {
+            Cache::forget("property_{$propertyId}");
         }
     }
 }

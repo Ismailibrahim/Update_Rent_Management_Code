@@ -49,10 +49,21 @@ class RentInvoiceController extends Controller
                 $query->where('rental_unit_id', $request->rental_unit_id);
             }
 
-            $invoices = $query->orderBy('invoice_date', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $invoices = $query->orderBy('invoice_date', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
 
             return response()->json([
-                'invoices' => $invoices
+                'invoices' => $invoices->items(),
+                'pagination' => [
+                    'current_page' => $invoices->currentPage(),
+                    'last_page' => $invoices->lastPage(),
+                    'per_page' => $invoices->perPage(),
+                    'total' => $invoices->total(),
+                ]
             ]);
 
         } catch (\Exception $e) {

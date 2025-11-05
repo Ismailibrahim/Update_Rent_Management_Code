@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Building2, Users, DollarSign, RefreshCw, Mail, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { propertiesAPI, tenantsAPI, rentalUnitsAPI, reminderLogsAPI, ReminderLog } from '../../services/api';
+import { dashboardAPI, reminderLogsAPI, ReminderLog } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 
@@ -54,30 +54,32 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch all data in parallel with timeout
-      const [propertiesRes, tenantsRes, rentalUnitsRes] = await Promise.all([
-        propertiesAPI.getAll().catch(() => ({ data: { properties: [] } })),
-        tenantsAPI.getAll().catch(() => ({ data: { tenants: [] } })),
-        rentalUnitsAPI.getAll().catch(() => ({ data: { rentalUnits: [] } }))
-      ]);
+      // Use the optimized statistics endpoint instead of fetching all data
+      const statsRes = await dashboardAPI.getStatistics().catch(() => ({ data: { success: false, statistics: {} } }));
 
-      const properties = propertiesRes.data.properties || [];
-      const tenants = tenantsRes.data.tenants || [];
-      const rentalUnits = rentalUnitsRes.data.rentalUnits || [];
-
-      // Calculate stats
-      const occupiedUnits = rentalUnits.filter((unit: { status: string }) => unit.status === 'occupied').length;
-      const availableUnits = rentalUnits.filter((unit: { status: string }) => unit.status === 'available').length;
-      
-      setStats({
-        totalProperties: properties.length,
-        totalTenants: tenants.length,
-        totalRentalUnits: rentalUnits.length,
-        occupiedUnits,
-        availableUnits,
-        monthlyRevenue: 0, // Payments API is not working, set to 0
-        maintenanceRequests: 0
-      });
+      if (statsRes.data?.success && statsRes.data?.statistics) {
+        const statsData = statsRes.data.statistics;
+        setStats({
+          totalProperties: statsData.total_properties || 0,
+          totalTenants: statsData.total_tenants || 0,
+          totalRentalUnits: statsData.total_rental_units || 0,
+          occupiedUnits: statsData.occupied_units || 0,
+          availableUnits: statsData.available_units || 0,
+          monthlyRevenue: statsData.total_revenue || 0,
+          maintenanceRequests: statsData.maintenance_requests || 0
+        });
+      } else {
+        // Fallback if statistics endpoint fails
+        setStats({
+          totalProperties: 0,
+          totalTenants: 0,
+          totalRentalUnits: 0,
+          occupiedUnits: 0,
+          availableUnits: 0,
+          monthlyRevenue: 0,
+          maintenanceRequests: 0
+        });
+      }
 
       // Fetch reminder logs
       try {

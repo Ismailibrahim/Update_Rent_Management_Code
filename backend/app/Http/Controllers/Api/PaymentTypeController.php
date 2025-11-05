@@ -31,11 +31,22 @@ class PaymentTypeController extends Controller
                 $query->where('is_active', $request->get('status') === 'active');
             }
             
-            $paymentTypes = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $paymentTypes = $query->orderBy('created_at', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
             
             return response()->json([
                 'success' => true,
-                'payment_types' => $paymentTypes
+                'payment_types' => $paymentTypes->items(),
+                'pagination' => [
+                    'current_page' => $paymentTypes->currentPage(),
+                    'last_page' => $paymentTypes->lastPage(),
+                    'per_page' => $paymentTypes->perPage(),
+                    'total' => $paymentTypes->total(),
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([

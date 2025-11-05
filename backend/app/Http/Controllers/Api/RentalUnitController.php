@@ -183,7 +183,7 @@ class RentalUnitController extends Controller
                 ], 400);
             }
 
-            // Check for duplicate access card numbers
+            // Check for duplicate access card numbers - optimized with database queries
             if (isset($requestData['access_card_numbers']) && !empty($requestData['access_card_numbers'])) {
                 $inputCards = $requestData['access_card_numbers'];
                 // Parse comma-separated card numbers
@@ -193,33 +193,28 @@ class RentalUnitController extends Controller
                 });
                 
                 if (!empty($cardNumbers)) {
-                    // Load all existing rental units with card numbers once
-                    $existingUnits = RentalUnit::whereNotNull('access_card_numbers')
-                        ->where('access_card_numbers', '!=', '')
-                        ->with('property')
-                        ->get();
-                    
-                    // Check each input card number for duplicates
+                    // Use database query instead of nested loops - much more efficient
                     foreach ($cardNumbers as $cardNumber) {
-                        foreach ($existingUnits as $existingUnit) {
-                            if ($existingUnit->access_card_numbers) {
-                                $existingCards = array_map('trim', explode(',', $existingUnit->access_card_numbers));
-                                $existingCards = array_filter($existingCards, function($card) {
-                                    return !empty($card);
-                                });
-                                
-                                if (in_array($cardNumber, $existingCards)) {
-                                    $propertyName = isset($existingUnit->property) && isset($existingUnit->property->name)
-                                        ? $existingUnit->property->name
-                                        : 'Unknown Property';
-                                    return response()->json([
-                                        'message' => 'Validation failed',
-                                        'errors' => [
-                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$propertyName}"]
-                                        ]
-                                    ], 400);
-                                }
-                            }
+                        // Check if card number exists in any rental unit using FIND_IN_SET or LIKE
+                        $existingUnit = RentalUnit::whereNotNull('access_card_numbers')
+                            ->where('access_card_numbers', '!=', '')
+                            ->where(function($query) use ($cardNumber) {
+                                $query->whereRaw('FIND_IN_SET(?, access_card_numbers)', [$cardNumber])
+                                      ->orWhere('access_card_numbers', 'like', "{$cardNumber},%")
+                                      ->orWhere('access_card_numbers', 'like', "%,{$cardNumber},%")
+                                      ->orWhere('access_card_numbers', 'like', "%,{$cardNumber}");
+                            })
+                            ->with('property:id,name')
+                            ->first();
+                        
+                        if ($existingUnit) {
+                            $propertyName = $existingUnit->property?->name ?? 'Unknown Property';
+                            return response()->json([
+                                'message' => 'Validation failed',
+                                'errors' => [
+                                    'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$propertyName}"]
+                                ]
+                            ], 400);
                         }
                     }
                 }
@@ -782,7 +777,7 @@ class RentalUnitController extends Controller
                 }
             }
             
-            // Check for duplicate access card numbers (excluding current rental unit)
+            // Check for duplicate access card numbers (excluding current rental unit) - optimized
             if (isset($updateData['access_card_numbers']) && !empty($updateData['access_card_numbers'])) {
                 $inputCards = $updateData['access_card_numbers'];
                 // Parse comma-separated card numbers
@@ -792,34 +787,29 @@ class RentalUnitController extends Controller
                 });
                 
                 if (!empty($cardNumbers)) {
-                    // Load all existing rental units with card numbers once (excluding current unit)
-                    $existingUnits = RentalUnit::whereNotNull('access_card_numbers')
-                        ->where('access_card_numbers', '!=', '')
-                        ->where('id', '!=', $rentalUnit->id) // Exclude current unit
-                        ->with('property')
-                        ->get();
-                    
-                    // Check each input card number for duplicates
+                    // Use database query instead of nested loops - much more efficient
                     foreach ($cardNumbers as $cardNumber) {
-                        foreach ($existingUnits as $existingUnit) {
-                            if ($existingUnit->access_card_numbers) {
-                                $existingCards = array_map('trim', explode(',', $existingUnit->access_card_numbers));
-                                $existingCards = array_filter($existingCards, function($card) {
-                                    return !empty($card);
-                                });
-                                
-                                if (in_array($cardNumber, $existingCards)) {
-                                    $propertyName = isset($existingUnit->property) && isset($existingUnit->property->name)
-                                        ? $existingUnit->property->name
-                                        : 'Unknown Property';
-                                    return response()->json([
-                                        'message' => 'Validation failed',
-                                        'errors' => [
-                                            'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$propertyName}"]
-                                        ]
-                                    ], 400);
-                                }
-                            }
+                        // Check if card number exists in any rental unit (excluding current) using FIND_IN_SET or LIKE
+                        $existingUnit = RentalUnit::whereNotNull('access_card_numbers')
+                            ->where('access_card_numbers', '!=', '')
+                            ->where('id', '!=', $rentalUnit->id) // Exclude current unit
+                            ->where(function($query) use ($cardNumber) {
+                                $query->whereRaw('FIND_IN_SET(?, access_card_numbers)', [$cardNumber])
+                                      ->orWhere('access_card_numbers', 'like', "{$cardNumber},%")
+                                      ->orWhere('access_card_numbers', 'like', "%,{$cardNumber},%")
+                                      ->orWhere('access_card_numbers', 'like', "%,{$cardNumber}");
+                            })
+                            ->with('property:id,name')
+                            ->first();
+                        
+                        if ($existingUnit) {
+                            $propertyName = $existingUnit->property?->name ?? 'Unknown Property';
+                            return response()->json([
+                                'message' => 'Validation failed',
+                                'errors' => [
+                                    'access_card_numbers' => ["Access card number '{$cardNumber}' is already assigned to Unit {$existingUnit->unit_number} at {$propertyName}"]
+                                ]
+                            ], 400);
                         }
                     }
                 }

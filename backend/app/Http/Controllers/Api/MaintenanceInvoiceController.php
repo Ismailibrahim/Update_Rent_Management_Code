@@ -53,11 +53,22 @@ class MaintenanceInvoiceController extends Controller
                 $query->where('rental_unit_id', $request->get('rental_unit_id'));
             }
 
-            $maintenanceInvoices = $query->orderBy('created_at', 'desc')->get();
+            // Use pagination instead of loading all records
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $maintenanceInvoices = $query->orderBy('created_at', 'desc')
+                ->paginate($perPage, ['*'], 'page', $page);
 
             return response()->json([
                 'success' => true,
-                'maintenance_invoices' => $maintenanceInvoices
+                'maintenance_invoices' => $maintenanceInvoices->items(),
+                'pagination' => [
+                    'current_page' => $maintenanceInvoices->currentPage(),
+                    'last_page' => $maintenanceInvoices->lastPage(),
+                    'per_page' => $maintenanceInvoices->perPage(),
+                    'total' => $maintenanceInvoices->total(),
+                ]
             ]);
         } catch (\Exception $e) {
             return response()->json([
