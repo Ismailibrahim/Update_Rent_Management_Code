@@ -420,7 +420,31 @@ export default function PropertyDetailsPage() {
   const totalUnits = rentalUnits.length;
   const occupiedCount = occupiedUnits.length;
   const vacantCount = vacantUnits.length;
-  const totalMonthlyRent = occupiedUnits.reduce((sum, unit) => sum + (unit?.rent_amount || 0), 0);
+  
+  // Calculate total monthly rent - only sum units with valid rent amounts
+  const totalMonthlyRent = occupiedUnits
+    .filter(u => u?.rent_amount && u.rent_amount > 0)
+    .reduce((sum, unit) => {
+      const rentAmount = parseFloat(String(unit.rent_amount || 0));
+      return sum + (isNaN(rentAmount) ? 0 : rentAmount);
+    }, 0);
+  
+  // Get currency - if all units have same currency, use it; otherwise show breakdown
+  const currencies = [...new Set(occupiedUnits.map(u => u?.currency || 'MVR').filter(Boolean))];
+  const primaryCurrency = currencies.length === 1 ? currencies[0] : 'MVR';
+  
+  // Calculate rent by currency if multiple currencies exist
+  const rentByCurrency = occupiedUnits
+    .filter(u => u?.rent_amount && u.rent_amount > 0)
+    .reduce((acc, unit) => {
+      const currency = unit.currency || 'MVR';
+      const rentAmount = parseFloat(String(unit.rent_amount || 0));
+      if (!isNaN(rentAmount)) {
+        acc[currency] = (acc[currency] || 0) + rentAmount;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+  
   const openMaintenanceCount = (maintenanceRequests || []).filter(m => m && ['open', 'in_progress'].includes(m.status)).length;
   
   // Get all tenants (for multiple units)
@@ -626,9 +650,32 @@ export default function PropertyDetailsPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-gray-900">
-                    {occupiedUnits.length > 0 && occupiedUnits[0]?.currency ? occupiedUnits[0].currency : 'MVR'} {totalMonthlyRent.toLocaleString()}
+                    {occupiedUnits.filter(u => u?.rent_amount && u.rent_amount > 0).length > 0 ? (
+                      currencies.length === 1 ? (
+                        <>
+                          {primaryCurrency} {totalMonthlyRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </>
+                      ) : (
+                        <div className="space-y-1">
+                          {Object.entries(rentByCurrency).map(([currency, amount]) => (
+                            <div key={currency} className="text-lg">
+                              {currency} {amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">{occupiedUnits.length} occupied unit(s)</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {occupiedUnits.filter(u => u?.rent_amount && u.rent_amount > 0).length} unit(s) with rent
+                    {occupiedUnits.length > occupiedUnits.filter(u => u?.rent_amount && u.rent_amount > 0).length && (
+                      <span className="text-orange-600 ml-1">
+                        ({occupiedUnits.length - occupiedUnits.filter(u => u?.rent_amount && u.rent_amount > 0).length} without rent amount)
+                      </span>
+                    )}
+                  </p>
                 </CardContent>
               </Card>
 
