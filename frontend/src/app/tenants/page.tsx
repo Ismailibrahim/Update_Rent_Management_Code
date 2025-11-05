@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ResponsiveTable } from '../../components/Responsive/ResponsiveTable';
 
 interface RentalUnit {
   id: number;
@@ -167,14 +168,14 @@ export default function TenantsPage() {
     <SidebarLayout>
       <div className="space-y-8">
         {/* Page Header */}
-        <div className="mb-8 flex justify-between items-center">
+        <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Tenants</h1>
-            <p className="mt-2 text-gray-600">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Tenants</h1>
+            <p className="mt-2 text-sm sm:text-base text-gray-600">
               Manage your tenants and lease information
             </p>
           </div>
-          <Button onClick={handleAddTenant} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+          <Button onClick={handleAddTenant} className="flex items-center w-full sm:w-auto gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
             <Plus className="h-4 w-4" />
             Add Tenant
           </Button>
@@ -233,187 +234,186 @@ export default function TenantsPage() {
           />
         </div>
 
-        {/* Tenants Table */}
+        {/* Tenants Table - Responsive: Table on desktop, Cards on mobile */}
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
         ) : (
-          <Card className="bg-white border border-gray-200">
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Tenant
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Contact
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Rental Units
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Total Rent
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Lease Period
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredTenants.map((tenant) => (
-                      <tr key={tenant.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
-                              {tenant.tenant_type === 'company' ? tenant.company_name : `${tenant.first_name} ${tenant.last_name}`}
-                            </div>
-                            {tenant.tenant_type !== 'company' && (
-                              <div className="text-sm text-gray-500">
-                                ID: {tenant.national_id || 'N/A'}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            tenant.tenant_type === 'company' 
-                              ? 'bg-blue-100 text-blue-800' 
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {tenant.tenant_type === 'company' ? 'Company' : 'Individual'}
+          <ResponsiveTable
+            data={filteredTenants}
+            keyExtractor={(tenant) => tenant.id}
+            columns={[
+              {
+                header: 'Tenant',
+                accessor: (tenant) => (
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">
+                      {tenant.tenant_type === 'company' ? tenant.company_name : `${tenant.first_name} ${tenant.last_name}`}
+                    </div>
+                    {tenant.tenant_type !== 'company' && (
+                      <div className="text-sm text-gray-500">
+                        ID: {tenant.national_id || 'N/A'}
+                      </div>
+                    )}
+                  </div>
+                ),
+                mobileLabel: 'Tenant',
+                mobilePriority: 'high',
+              },
+              {
+                header: 'Type',
+                accessor: (tenant) => (
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    tenant.tenant_type === 'company' 
+                      ? 'bg-blue-100 text-blue-800' 
+                      : 'bg-green-100 text-green-800'
+                  }`}>
+                    {tenant.tenant_type === 'company' ? 'Company' : 'Individual'}
+                  </span>
+                ),
+                mobileLabel: 'Type',
+                mobilePriority: 'high',
+                className: 'w-32',
+              },
+              {
+                header: 'Contact',
+                accessor: (tenant) => (
+                  <div className="space-y-1">
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                      {tenant.email}
+                    </div>
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Phone className="h-4 w-4 mr-2 text-gray-400" />
+                      {tenant.phone}
+                    </div>
+                  </div>
+                ),
+                mobileLabel: 'Contact',
+                mobilePriority: 'high',
+              },
+              {
+                header: 'Rental Units',
+                accessor: (tenant) => (
+                  tenant.rental_units && tenant.rental_units.length > 0 ? (
+                    <div className="space-y-1">
+                      {tenant.rental_units.map((unit) => (
+                        <div key={unit.id} className="flex items-center text-sm">
+                          <Building className="h-4 w-4 mr-2 text-blue-500" />
+                          <span className="text-gray-600">
+                            {unit.property.name} - Unit {unit.unit_number}
                           </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="space-y-1">
-                            <div className="flex items-center text-sm text-gray-600">
-                              <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                              {tenant.email}
-                            </div>
-                            <div className="flex items-center text-sm text-gray-600">
-                              <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                              {tenant.phone}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {tenant.rental_units && tenant.rental_units.length > 0 ? (
-                            <div className="space-y-1">
-                              {tenant.rental_units.map((unit) => (
-                                <div key={unit.id} className="flex items-center text-sm">
-                                  <Building className="h-4 w-4 mr-2 text-blue-500" />
-                                  <span className="text-gray-600">
-                                    {unit.property.name} - Unit {unit.unit_number}
-                                  </span>
-                                </div>
-                              ))}
-                              <div className="text-xs text-gray-500 mt-1">
-                                {tenant.rental_units.length} unit{tenant.rental_units.length > 1 ? 's' : ''}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">No units</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {tenant.rental_units && tenant.rental_units.length > 0 ? (
-                            <div className="flex items-center">
-                              <span className="text-sm font-medium text-green-600">
-                                {formatCurrency(calculateTotalRent(tenant.rental_units), tenant.rental_units[0]?.currency)}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {tenant.lease_start_date || tenant.lease_end_date ? (
-                            <div className="text-sm text-gray-600">
-                              {tenant.lease_start_date && (
-                                <div className="flex items-center">
-                                  <span className="text-xs text-gray-500 mr-1">From:</span>
-                                  <span>{new Date(tenant.lease_start_date).toLocaleDateString()}</span>
-                                </div>
-                              )}
-                              {tenant.lease_end_date && (
-                                <div className="flex items-center">
-                                  <span className="text-xs text-gray-500 mr-1">To:</span>
-                                  <span>{new Date(tenant.lease_end_date).toLocaleDateString()}</span>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-400">Not set</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            tenant.status === 'active' 
-                              ? 'bg-green-100 text-green-800' 
-                              : tenant.status === 'inactive'
-                              ? 'bg-gray-100 text-gray-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {tenant.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Link 
-                              href={`/tenants/${tenant.id}`}
-                              prefetch={true}
-                              className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                              title="View Details"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                            <Link 
-                              href={`/tenants/${tenant.id}/edit`}
-                              prefetch={true}
-                              className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                              title="Edit Tenant"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Link>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleDeleteTenant(tenant.id)}
-                              className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                              title="Delete Tenant"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {!loading && filteredTenants.length === 0 && (
-          <div className="text-center py-12">
-            <Users className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No tenants found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first tenant.'}
-            </p>
-          </div>
+                        </div>
+                      ))}
+                      <div className="text-xs text-gray-500 mt-1">
+                        {tenant.rental_units.length} unit{tenant.rental_units.length > 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">No units</span>
+                  )
+                ),
+                mobileLabel: 'Rental Units',
+                mobilePriority: 'high',
+              },
+              {
+                header: 'Total Rent',
+                accessor: (tenant) => (
+                  tenant.rental_units && tenant.rental_units.length > 0 ? (
+                    <div className="flex items-center">
+                      <span className="text-sm font-medium text-green-600">
+                        {formatCurrency(calculateTotalRent(tenant.rental_units), tenant.rental_units[0]?.currency)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">-</span>
+                  )
+                ),
+                mobileLabel: 'Total Rent',
+                mobilePriority: 'high',
+              },
+              {
+                header: 'Lease Period',
+                accessor: (tenant) => (
+                  tenant.lease_start_date || tenant.lease_end_date ? (
+                    <div className="text-sm text-gray-600">
+                      {tenant.lease_start_date && (
+                        <div className="flex items-center">
+                          <span className="text-xs text-gray-500 mr-1">From:</span>
+                          <span>{new Date(tenant.lease_start_date).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                      {tenant.lease_end_date && (
+                        <div className="flex items-center">
+                          <span className="text-xs text-gray-500 mr-1">To:</span>
+                          <span>{new Date(tenant.lease_end_date).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">Not set</span>
+                  )
+                ),
+                mobileLabel: 'Lease Period',
+                mobilePriority: 'medium',
+              },
+              {
+                header: 'Status',
+                accessor: (tenant) => (
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    tenant.status === 'active' 
+                      ? 'bg-green-100 text-green-800' 
+                      : tenant.status === 'inactive'
+                      ? 'bg-gray-100 text-gray-800'
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {tenant.status}
+                  </span>
+                ),
+                mobileLabel: 'Status',
+                mobilePriority: 'high',
+                className: 'w-24',
+              },
+            ]}
+            actions={(tenant) => (
+              <>
+                <Link 
+                  href={`/tenants/${tenant.id}`}
+                  prefetch={true}
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="View Details"
+                >
+                  <Eye className="h-4 w-4" />
+                </Link>
+                <Link 
+                  href={`/tenants/${tenant.id}/edit`}
+                  prefetch={true}
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="Edit Tenant"
+                >
+                  <Edit className="h-4 w-4" />
+                </Link>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => handleDeleteTenant(tenant.id)}
+                  className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                  title="Delete Tenant"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first tenant.'}
+            emptyIcon={<Users className="mx-auto h-12 w-12 text-gray-400" />}
+            emptyAction={!searchTerm ? (
+              <Button onClick={handleAddTenant}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Tenant
+              </Button>
+            ) : undefined}
+          />
         )}
       </div>
     </SidebarLayout>
