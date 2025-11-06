@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
@@ -74,8 +74,6 @@ const navigationGroups: NavigationGroup[] = [
         { name: 'Rent Invoices', href: '/rent-invoices', icon: Receipt },
       { name: 'Tenant Ledger', href: '/tenant-ledger', icon: BookOpen },
       { name: 'Tenant Balances', href: '/tenant-balances', icon: Calculator },
-      { name: 'Payment Types', href: '/payment-types', icon: CreditCard },
-      { name: 'Payment Modes', href: '/payment-modes', icon: CreditCard },
       { name: 'Payment Records', href: '/payment-records', icon: FileText },
     ]
   },
@@ -111,6 +109,8 @@ const navigationGroups: NavigationGroup[] = [
       { name: 'Nationalities', href: '/nationalities', icon: Globe },
       { name: 'Assets', href: '/assets', icon: Package },
       { name: 'Currencies', href: '/currencies', icon: Coins },
+      { name: 'Payment Types', href: '/payment-types', icon: CreditCard },
+      { name: 'Payment Modes', href: '/payment-modes', icon: CreditCard },
     ]
   },
   {
@@ -118,6 +118,8 @@ const navigationGroups: NavigationGroup[] = [
     icon: Settings,
     items: [
       { name: 'Settings', href: '/settings', icon: Settings },
+      { name: 'Bulk Tenants', href: '/settings/bulk-tenants', icon: Users },
+      { name: 'Bulk Assets', href: '/settings/bulk-assets', icon: Package },
       { name: 'Invoice Templates', href: '/settings/invoice-templates', icon: Layout },
       { name: 'SMS Templates', href: '/sms/templates', icon: MessageSquare },
       { name: 'SMS Settings', href: '/sms/settings', icon: Settings },
@@ -133,43 +135,84 @@ export default function SidebarLayout({ children }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
-  // Auto-expand groups that contain the active link
+  // Memoize active item check function
+  const isItemActive = useCallback((itemHref: string) => {
+    // Exact match for the route
+    if (pathname === itemHref) {
+      return true;
+    }
+    // For nested routes, check if pathname starts with item.href + '/'
+    // This prevents /settings from matching /sms/settings
+    if (pathname.startsWith(itemHref + '/')) {
+      return true;
+    }
+    return false;
+  }, [pathname]);
+
+  // Memoize which groups contain active items
+  const groupsWithActiveItems = useMemo(() => {
+    const groups = new Set<string>();
+    navigationGroups.forEach(group => {
+      const hasActiveItem = group.items.some(item => isItemActive(item.href));
+      if (hasActiveItem) {
+        groups.add(group.name);
+      }
+    });
+    return groups;
+  }, [pathname, isItemActive]);
+
+  // Auto-expand groups that contain the active link (optimized to prevent unnecessary updates)
   useEffect(() => {
     setExpandedGroups(prevExpandedGroups => {
+      // Check if we need to update
+      let needsUpdate = false;
       const newExpandedGroups = new Set(prevExpandedGroups);
       
-      // Find which group contains the current active link
-      // Use exact match to prevent /settings from matching /sms/settings
-      navigationGroups.forEach(group => {
-        const hasActiveItem = group.items.some(item => {
-          // Exact match for the route
-          if (pathname === item.href) {
-            return true;
-          }
-          // For nested routes, check if pathname starts with item.href and is followed by / or end of string
-          if (pathname.startsWith(item.href + '/')) {
-            return true;
-          }
-          return false;
-        });
-        if (hasActiveItem) {
-          newExpandedGroups.add(group.name);
+      // Add groups with active items
+      groupsWithActiveItems.forEach(groupName => {
+        if (!newExpandedGroups.has(groupName)) {
+          newExpandedGroups.add(groupName);
+          needsUpdate = true;
         }
       });
       
-      return newExpandedGroups;
+      // Only update if something changed
+      if (needsUpdate) {
+        return newExpandedGroups;
+      }
+      
+      return prevExpandedGroups;
     });
-  }, [pathname]);
+  }, [groupsWithActiveItems]);
 
-  const toggleGroup = (groupName: string) => {
-    const newExpandedGroups = new Set(expandedGroups);
-    if (newExpandedGroups.has(groupName)) {
-      newExpandedGroups.delete(groupName);
-    } else {
-      newExpandedGroups.add(groupName);
-    }
-    setExpandedGroups(newExpandedGroups);
-  };
+  // Handle link click - expand group immediately (let Next.js Link handle navigation)
+  const handleLinkClick = useCallback((groupName: string) => {
+    // Expand the group immediately (synchronous state update for instant UI feedback)
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      newSet.add(groupName);
+      return newSet;
+    });
+    
+    // Close mobile sidebar
+    setSidebarOpen(false);
+    
+    // Let Next.js Link handle navigation - it's already optimized with prefetching
+  }, []);
+
+  const toggleGroup = useCallback((groupName: string, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupName)) {
+        newSet.delete(groupName);
+      } else {
+        newSet.add(groupName);
+      }
+      return newSet;
+    });
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-100">
@@ -210,13 +253,15 @@ export default function SidebarLayout({ children }: SidebarProps) {
                 href="/dashboard"
                 prefetch={true}
                 className={`
-                  flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors
-                  ${pathname === '/dashboard'
+                  flex items-center px-3 py-3 text-sm font-medium rounded-lg transition-colors cursor-pointer
+                  ${isItemActive('/dashboard')
                     ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-700'
                     : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                   }
                 `}
-                onClick={() => setSidebarOpen(false)}
+                onClick={() => {
+                  setSidebarOpen(false);
+                }}
               >
                 <Home className="h-5 w-5 mr-3" />
                 Dashboard
@@ -226,23 +271,13 @@ export default function SidebarLayout({ children }: SidebarProps) {
             {/* Grouped Navigation */}
             {navigationGroups.map((group) => {
               const isExpanded = expandedGroups.has(group.name);
-              const hasActiveItem = group.items.some(item => {
-                // Exact match for the route
-                if (pathname === item.href) {
-                  return true;
-                }
-                // For nested routes, check if pathname starts with item.href and is followed by / or end of string
-                if (pathname.startsWith(item.href + '/')) {
-                  return true;
-                }
-                return false;
-              });
+              const hasActiveItem = groupsWithActiveItems.has(group.name);
               
               return (
                 <div key={group.name} className="space-y-1">
                   {/* Group Header */}
                   <button
-                    onClick={() => toggleGroup(group.name)}
+                    onClick={(e) => toggleGroup(group.name, e)}
                     className={`
                       w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg transition-colors
                       ${hasActiveItem
@@ -266,25 +301,23 @@ export default function SidebarLayout({ children }: SidebarProps) {
                   {isExpanded && (
                     <div className="ml-4 space-y-1">
                       {group.items.map((item) => {
-                        // Exact match for the route
-                        const isExactMatch = pathname === item.href;
-                        // For nested routes, check if pathname starts with item.href + '/'
-                        // This prevents /settings from matching /sms/settings
-                        const isNestedMatch = pathname.startsWith(item.href + '/');
-                        const isActive = isExactMatch || isNestedMatch;
+                        const isActive = isItemActive(item.href);
                         return (
                           <Link
                             key={item.name}
                             href={item.href}
                             prefetch={true}
                             className={`
-                              flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors
+                              flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer
                               ${isActive
                                 ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-700'
                                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                               }
                             `}
-                            onClick={() => setSidebarOpen(false)}
+                            onClick={() => {
+                              // Expand group and close sidebar immediately
+                              handleLinkClick(group.name);
+                            }}
                           >
                             <item.icon className="h-4 w-4 mr-3" />
                             {item.name}

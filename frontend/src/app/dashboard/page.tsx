@@ -40,12 +40,15 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    // Only fetch data if user is authenticated
-    if (!authLoading && user) {
-      fetchDashboardData();
-    } else if (!authLoading && !user) {
+    // Don't block rendering - handle auth in background
+    if (!authLoading && !user) {
       setLoading(false);
       setError('Please log in to view dashboard data');
+      return;
+    }
+    // Fetch data immediately when user is available (only if not already loading)
+    if (user && !authLoading) {
+      fetchDashboardData();
     }
   }, [user, authLoading]);
 

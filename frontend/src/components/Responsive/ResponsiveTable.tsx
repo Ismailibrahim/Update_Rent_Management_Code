@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Card, CardContent } from '../UI/Card';
 import { Button } from '../UI/Button';
 
@@ -67,8 +67,11 @@ export function ResponsiveTable<T extends Record<string, any>>({
     return row[accessor] ?? '-';
   };
 
-  // Filter columns for mobile (hide low priority columns on very small screens)
-  const mobileColumns = columns.filter(col => col.mobilePriority !== 'low');
+  // Memoize filtered columns for mobile (hide low priority columns on very small screens)
+  const mobileColumns = useMemo(() => 
+    columns.filter(col => col.mobilePriority !== 'low'),
+    [columns]
+  );
 
   return (
     <div className={className}>

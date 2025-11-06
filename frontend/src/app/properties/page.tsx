@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/UI/Button';
 import { Input } from '@/components/UI/Input';
-import { Building2, Plus, Search, Edit, Trash2, Eye, ArrowUp, ArrowDown } from 'lucide-react';
+import { Building2, Plus, Search, Edit, Trash2, Eye, ArrowUp, ArrowDown, Filter } from 'lucide-react';
 import { propertiesAPI } from '@/services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '@/components/Layout/SidebarLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { ResponsiveTable } from '@/components/Responsive/ResponsiveTable';
+import { Select } from '@/components/UI/Select';
 
 interface Property {
   id: number;
@@ -22,6 +23,7 @@ interface Property {
   number_of_rental_units: number;
   created_at: string;
   updated_at: string;
+  rental_units?: Array<{ id: number; property_id: number; unit_number: string; status: string; tenant_id?: number }>;
 }
 
 export default function PropertiesPage() {
@@ -30,6 +32,7 @@ export default function PropertiesPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [rentalUnitsFilter, setRentalUnitsFilter] = useState<'all' | 'with_units' | 'without_units'>('all');
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -38,16 +41,18 @@ export default function PropertiesPage() {
   const perPage = 15;
 
   useEffect(() => {
+    // Don't block rendering - redirect in background
     if (!authLoading && !user) {
       router.push('/login');
       return;
     }
-    if (user) {
+    // Fetch data immediately when user is available
+    if (user && !loading) {
       fetchProperties(1);
     }
   }, [user, authLoading, router]);
 
-  // Debounce search
+  // Debounce search and refetch when filter changes
   useEffect(() => {
     if (!user || authLoading) return;
     
@@ -56,66 +61,105 @@ export default function PropertiesPage() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchTerm]);
+  }, [searchTerm, rentalUnitsFilter]);
 
   const fetchProperties = async (page: number = currentPage) => {
     try {
       setLoading(true);
+      // When filtering by rental units, fetch all properties to filter properly
+      // Otherwise, use pagination
+      const shouldFetchAll = rentalUnitsFilter !== 'all';
       const response = await propertiesAPI.getAll({
-        page,
-        limit: perPage,
+        page: shouldFetchAll ? 1 : page,
+        limit: shouldFetchAll ? 1000 : perPage, // Fetch up to 1000 properties when filtering
         ...(searchTerm && { search: searchTerm })
       });
       setProperties(response.data.properties || []);
       
       // Update pagination info
       if (response.data.pagination) {
-        setCurrentPage(response.data.pagination.current || page);
-        setTotalPages(response.data.pagination.pages || 1);
-        setTotal(response.data.pagination.total || 0);
+        setCurrentPage(shouldFetchAll ? 1 : (response.data.pagination.current || page));
+        setTotalPages(shouldFetchAll ? 1 : (response.data.pagination.pages || 1));
+        setTotal(shouldFetchAll ? response.data.properties?.length || 0 : (response.data.pagination.total || 0));
       }
     } catch (error: unknown) {
       console.error('Error fetching properties:', error);
       
       // More detailed error handling
       let errorMessage = 'Failed to fetch properties';
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as { response?: { status?: number; data?: { message?: string; error?: string } } };
-        // Server responded with error
-        const status = axiosError.response?.status;
-        const message = axiosError.response?.data?.message || axiosError.response?.data?.error || errorMessage;
+      
+      // Check if it's an Axios error
+      if (error && typeof error === 'object') {
+        const axiosError = error as { 
+          response?: { status?: number; data?: { message?: string; error?: string } };
+          request?: unknown;
+          message?: string;
+          code?: string;
+          config?: { url?: string; baseURL?: string; timeout?: number };
+        };
         
-        if (status === 401) {
-          errorMessage = 'Authentication required. Please log in again.';
-        } else if (status === 403) {
-          errorMessage = 'Access denied. You don\'t have permission to view properties.';
-        } else if (status === 500) {
-          errorMessage = 'Server error. Please try again later.';
-        } else {
-          errorMessage = message;
+        // Server responded with error status
+        if (axiosError.response) {
+          const status = axiosError.response.status;
+          const message = axiosError.response.data?.message || axiosError.response.data?.error || errorMessage;
+          
+          if (status === 401) {
+            errorMessage = 'Authentication required. Please log in again.';
+          } else if (status === 403) {
+            errorMessage = 'Access denied. You don\'t have permission to view properties.';
+          } else if (status === 500) {
+            errorMessage = 'Server error. Please try again later.';
+          } else {
+            errorMessage = message;
+          }
+        } 
+        // Network error - request was made but no response received
+        else if (axiosError.request || axiosError.message === 'Network Error' || axiosError.code === 'ECONNABORTED' || axiosError.code === 'ERR_NETWORK') {
+          const baseURL = axiosError.config?.baseURL || 'Unknown';
+          const url = axiosError.config?.url || 'Unknown';
+          errorMessage = `Network error: Unable to connect to backend API at ${baseURL}${url}. Please ensure the backend server is running.`;
+          console.error('Network error details:', {
+            message: axiosError.message,
+            code: axiosError.code,
+            url: url,
+            baseURL: baseURL,
+            timeout: axiosError.config?.timeout
+          });
+        } 
+        // Other axios errors
+        else if (axiosError.message) {
+          errorMessage = axiosError.message;
         }
-      } else if (error && typeof error === 'object' && 'request' in error) {
-        // Request made but no response (network error)
-        const requestError = error as { config?: { url?: string; baseURL?: string; timeout?: number } };
-        errorMessage = 'Network error. Please check your connection and ensure the backend API is running.';
-        console.error('Network error details:', {
-          url: requestError.config?.url,
-          baseURL: requestError.config?.baseURL,
-          timeout: requestError.config?.timeout
-        });
-      } else if (error instanceof Error) {
-        // Error setting up request
+      } 
+      // Standard Error object
+      else if (error instanceof Error) {
         errorMessage = error.message || errorMessage;
       }
       
-      toast.error(errorMessage);
+      toast.error(errorMessage, { duration: 5000 });
     } finally {
       setLoading(false);
     }
   };
 
-  // Filter is now handled server-side, but keep client-side filtering for local sorting
-  const filteredProperties = properties;
+  // Filter properties based on rental units filter
+  const filteredProperties = properties.filter((property) => {
+    if (rentalUnitsFilter === 'all') {
+      return true;
+    }
+    
+    const hasRentalUnits = property.rental_units && property.rental_units.length > 0;
+    
+    if (rentalUnitsFilter === 'with_units') {
+      return hasRentalUnits;
+    }
+    
+    if (rentalUnitsFilter === 'without_units') {
+      return !hasRentalUnits;
+    }
+    
+    return true;
+  });
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -199,13 +243,48 @@ export default function PropertiesPage() {
   };
 
   const handleDeleteProperty = async (id: number) => {
+    // Validate ID
+    if (!id || isNaN(id) || id <= 0) {
+      console.error('Invalid property ID:', id);
+      toast.error('Invalid property ID. Please try refreshing the page.');
+      return;
+    }
+
     if (!confirm('Are you sure you want to delete this property?')) return;
+    
+    // Optimistically remove from UI
+    const previousProperties = [...properties];
+    setProperties(prev => prev.filter(p => p.id !== id));
     
     try {
       await propertiesAPI.delete(id);
       toast.success('Property deleted successfully');
-      fetchProperties(currentPage);
+      
+      // Update pagination and totals if needed
+      const remainingProperties = previousProperties.filter(p => p.id !== id);
+      
+      if (remainingProperties.length === 0 && currentPage > 1) {
+        // If we deleted the last item on the page, go to previous page
+        const newPage = Math.max(1, currentPage - 1);
+        setCurrentPage(newPage);
+        fetchProperties(newPage);
+      } else if (rentalUnitsFilter !== 'all') {
+        // If filtering, we need to refetch to get accurate filtered count
+        // But we can update the filtered list optimistically too
+        const newFiltered = filteredProperties.filter(p => p.id !== id);
+        if (newFiltered.length !== filteredProperties.length - 1) {
+          // If counts don't match, refetch to be safe
+          fetchProperties(1);
+        }
+      } else {
+        // Update total count
+        setTotal(prev => Math.max(0, prev - 1));
+      }
+      // No need to refetch - we already removed it from the list optimistically
     } catch (error: unknown) {
+      // Restore previous state on error
+      setProperties(previousProperties);
+      
       console.error('Error deleting property:', error);
       
       let errorMessage = 'Failed to delete property';
@@ -216,7 +295,7 @@ export default function PropertiesPage() {
             data?: { 
               message?: string; 
               error?: string; 
-            } 
+            };
           } 
         };
         const status = axiosError.response?.status;
@@ -227,7 +306,7 @@ export default function PropertiesPage() {
         } else if (status === 403) {
           errorMessage = 'Access denied. You don\'t have permission to delete this property.';
         } else if (status === 404) {
-          errorMessage = 'Property not found.';
+          errorMessage = message || `Property with ID ${id} not found. It may have already been deleted.`;
         } else if (status === 400) {
           errorMessage = message || 'Cannot delete property. It may have associated rental units or other dependencies.';
         } else if (status === 409) {
@@ -238,6 +317,9 @@ export default function PropertiesPage() {
       }
       
       toast.error(errorMessage);
+      
+      // Only refetch on error to ensure we have the latest data
+      fetchProperties(currentPage);
     }
   };
 
@@ -286,15 +368,29 @@ export default function PropertiesPage() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-          <Input
-            placeholder="Search properties by name, address, or island..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-12 pr-4 py-2.5 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg shadow-sm transition-all duration-200"
-          />
+        {/* Search and Filters */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+            <Input
+              placeholder="Search properties by name, address, or island..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-12 pr-4 py-2.5 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg shadow-sm transition-all duration-200"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="h-5 w-5 text-gray-400 hidden sm:block" />
+            <Select
+              value={rentalUnitsFilter}
+              onChange={(e) => setRentalUnitsFilter(e.target.value as 'all' | 'with_units' | 'without_units')}
+              className="w-full sm:w-64 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg shadow-sm"
+            >
+              <option value="all">All Properties</option>
+              <option value="with_units">With Rental Units</option>
+              <option value="without_units">Without Rental Units</option>
+            </Select>
+          </div>
         </div>
 
         {/* Properties Table - Responsive: Table on desktop, Cards on mobile */}
@@ -370,50 +466,76 @@ export default function PropertiesPage() {
                 mobilePriority: 'high',
               },
             ]}
-            actions={(property) => (
-              <>
-                <Link 
-                  href={`/properties/${property.id}`}
-                  prefetch={true}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                  title="View Property"
-                >
-                  <Eye className="h-4 w-4" />
-                </Link>
-                <Link 
-                  href={`/properties/${property.id}/edit`}
-                  prefetch={true}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                  title="Edit Property"
-                >
-                  <Edit className="h-4 w-4" />
-                </Link>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => handleDeleteProperty(property.id)}
-                  className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                  title="Delete Property"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </>
-            )}
-            emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property.'}
+            actions={(property) => {
+              // Ensure property ID is valid
+              const propertyId = property?.id;
+              if (!propertyId) {
+                console.error('Property missing ID:', property);
+                return null;
+              }
+              
+              return (
+                <>
+                  <Link 
+                    href={`/properties/${propertyId}/details`}
+                    prefetch={true}
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                    title="View Property Details"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Link>
+                  <Link 
+                    href={`/properties/${propertyId}/edit`}
+                    prefetch={true}
+                    className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                    title="Edit Property"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Link>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('Delete button clicked for property:', propertyId, property);
+                      handleDeleteProperty(propertyId);
+                    }}
+                    className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                    title="Delete Property"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              );
+            }}
+            emptyMessage={
+              searchTerm || rentalUnitsFilter !== 'all' 
+                ? 'Try adjusting your search terms or filters.' 
+                : 'Get started by adding your first property.'
+            }
             emptyIcon={<Building2 className="mx-auto h-12 w-12 text-gray-400" />}
-            emptyAction={!searchTerm ? (
-              <Link href="/properties/new" prefetch={true}>
-                <Button className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
-                  <Plus className="h-4 w-4" />
-                  Add Property
-                </Button>
-              </Link>
-            ) : undefined}
           />
         )}
 
+        {/* Filtered Results Info */}
+        {!loading && rentalUnitsFilter !== 'all' && (
+          <div className="text-sm text-gray-600 px-2 py-2">
+            {filteredProperties.length > 0 ? (
+              <>
+                Showing {filteredProperties.length} {filteredProperties.length === 1 ? 'property' : 'properties'} 
+                {rentalUnitsFilter === 'with_units' ? ' with rental units' : ' without rental units'}
+              </>
+            ) : (
+              <>
+                No properties found {rentalUnitsFilter === 'with_units' ? 'with rental units' : 'without rental units'}
+              </>
+            )}
+          </div>
+        )}
+
         {/* Pagination */}
-        {!loading && totalPages > 1 && (
+        {!loading && totalPages > 1 && rentalUnitsFilter === 'all' && (
           <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
             <div className="flex flex-1 justify-between sm:hidden">
               <Button

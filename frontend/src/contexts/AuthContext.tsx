@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import { authAPI } from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -91,17 +91,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
         }
       }
-      // Always set loading to false quickly, even if there was an error
-      // Use setTimeout to ensure it doesn't block rendering
-      setTimeout(() => {
-        setLoading(false);
-      }, 100);
+      // Set loading to false immediately - don't block rendering
+      setLoading(false);
     };
 
-    initAuth();
+    // Use requestIdleCallback for non-critical auth check, fallback to immediate
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      requestIdleCallback(initAuth, { timeout: 100 });
+    } else {
+      // Fallback: run immediately but don't block
+      initAuth();
+    }
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     try {
       const response = await authAPI.login({ email, password });
       
@@ -130,9 +133,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       toast.error(message);
       return { success: false, error: message };
     }
-  };
+  }, []);
 
-  const register = async (userData: RegisterData) => {
+  const register = useCallback(async (userData: RegisterData) => {
     try {
       const response = await authAPI.register(userData);
       const { token, user: newUser } = response.data;
@@ -149,9 +152,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       toast.error(message);
       return { success: false, error: message };
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
       // Redirect to login page after logout
@@ -159,9 +162,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
     setUser(null);
     toast.success('Logged out successfully');
-  };
+  }, []);
 
-  const updateProfile = async (profileData: Partial<User>) => {
+  const updateProfile = useCallback(async (profileData: Partial<User>) => {
     try {
       const response = await authAPI.updateProfile(profileData);
       setUser(response.data.user);
@@ -172,9 +175,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       toast.error(message);
       return { success: false, error: message };
     }
-  };
+  }, []);
 
-  const changePassword = async (currentPassword: string, newPassword: string) => {
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
     try {
       await authAPI.changePassword(currentPassword, newPassword);
       toast.success('Password changed successfully');
@@ -184,9 +187,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       toast.error(message);
       return { success: false, error: message };
     }
-  };
+  }, []);
 
-  const value: AuthContextType = {
+  // Memoize context value to prevent unnecessary re-renders
+  const value: AuthContextType = useMemo(() => ({
     user,
     loading,
     login,
@@ -194,7 +198,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     updateProfile,
     changePassword
-  };
+  }), [user, loading, login, register, logout, updateProfile, changePassword]);
 
   return (
     <AuthContext.Provider value={value}>
