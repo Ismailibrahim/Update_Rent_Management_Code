@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/UI/Card';
 import { Button } from '../../../components/UI/Button';
 import { Input } from '../../../components/UI/Input';
 import { Textarea } from '../../../components/UI/Textarea';
 import { Select } from '../../../components/UI/Select';
-import { ArrowLeft, Save, X, Home, Upload } from 'lucide-react';
+import { ArrowLeft, Save, X, Home, Upload, Search, Briefcase, Wallet } from 'lucide-react';
 import { tenantsAPI, rentalUnitsAPI, nationalitiesAPI, type Tenant, type Nationality } from '../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../components/Layout/SidebarLayout';
@@ -37,6 +37,7 @@ export default function NewTenantPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [nationalities, setNationalities] = useState<Nationality[]>([]);
   const [nationalitiesLoading, setNationalitiesLoading] = useState(true);
+  const [unitSearchQuery, setUnitSearchQuery] = useState('');
   const [formData, setFormData] = useState({
     // Tenant type selection
     tenant_type: 'individual', // 'individual' or 'company'
@@ -76,43 +77,67 @@ export default function NewTenantPage() {
     company_email: ''
   });
 
+  // Optimize: Parallel API calls for better performance
   useEffect(() => {
-    fetchAvailableUnits();
-    fetchNationalities();
+    const fetchData = async () => {
+      try {
+        setUnitsLoading(true);
+        setNationalitiesLoading(true);
+        
+        // Fetch both APIs in parallel
+        const [unitsResponse, nationalitiesResponse] = await Promise.all([
+          rentalUnitsAPI.getAll({ available: true }).catch(err => {
+            console.error('Error fetching available rental units:', err);
+            toast.error('Failed to fetch available rental units');
+            return { data: { rentalUnits: [] } };
+          }),
+          nationalitiesAPI.getAll().catch(err => {
+            console.error('Error fetching nationalities:', err);
+            toast.error('Failed to fetch nationalities');
+            return { data: { data: [] } };
+          })
+        ]);
+        
+        setAvailableUnits(unitsResponse.data.rentalUnits || []);
+        setNationalities(nationalitiesResponse.data.data || []);
+      } finally {
+        setUnitsLoading(false);
+        setNationalitiesLoading(false);
+      }
+    };
+    
+    fetchData();
   }, []);
 
-  const fetchAvailableUnits = async () => {
-    try {
-      setUnitsLoading(true);
-      const response = await rentalUnitsAPI.getAll({ available: true });
-      setAvailableUnits(response.data.rentalUnits || []);
-    } catch (error) {
-      console.error('Error fetching available rental units:', error);
-      toast.error('Failed to fetch available rental units');
-    } finally {
-      setUnitsLoading(false);
-    }
-  };
-
-  const fetchNationalities = async () => {
-    try {
-      setNationalitiesLoading(true);
-      const response = await nationalitiesAPI.getAll();
-      setNationalities(response.data.data || []);
-    } catch (error) {
-      console.error('Error fetching nationalities:', error);
-      toast.error('Failed to fetch nationalities');
-    } finally {
-      setNationalitiesLoading(false);
-    }
-  };
-
-  const handleInputChange = (field: string, value: string) => {
+  // Memoized handlers for better performance
+  const handleInputChange = useCallback((field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
-  };
+  }, []);
+
+  // Memoized filtered rental units based on search query
+  const filteredUnits = useMemo(() => {
+    if (!unitSearchQuery.trim()) {
+      return availableUnits;
+    }
+    
+    const query = unitSearchQuery.toLowerCase();
+    return availableUnits.filter(unit => {
+      const propertyName = unit.property.name.toLowerCase();
+      const unitNumber = unit.unit_number.toLowerCase();
+      const searchText = `${propertyName} ${unitNumber} ${unit.floor_number}`.toLowerCase();
+      return searchText.includes(query);
+    });
+  }, [availableUnits, unitSearchQuery]);
+
+  // Memoized selected units summary
+  const selectedUnitsSummary = useMemo(() => {
+    return formData.rental_unit_ids
+      .map(unitId => availableUnits.find(u => u.id.toString() === unitId))
+      .filter((unit): unit is RentalUnit => unit !== undefined);
+  }, [formData.rental_unit_ids, availableUnits]);
 
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,16 +189,11 @@ export default function NewTenantPage() {
         }
       });
       
-           console.log('Creating tenant with data:', processedTenantData);
-           console.log('Contact fields being sent:', {
-             email: processedTenantData.email,
-             phone: processedTenantData.phone,
-             address: processedTenantData.address,
-             company_email: processedTenantData.company_email,
-             company_telephone: processedTenantData.company_telephone,
-             tenant_type: processedTenantData.tenant_type
-           });
-           console.log('Files:', files);
+           // Debug logs (remove in production)
+           if (process.env.NODE_ENV === 'development') {
+             console.log('Creating tenant with data:', processedTenantData);
+             console.log('Files:', files);
+           }
       
       // Backend will handle rental unit assignment efficiently in a single query
       const tenantResponse = await tenantsAPI.create(processedTenantData, files);
@@ -209,9 +229,9 @@ export default function NewTenantPage() {
     }
   };
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     router.push('/tenants');
-  };
+  }, [router]);
 
   return (
     <SidebarLayout>
@@ -464,6 +484,28 @@ export default function NewTenantPage() {
                       rows={3}
                     />
                   </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        City
+                      </label>
+                      <Input
+                        placeholder="Enter city"
+                        value={formData.city}
+                        onChange={(e) => handleInputChange('city', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Postal Code
+                      </label>
+                      <Input
+                        placeholder="Enter postal code"
+                        value={formData.postal_code}
+                        onChange={(e) => handleInputChange('postal_code', e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </>
               ) : (
                 <>
@@ -503,6 +545,28 @@ export default function NewTenantPage() {
                         onChange={(e) => handleInputChange('address', e.target.value)}
                         rows={3}
                       />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          City
+                        </label>
+                        <Input
+                          placeholder="Enter city"
+                          value={formData.city}
+                          onChange={(e) => handleInputChange('city', e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Postal Code
+                        </label>
+                        <Input
+                          placeholder="Enter postal code"
+                          value={formData.postal_code}
+                          onChange={(e) => handleInputChange('postal_code', e.target.value)}
+                        />
+                      </div>
                     </div>
                   </div>
                   
@@ -582,6 +646,115 @@ export default function NewTenantPage() {
             </CardContent>
           </Card>
 
+          {/* Employment Information */}
+          {formData.tenant_type === 'individual' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Briefcase className="h-5 w-5 mr-2" />
+                  Employment Information
+                </CardTitle>
+                <CardDescription>Employment details for the tenant</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Company Name
+                    </label>
+                    <Input
+                      placeholder="Enter employer company name"
+                      value={formData.employment_company}
+                      onChange={(e) => handleInputChange('employment_company', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Position
+                    </label>
+                    <Input
+                      placeholder="Enter job position"
+                      value={formData.employment_position}
+                      onChange={(e) => handleInputChange('employment_position', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Salary
+                    </label>
+                    <Input
+                      type="number"
+                      placeholder="Enter monthly salary"
+                      value={formData.employment_salary}
+                      onChange={(e) => handleInputChange('employment_salary', e.target.value)}
+                      min="0"
+                      step="0.01"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Work Phone
+                    </label>
+                    <Input
+                      placeholder="Enter work phone number"
+                      value={formData.employment_phone}
+                      onChange={(e) => handleInputChange('employment_phone', e.target.value)}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Bank Account Information */}
+          {formData.tenant_type === 'individual' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Wallet className="h-5 w-5 mr-2" />
+                  Bank Account Information
+                </CardTitle>
+                <CardDescription>Banking details for payment processing</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Bank Name
+                    </label>
+                    <Input
+                      placeholder="Enter bank name"
+                      value={formData.bank_name}
+                      onChange={(e) => handleInputChange('bank_name', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Account Number
+                    </label>
+                    <Input
+                      placeholder="Enter account number"
+                      value={formData.account_number}
+                      onChange={(e) => handleInputChange('account_number', e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Account Holder Name
+                  </label>
+                  <Input
+                    placeholder="Enter account holder name"
+                    value={formData.account_holder_name}
+                    onChange={(e) => handleInputChange('account_holder_name', e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Rental Unit Assignment */}
           <Card>
             <CardHeader>
@@ -602,8 +775,34 @@ export default function NewTenantPage() {
                     <span className="ml-2 text-sm text-gray-600">Loading available units...</span>
                   </div>
                 ) : (
-                  <div className="space-y-3 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-3">
-                    {availableUnits.map((unit) => (
+                  <>
+                    {/* Search/Filter for Rental Units */}
+                    {availableUnits.length > 5 && (
+                      <div className="mb-3">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            type="text"
+                            placeholder="Search by property name, unit number, or floor..."
+                            value={unitSearchQuery}
+                            onChange={(e) => setUnitSearchQuery(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                        {unitSearchQuery && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            Showing {filteredUnits.length} of {availableUnits.length} units
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    <div className="space-y-3 max-h-60 overflow-y-auto border border-gray-200 rounded-md p-3">
+                      {filteredUnits.length === 0 ? (
+                        <div className="text-center py-4 text-gray-500">
+                          <p className="text-sm">No units found matching your search.</p>
+                        </div>
+                      ) : (
+                        filteredUnits.map((unit) => (
                       <label key={unit.id} className="flex items-start space-x-3 cursor-pointer hover:bg-gray-50 p-2 rounded">
                         <input
                           type="checkbox"
@@ -637,29 +836,28 @@ export default function NewTenantPage() {
                           </div>
                         </div>
                       </label>
-                    ))}
-                  </div>
+                      ))
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
               
               {/* Selected Units Summary */}
-              {formData.rental_unit_ids.length > 0 && (
+              {selectedUnitsSummary.length > 0 && (
                 <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                   <h4 className="text-sm font-medium text-blue-900 mb-2">
-                    Selected Units ({formData.rental_unit_ids.length})
+                    Selected Units ({selectedUnitsSummary.length})
                   </h4>
                   <div className="space-y-1">
-                    {formData.rental_unit_ids.map((unitId) => {
-                      const unit = availableUnits.find(u => u.id.toString() === unitId);
-                      return unit ? (
-                        <div key={unitId} className="text-xs text-blue-700">
-                          • {unit.property.name} - Unit {unit.unit_number} (Floor {unit.floor_number})
-                          {unit.rent_amount && 
-                            ` - ${unit.currency || '$'}${unit.rent_amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/month`
-                          }
-                        </div>
-                      ) : null;
-                    })}
+                    {selectedUnitsSummary.map((unit) => (
+                      <div key={unit.id} className="text-xs text-blue-700">
+                        • {unit.property.name} - Unit {unit.unit_number} (Floor {unit.floor_number})
+                        {unit.rent_amount && 
+                          ` - ${unit.currency || '$'}${unit.rent_amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}/month`
+                        }
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

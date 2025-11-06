@@ -80,8 +80,10 @@ class RentalUnit extends Model
     {
         // Use a static cache to avoid checking schema on every call
         static $hasSerialNumbersColumn = null;
+        static $hasAssetLocationColumn = null;
+        static $hasInstallationDateColumn = null;
         
-        $pivotColumns = ['assigned_date', 'notes', 'is_active', 'quantity', 'status', 'maintenance_notes'];
+        $pivotColumns = ['id', 'assigned_date', 'notes', 'is_active', 'quantity', 'status', 'maintenance_notes'];
         
         // Check if serial_numbers column exists (cached)
         if ($hasSerialNumbersColumn === null) {
@@ -95,6 +97,34 @@ class RentalUnit extends Model
         
         if ($hasSerialNumbersColumn) {
             $pivotColumns[] = 'serial_numbers';
+        }
+        
+        // Check if asset_location column exists (cached)
+        if ($hasAssetLocationColumn === null) {
+            try {
+                $hasAssetLocationColumn = Schema::hasColumn('rental_unit_assets', 'asset_location');
+            } catch (\Exception $e) {
+                // If schema check fails, assume column doesn't exist
+                $hasAssetLocationColumn = false;
+            }
+        }
+        
+        if ($hasAssetLocationColumn) {
+            $pivotColumns[] = 'asset_location';
+        }
+        
+        // Check if installation_date column exists (cached)
+        if ($hasInstallationDateColumn === null) {
+            try {
+                $hasInstallationDateColumn = Schema::hasColumn('rental_unit_assets', 'installation_date');
+            } catch (\Exception $e) {
+                // If schema check fails, assume column doesn't exist
+                $hasInstallationDateColumn = false;
+            }
+        }
+        
+        if ($hasInstallationDateColumn) {
+            $pivotColumns[] = 'installation_date';
         }
         
         return $this->belongsToMany(Asset::class, 'rental_unit_assets')

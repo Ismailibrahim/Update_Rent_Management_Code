@@ -28,6 +28,12 @@ export default function RentInvoicesPage() {
   const [monthFilter, setMonthFilter] = useState('');
   const [yearFilter, setYearFilter] = useState(new Date().getFullYear().toString());
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const perPage = 15;
+  
   // Multi-selection state
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
@@ -35,6 +41,7 @@ export default function RentInvoicesPage() {
   // Generation modal state
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [dueDateOffset, setDueDateOffset] = useState(7);
@@ -44,6 +51,14 @@ export default function RentInvoicesPage() {
     reason: string;
     lease_start_date?: string;
     lease_end_date?: string;
+  }>>([]);
+  const [duplicateInvoices, setDuplicateInvoices] = useState<Array<{
+    tenant_name: string;
+    unit_number: string;
+    invoice_number: string;
+    invoice_date: string;
+    status: string;
+    reason: string;
   }>>([]);
   
   // Payment modal state
@@ -61,63 +76,96 @@ export default function RentInvoicesPage() {
   const [paymentTypes, setPaymentTypes] = useState<Record<string, unknown>[]>([]);
   const [paymentModes, setPaymentModes] = useState<Record<string, unknown>[]>([]);
 
-  const fetchInvoices = useCallback(async () => {
+  const fetchInvoices = useCallback(async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const params: Record<string, unknown> = {};
+      const params: Record<string, unknown> = {
+        page: page,
+        per_page: perPage,
+      };
       if (statusFilter) params.status = statusFilter;
-      if (monthFilter) params.month = parseInt(monthFilter);
-      if (yearFilter) params.year = parseInt(yearFilter);
+      if (monthFilter && monthFilter !== '') {
+        const monthNum = parseInt(monthFilter);
+        if (!isNaN(monthNum) && monthNum >= 1 && monthNum <= 12) {
+          params.month = monthNum;
+        }
+      }
+      if (yearFilter && yearFilter !== '') {
+        const yearNum = parseInt(yearFilter);
+        if (!isNaN(yearNum)) {
+          params.year = yearNum;
+        }
+      }
+      
+      // Debug log to check filter params
+      console.log('Fetch invoices params:', params);
       
       const response = await rentInvoicesAPI.getAll(params);
       setInvoices(response.data?.invoices || []);
+      
+      // Update pagination info
+      if (response.data?.pagination) {
+        setCurrentPage(response.data.pagination.current_page || page);
+        setTotalPages(response.data.pagination.last_page || 1);
+        setTotal(response.data.pagination.total || 0);
+      } else {
+        // Fallback: if no pagination data, assume all invoices are on one page
+        const invoiceCount = response.data?.invoices?.length || 0;
+        setTotal(invoiceCount);
+        setTotalPages(invoiceCount > perPage ? Math.ceil(invoiceCount / perPage) : 1);
+        setCurrentPage(1);
+      }
+      
+      // Debug log to check pagination data
+      console.log('Pagination data:', {
+        currentPage: response.data?.pagination?.current_page,
+        lastPage: response.data?.pagination?.last_page,
+        total: response.data?.pagination?.total,
+        invoicesCount: response.data?.invoices?.length
+      });
     } catch (error) {
       console.error('Error fetching invoices:', error);
       toast.error('Failed to fetch invoices');
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, monthFilter, yearFilter]);
+  }, [statusFilter, monthFilter, yearFilter, perPage]);
 
   useEffect(() => {
-    fetchInvoices();
+    setCurrentPage(1);
+    fetchInvoices(1);
     fetchPaymentTypesAndModes();
-  }, [fetchInvoices]);
+  }, [statusFilter, monthFilter, yearFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh invoices every 60 seconds to catch status updates (reduced from 30 to improve performance)
   useEffect(() => {
     const interval = setInterval(() => {
-      fetchInvoices();
+      fetchInvoices(currentPage);
     }, 60000); // 60 seconds
 
     return () => clearInterval(interval);
-  }, [fetchInvoices]);
+  }, [currentPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchPaymentTypesAndModes = async () => {
     try {
       const [typesResponse, modesResponse] = await Promise.all([
-        paymentTypesAPI.getAll(),
-        paymentModesAPI.getAll()
+        paymentTypesAPI.getAll({ per_page: 1000, status: 'active' }),
+        paymentModesAPI.getAll({ per_page: 1000, status: 'active' })
       ]);
-      setPaymentTypes(typesResponse.data.payment_types || []);
-      setPaymentModes(modesResponse.data.payment_modes || []);
+      console.log('Payment types response:', typesResponse.data);
+      console.log('Payment modes response:', modesResponse.data);
+      setPaymentTypes(typesResponse.data?.payment_types || []);
+      setPaymentModes(modesResponse.data?.payment_modes || []);
     } catch (error) {
       console.error('Error fetching payment types and modes:', error);
+      toast.error('Failed to load payment types and modes');
     }
   };
 
-  const filteredInvoices = invoices.filter(invoice => {
-    // Handle cases where tenant might be null
-    const tenantName = invoice.tenant?.full_name ? 
-      invoice.tenant.full_name.toLowerCase() : 
-      'no tenant';
-    const propertyName = invoice.property?.name?.toLowerCase() || 'no property';
-    const invoiceNumber = invoice.invoice_number?.toLowerCase() || '';
-    
-    return tenantName.includes(searchTerm.toLowerCase()) ||
-           propertyName.includes(searchTerm.toLowerCase()) ||
-           invoiceNumber.includes(searchTerm.toLowerCase());
-  });
+  // Note: Search filtering is now done on the server side via API
+  // Client-side filtering removed to work properly with pagination
+  // If you need client-side search, it should be added as a search parameter to the API call
+  const filteredInvoices = invoices; // Use invoices directly since filtering is done server-side
 
   const handleDeleteInvoice = async (id: number) => {
     if (!confirm('Are you sure you want to delete this invoice?')) return;
@@ -125,7 +173,7 @@ export default function RentInvoicesPage() {
     try {
       await rentInvoicesAPI.delete(id);
       toast.success('Invoice deleted successfully');
-      fetchInvoices();
+      fetchInvoices(currentPage);
     } catch (error) {
       console.error('Error deleting invoice:', error);
       toast.error('Failed to delete invoice');
@@ -141,6 +189,8 @@ export default function RentInvoicesPage() {
     setTotalAmount(invoice.total_amount?.toString() || '');
     setPaymentSlips([]);
     setPaymentSlipPreviews([]);
+    // Refresh payment types and modes when opening modal
+    await fetchPaymentTypesAndModes();
     setShowPaymentModal(true);
   };
 
@@ -177,7 +227,7 @@ export default function RentInvoicesPage() {
       toast.success(`${selectedInvoices.length} invoices deleted successfully`);
       setSelectedInvoices([]);
       setShowBulkActions(false);
-      fetchInvoices();
+      fetchInvoices(currentPage);
     } catch (error: unknown) {
       console.error('Error deleting invoices:', error);
       toast.error('Failed to delete some invoices');
@@ -194,21 +244,71 @@ export default function RentInvoicesPage() {
     if (!confirm(`Mark ${selectedInvoices.length} invoices as paid?`)) return;
 
     try {
-      await Promise.all(selectedInvoiceData.map(invoice => 
-        rentInvoicesAPI.markAsPaid(invoice.id, {
-          payment_type: '1',
-          payment_mode: '1',
-          reference_number: `BULK-${Date.now()}`,
-          notes: 'Bulk payment processing'
-        })
-      ));
-      toast.success(`${selectedInvoices.length} invoices marked as paid`);
+      setBulkProcessing(true);
+      
+      // Process invoices in batches to avoid overwhelming the backend
+      const batchSize = 5;
+      const results = {
+        success: 0,
+        failed: 0,
+        errors: [] as string[]
+      };
+
+      for (let i = 0; i < selectedInvoiceData.length; i += batchSize) {
+        const batch = selectedInvoiceData.slice(i, i + batchSize);
+        
+        await Promise.allSettled(
+          batch.map(async (invoice) => {
+            try {
+              await rentInvoicesAPI.markAsPaid(invoice.id, {
+                payment_type: '1',
+                payment_mode: '1',
+                total_amount: invoice.total_amount || 0,
+                reference_number: `BULK-${Date.now()}-${invoice.id}`,
+                notes: 'Bulk payment processing',
+                payment_date: new Date().toISOString().split('T')[0]
+              });
+              results.success++;
+            } catch (error: unknown) {
+              results.failed++;
+              const errorMessage = error && typeof error === 'object' && 'response' in error
+                ? (error as { response?: { data?: { message?: string } } }).response?.data?.message || 'Unknown error'
+                : 'Unknown error';
+              results.errors.push(`Invoice ${invoice.invoice_number}: ${errorMessage}`);
+              console.error(`Failed to mark invoice ${invoice.id} as paid:`, error);
+            }
+          })
+        );
+        
+        // Small delay between batches to avoid overwhelming the server
+        if (i + batchSize < selectedInvoiceData.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      if (results.failed === 0) {
+        toast.success(`Successfully marked ${results.success} invoice(s) as paid`);
+      } else if (results.success > 0) {
+        toast.success(`Marked ${results.success} invoice(s) as paid. ${results.failed} failed.`, {
+          duration: 5000
+        });
+        console.error('Failed invoices:', results.errors);
+      } else {
+        toast.error(`Failed to mark invoices as paid. Check console for details.`);
+        console.error('All invoices failed:', results.errors);
+      }
+      
       setSelectedInvoices([]);
       setShowBulkActions(false);
-      fetchInvoices();
+      fetchInvoices(currentPage);
     } catch (error: unknown) {
       console.error('Error marking invoices as paid:', error);
-      toast.error('Failed to mark some invoices as paid');
+      const errorMessage = error && typeof error === 'object' && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response?.data?.message || 'Network error'
+        : 'Network error';
+      toast.error(`Failed to mark invoices as paid: ${errorMessage}`);
+    } finally {
+      setBulkProcessing(false);
     }
   };
 
@@ -319,7 +419,7 @@ export default function RentInvoicesPage() {
       await rentInvoicesAPI.markAsPaid(selectedInvoice.id, formData);
       toast.success('Invoice marked as paid successfully');
       setShowPaymentModal(false);
-      fetchInvoices();
+      fetchInvoices(currentPage);
     } catch (error) {
       console.error('Error marking invoice as paid:', error);
       toast.error('Failed to mark invoice as paid');
@@ -341,28 +441,53 @@ export default function RentInvoicesPage() {
         setSkippedTenants(response.data.skipped_tenants);
       }
 
-      if (response.data.generated_count > 0) {
-        let message = `Successfully generated ${response.data.generated_count} invoices`;
+      // Store duplicate invoices information
+      if (response.data.duplicate_invoices) {
+        setDuplicateInvoices(response.data.duplicate_invoices);
+      }
+
+      // Show summary information
+      const totalChecked = response.data.total_occupied_units_checked || 0;
+      const generated = response.data.generated_count || 0;
+      const skipped = response.data.skipped_count || 0;
+      const duplicates = response.data.duplicate_count || 0;
+
+      if (generated > 0) {
+        let message = `Checked ${totalChecked} occupied unit(s). Generated ${generated} invoice(s)`;
         
         // Add information about skipped tenants if any
-        if (response.data.skipped_count > 0) {
-          message += ` (${response.data.skipped_count} tenants skipped due to lease period)`;
+        if (skipped > 0) {
+          message += ` (${skipped} tenant(s) skipped due to lease period)`;
         }
         
-        toast.success(message);
+        // Add information about duplicate invoices if any
+        if (duplicates > 0) {
+          message += ` (${duplicates} duplicate invoice(s) skipped)`;
+        }
+        
+        toast.success(message, { duration: 5000 });
         setShowGenerateModal(false);
-        fetchInvoices(); // Refresh the invoices list
+        fetchInvoices(1); // Refresh the invoices list and go to first page
       } else {
-        let message = 'No Invoice Pending - All invoices for the selected period have already been generated';
+        let message = `Checked ${totalChecked} occupied unit(s). No new invoices generated`;
         
         // Add information about skipped tenants if any
-        if (response.data.skipped_count > 0) {
-          message += ` (${response.data.skipped_count} tenants skipped due to lease period)`;
+        if (skipped > 0) {
+          message += ` (${skipped} tenant(s) skipped due to lease period)`;
+        }
+        
+        // Add information about duplicate invoices if any
+        if (duplicates > 0) {
+          message += ` (${duplicates} duplicate invoice(s) already exist)`;
+        }
+        
+        if (totalChecked === 0) {
+          message = 'No occupied rental units found. Please ensure you have units with status "occupied" and assigned tenants.';
         }
         
         toast(message, {
           icon: 'ℹ️',
-          duration: 4000,
+          duration: 5000,
         });
         setShowGenerateModal(false);
       }
@@ -447,7 +572,7 @@ export default function RentInvoicesPage() {
           </div>
           <div className="flex gap-2">
             <Button 
-              onClick={fetchInvoices}
+              onClick={() => fetchInvoices(currentPage)}
               variant="outline"
               className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
               disabled={loading}
@@ -594,7 +719,7 @@ export default function RentInvoicesPage() {
               
               <Button 
                 variant="outline" 
-                onClick={fetchInvoices}
+                onClick={() => fetchInvoices(currentPage)}
                 className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -642,9 +767,17 @@ export default function RentInvoicesPage() {
                         variant="outline"
                         size="sm"
                         onClick={handleBulkMarkAsPaid}
-                        className="text-blue-600 border-blue-300 hover:bg-blue-100"
+                        disabled={bulkProcessing}
+                        className="text-blue-600 border-blue-300 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Mark as Paid
+                        {bulkProcessing ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          'Mark as Paid'
+                        )}
                       </Button>
                       <Button
                         variant="outline"
@@ -661,13 +794,15 @@ export default function RentInvoicesPage() {
               <div>
                 <table className="w-full table-auto">
                   <colgroup>
+                    <col style={{ width: '3%' }} />
                     <col style={{ width: '15%' }} />
-                    <col style={{ width: '18%' }} />
-                    <col style={{ width: '18%' }} />
                     <col style={{ width: '12%' }} />
-                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '15%' }} />
                     <col style={{ width: '10%' }} />
-                    <col style={{ width: '15%' }} />
+                    <col style={{ width: '10%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '12%' }} />
                   </colgroup>
                   <thead className="bg-gray-50 border-b">
                     <tr>
@@ -680,6 +815,7 @@ export default function RentInvoicesPage() {
                         />
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
+                      <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tenant</th>
                       <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Property</th>
                       <th className="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Amount</th>
@@ -707,6 +843,11 @@ export default function RentInvoicesPage() {
                             <div className="text-xs text-gray-500">
                               {new Date(invoice.invoice_date).toLocaleDateString()}
                             </div>
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 align-top">
+                          <div className="text-sm font-medium text-gray-900">
+                            {getMonthName(new Date(invoice.invoice_date).getMonth() + 1)} {new Date(invoice.invoice_date).getFullYear()}
                           </div>
                         </td>
                         <td className="px-2 py-2 align-top truncate">
@@ -820,6 +961,83 @@ export default function RentInvoicesPage() {
           </div>
         )}
 
+        {/* Pagination */}
+        {!loading && total > 0 && (
+          <Card className="w-full">
+            <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+              <div className="flex flex-1 justify-between sm:hidden">
+                <Button
+                  variant="outline"
+                  onClick={() => fetchInvoices(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => fetchInvoices(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    Showing <span className="font-medium">{(currentPage - 1) * perPage + 1}</span> to{' '}
+                    <span className="font-medium">{Math.min(currentPage * perPage, total)}</span> of{' '}
+                    <span className="font-medium">{total}</span> results
+                  </p>
+                </div>
+                {totalPages > 1 && (
+                  <div>
+                    <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                      <Button
+                        variant="outline"
+                        onClick={() => fetchInvoices(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        className="rounded-l-md"
+                      >
+                        Previous
+                      </Button>
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            onClick={() => fetchInvoices(pageNum)}
+                            className={currentPage === pageNum ? "z-10 bg-blue-600 text-white" : ""}
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                      <Button
+                        variant="outline"
+                        onClick={() => fetchInvoices(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        className="rounded-r-md"
+                      >
+                        Next
+                      </Button>
+                    </nav>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* Generation Modal */}
         {showGenerateModal && (
           <div 
@@ -916,6 +1134,33 @@ export default function RentInvoicesPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Duplicate Invoices Information */}
+                {duplicateInvoices.length > 0 && (
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center mb-3">
+                      <AlertCircle className="h-5 w-5 text-blue-600 mr-2" />
+                      <h4 className="text-sm font-medium text-blue-800">
+                        Duplicate Invoices Skipped ({duplicateInvoices.length})
+                      </h4>
+                    </div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {duplicateInvoices.map((invoice, index) => (
+                        <div key={index} className="text-sm text-blue-700">
+                          <div className="font-medium">
+                            {invoice.tenant_name} - Unit {invoice.unit_number}
+                          </div>
+                          <div className="text-blue-600">
+                            Invoice: {invoice.invoice_number} (Status: {invoice.status}, Date: {invoice.invoice_date})
+                          </div>
+                          <div className="text-blue-500 text-xs">
+                            {invoice.reason}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               
               <div className="px-6 py-4 bg-gray-50 rounded-b-lg flex justify-end gap-3">
@@ -924,6 +1169,7 @@ export default function RentInvoicesPage() {
                   onClick={() => {
                     setShowGenerateModal(false);
                     setSkippedTenants([]);
+                    setDuplicateInvoices([]);
                   }}
                   className="flex items-center gap-2 px-5 py-2.5 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200 shadow-sm hover:shadow-md font-medium"
                 >
@@ -982,14 +1228,22 @@ export default function RentInvoicesPage() {
                     <Select
                       value={paymentType}
                       onChange={(e) => setPaymentType(e.target.value)}
+                      className="w-full"
                     >
                       <option value="">Select payment type</option>
-                      {paymentTypes.map((type, index) => (
-                        <option key={index} value={String(type.id)}>
-                          {String(type.name)}
-                        </option>
-                      ))}
+                      {paymentTypes.length === 0 ? (
+                        <option value="" disabled>Loading payment types...</option>
+                      ) : (
+                        paymentTypes.map((type, index) => (
+                          <option key={type.id || index} value={String(type.id)}>
+                            {String(type.name)}
+                          </option>
+                        ))
+                      )}
                     </Select>
+                    {paymentTypes.length === 0 && (
+                      <p className="mt-1 text-xs text-gray-500">No payment types available</p>
+                    )}
                   </div>
                   
                   <div>
@@ -999,14 +1253,22 @@ export default function RentInvoicesPage() {
                     <Select
                       value={paymentMode}
                       onChange={(e) => setPaymentMode(e.target.value)}
+                      className="w-full"
                     >
                       <option value="">Select payment mode</option>
-                      {paymentModes.map((mode, index) => (
-                        <option key={index} value={String(mode.id)}>
-                          {String(mode.name)}
-                        </option>
-                      ))}
+                      {paymentModes.length === 0 ? (
+                        <option value="" disabled>Loading payment modes...</option>
+                      ) : (
+                        paymentModes.map((mode, index) => (
+                          <option key={mode.id || index} value={String(mode.id)}>
+                            {String(mode.name)}
+                          </option>
+                        ))
+                      )}
                     </Select>
+                    {paymentModes.length === 0 && (
+                      <p className="mt-1 text-xs text-gray-500">No payment modes available</p>
+                    )}
                   </div>
                   
                   <div>
@@ -1404,10 +1666,10 @@ export default function RentInvoicesPage() {
                     </div>
                   )}
 
-                  {/* Notes */}
+                  {/* Description */}
                   {selectedInvoice.notes && (
                     <div className="md:col-span-2 space-y-4">
-                      <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Notes</h4>
+                      <h4 className="text-lg font-medium text-gray-900 border-b pb-2">Description</h4>
                       <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
                         {selectedInvoice.notes}
                       </p>

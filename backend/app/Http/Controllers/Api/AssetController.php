@@ -34,8 +34,7 @@ class AssetController extends Controller
                 $search = $request->search;
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('brand', 'like', "%{$search}%")
-                      ->orWhere('serial_no', 'like', "%{$search}%");
+                      ->orWhere('brand', 'like', "%{$search}%");
                 });
             }
 
@@ -74,7 +73,6 @@ class AssetController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:100',
             'brand' => 'nullable|string|max:50',
-            'serial_no' => 'nullable|string|max:100',
             'category' => ['required', Rule::in(['furniture', 'appliance', 'electronics', 'plumbing', 'electrical', 'hvac', 'security', 'other'])],
             'status' => ['sometimes', Rule::in(['working', 'faulty', 'maintenance', 'retired'])],
         ]);
@@ -135,7 +133,6 @@ class AssetController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:100',
             'brand' => 'nullable|string|max:50',
-            'serial_no' => 'nullable|string|max:100',
             'category' => ['sometimes', Rule::in(['furniture', 'appliance', 'electronics', 'plumbing', 'electrical', 'hvac', 'security', 'other'])],
             'status' => ['sometimes', Rule::in(['working', 'faulty', 'maintenance', 'retired'])],
         ]);
@@ -243,7 +240,6 @@ class AssetController extends Controller
             $headers = [
                 'name [REQUIRED]',
                 'brand',
-                'serial_no',
                 'category [REQUIRED]',
                 'status'
             ];
@@ -256,14 +252,12 @@ class AssetController extends Controller
                 [
                     'name [REQUIRED]' => 'Air Conditioner',
                     'brand' => 'Daikin',
-                    'serial_no' => 'AC-001',
                     'category [REQUIRED]' => 'hvac',
                     'status' => 'working'
                 ],
                 [
                     'name [REQUIRED]' => 'Refrigerator',
                     'brand' => 'LG',
-                    'serial_no' => 'RF-002',
                     'category [REQUIRED]' => 'appliance',
                     'status' => 'working'
                 ]
@@ -523,22 +517,12 @@ class AssetController extends Controller
                         throw new \Exception("Invalid status: {$mappedData['status']}");
                     }
 
-                    // Check for duplicate asset (name + serial_no combination)
+                    // Check for duplicate asset (by name)
                     $existingAsset = Asset::where('name', $mappedData['name'])
-                        ->where(function($query) use ($mappedData) {
-                            if (isset($mappedData['serial_no']) && $mappedData['serial_no']) {
-                                $query->where('serial_no', $mappedData['serial_no']);
-                            } else {
-                                $query->whereNull('serial_no');
-                            }
-                        })
                         ->first();
                     
                     if ($existingAsset) {
-                        $serialInfo = isset($mappedData['serial_no']) && $mappedData['serial_no'] 
-                            ? " with serial number '{$mappedData['serial_no']}'" 
-                            : " without serial number";
-                        throw new \Exception("Asset with name '{$mappedData['name']}'{$serialInfo} already exists");
+                        throw new \Exception("Asset with name '{$mappedData['name']}' already exists");
                     }
 
                     // Create asset

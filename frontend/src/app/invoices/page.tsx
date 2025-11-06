@@ -5,10 +5,13 @@ import { Card, CardContent } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Select } from '../../components/UI/Select';
-import { FileText, Search, Trash2, Eye, User, Building, CheckCircle, Clock, AlertCircle, Receipt, RefreshCw, X } from 'lucide-react';
-import { rentInvoicesAPI, paymentTypesAPI, tenantLedgerAPI, maintenanceInvoicesAPI, RentInvoice, PaymentType, TenantLedger, MaintenanceInvoice } from '../../services/api';
+import { FileText, Search, Trash2, Eye, User, Building, CheckCircle, Clock, AlertCircle, Receipt, RefreshCw, X, Printer, Download } from 'lucide-react';
+import { rentInvoicesAPI, paymentTypesAPI, tenantLedgerAPI, maintenanceInvoicesAPI, invoiceTemplatesAPI, InvoiceTemplate, RentInvoice, PaymentType, TenantLedger, MaintenanceInvoice } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { useRef } from 'react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 // Unified invoice interface for displaying all invoice types
 interface UnifiedInvoice {
@@ -49,6 +52,9 @@ export default function InvoicesPage() {
   const [selectedInvoiceForView, setSelectedInvoiceForView] = useState<UnifiedInvoice | null>(null);
   const [selectedMaintenanceInvoice, setSelectedMaintenanceInvoice] = useState<MaintenanceInvoice | null>(null);
   const [selectedRentInvoice, setSelectedRentInvoice] = useState<RentInvoice | null>(null);
+  const [invoiceTemplate, setInvoiceTemplate] = useState<InvoiceTemplate | null>(null);
+  const [renderedInvoiceHtml, setRenderedInvoiceHtml] = useState<string>('');
+  const invoicePrintRef = useRef<HTMLDivElement>(null);
 
   const fetchInvoices = useCallback(async () => {
     try {
@@ -149,18 +155,314 @@ export default function InvoicesPage() {
     try {
       setSelectedInvoiceForView(invoice);
       
+      let detailedInvoice: RentInvoice | MaintenanceInvoice | null = null;
+      
       if (invoice.invoice_type === 'maintenance') {
         const response = await maintenanceInvoicesAPI.getById(invoice.id);
-        setSelectedMaintenanceInvoice(response.data.maintenance_invoice);
+        detailedInvoice = response.data.maintenance_invoice;
+        setSelectedMaintenanceInvoice(detailedInvoice);
       } else if (invoice.invoice_type === 'rent') {
         const response = await rentInvoicesAPI.getById(invoice.id);
-        setSelectedRentInvoice(response.data.invoice);
+        detailedInvoice = response.data.invoice;
+        setSelectedRentInvoice(detailedInvoice);
+      }
+      
+      // Fetch default template for the invoice type
+      const templateType = invoice.invoice_type === 'maintenance' ? 'maintenance' : 'rent';
+      const templatesResponse = await invoiceTemplatesAPI.getAll({ type: templateType, is_active: true });
+      const templates = templatesResponse.data.templates || [];
+      const defaultTemplate = templates.find((t: InvoiceTemplate) => t.is_default) || templates[0] || null;
+      
+      setInvoiceTemplate(defaultTemplate);
+      
+      // Render invoice with template after both invoice and template are loaded
+      if (defaultTemplate && detailedInvoice) {
+        const renderedHtml = renderInvoiceWithTemplate(invoice, defaultTemplate, detailedInvoice);
+        setRenderedInvoiceHtml(renderedHtml);
       }
       
       setShowViewModal(true);
     } catch (error) {
       console.error('Error fetching invoice details:', error);
       toast.error('Failed to fetch invoice details');
+    }
+  };
+
+  const renderInvoiceWithTemplate = (invoice: UnifiedInvoice, template: InvoiceTemplate, detailedInvoice: RentInvoice | MaintenanceInvoice): string => {
+    let html = template.html_content || '';
+    
+    // Get invoice data based on type
+    const invoiceData = getInvoiceData(invoice, detailedInvoice);
+    
+    // Replace variables in template
+    Object.keys(invoiceData).forEach(key => {
+      const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      html = html.replace(regex, invoiceData[key]);
+    });
+    
+    // Remove conditional blocks that don't apply
+    html = html.replace(/\{\{#if\s+(\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (match, condition, content) => {
+      if (invoiceData[condition] && invoiceData[condition] !== '0' && invoiceData[condition] !== '') {
+        return content;
+      }
+      return '';
+    });
+    
+    return html;
+  };
+
+  const getInvoiceData = (invoice: UnifiedInvoice, detailedInvoice: RentInvoice | MaintenanceInvoice): Record<string, string> => {
+    const invoiceData: Record<string, string> = {};
+    
+    // Common invoice data
+    invoiceData.invoice_number = invoice.invoice_number || '';
+    invoiceData.invoice_date = new Date(invoice.invoice_date).toLocaleDateString();
+    invoiceData.due_date = new Date(invoice.due_date).toLocaleDateString();
+    invoiceData.status = invoice.status || 'pending';
+    invoiceData.currency = invoice.currency || 'MVR';
+    invoiceData.total_amount = invoice.amount?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00';
+    invoiceData.tenant_name = invoice.tenant_name || '';
+    
+    // Extract property and unit from tenant_unit string
+    const unitMatch = invoice.tenant_unit.match(/(.+?)\s*-\s*Unit\s*(.+)/);
+    if (unitMatch) {
+      invoiceData.property_name = unitMatch[1] || '';
+      invoiceData.unit_number = unitMatch[2] || '';
+    } else {
+      invoiceData.property_name = invoice.tenant_unit || '';
+      invoiceData.unit_number = '';
+    }
+    
+    // Get detailed invoice data
+    if (invoice.invoice_type === 'rent' && 'total_amount' in detailedInvoice) {
+      const rentInvoice = detailedInvoice as RentInvoice;
+      invoiceData.rent_amount = rentInvoice.total_amount?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00';
+      invoiceData.late_fee = rentInvoice.late_fee?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00';
+      invoiceData.company_name = rentInvoice.property?.name || 'Company Name';
+      invoiceData.company_address = rentInvoice.property?.address || '';
+      invoiceData.company_email = '';
+      invoiceData.company_phone = '';
+      invoiceData.due_days = '30';
+    } else if (invoice.invoice_type === 'maintenance' && 'maintenance_amount' in detailedInvoice) {
+      const maintenanceInvoice = detailedInvoice as MaintenanceInvoice;
+      invoiceData.maintenance_amount = maintenanceInvoice.maintenance_amount?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00';
+      invoiceData.company_name = maintenanceInvoice.property?.name || 'Company Name';
+      invoiceData.company_address = maintenanceInvoice.property?.address || '';
+      invoiceData.company_email = '';
+      invoiceData.company_phone = '';
+      invoiceData.due_days = '30';
+    }
+    
+    return invoiceData;
+  };
+
+  const handlePrint = () => {
+    let contentToPrint = '';
+    
+    if (invoicePrintRef.current) {
+      contentToPrint = invoicePrintRef.current.innerHTML;
+    } else if (renderedInvoiceHtml) {
+      contentToPrint = renderedInvoiceHtml;
+    } else {
+      toast.error('Invoice content not available. Please wait for the invoice to load.');
+      return;
+    }
+    
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Please allow popups to print');
+      return;
+    }
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Invoice - ${selectedInvoiceForView?.invoice_number || 'Invoice'}</title>
+          <style>
+            body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+            @media print {
+              @page { margin: 0.5cm; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          ${contentToPrint}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
+  const handleDownloadPDF = async () => {
+    let tempElement: HTMLElement | null = null;
+    
+    try {
+      toast.loading('Generating PDF...', { id: 'pdf-export' });
+      
+      // Wait a bit for the DOM to be ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      let elementToCapture: HTMLElement | null = null;
+      
+      // Try to use the ref first
+      if (invoicePrintRef.current) {
+        elementToCapture = invoicePrintRef.current;
+      } else if (renderedInvoiceHtml) {
+        // If ref is not available but we have HTML, create a temporary element
+        tempElement = document.createElement('div');
+        tempElement.innerHTML = renderedInvoiceHtml;
+        tempElement.style.position = 'absolute';
+        tempElement.style.left = '-9999px';
+        tempElement.style.top = '0';
+        tempElement.style.width = '800px';
+        tempElement.style.backgroundColor = '#ffffff';
+        tempElement.style.padding = '20px';
+        document.body.appendChild(tempElement);
+        elementToCapture = tempElement;
+        
+        // Wait for the element to be rendered
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } else {
+        toast.error('Invoice content not available. Please wait for the invoice to load.', { id: 'pdf-export' });
+        return;
+      }
+      
+      if (!elementToCapture) {
+        toast.error('Could not find invoice content to generate PDF.', { id: 'pdf-export' });
+        return;
+      }
+      
+      // Ensure element is visible for html2canvas
+      const originalDisplay = elementToCapture.style.display;
+      const originalVisibility = elementToCapture.style.visibility;
+      const originalPosition = elementToCapture.style.position;
+      const originalLeft = elementToCapture.style.left;
+      const originalTop = elementToCapture.style.top;
+      const originalZIndex = elementToCapture.style.zIndex;
+      
+      // Make element visible for capture
+      elementToCapture.style.display = 'block';
+      elementToCapture.style.visibility = 'visible';
+      if (tempElement) {
+        elementToCapture.style.position = 'absolute';
+        elementToCapture.style.left = '0';
+        elementToCapture.style.top = '0';
+        elementToCapture.style.zIndex = '9999';
+      }
+      
+      // Wait a bit more for styles to apply
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      console.log('Capturing element for PDF:', {
+        width: elementToCapture.offsetWidth || elementToCapture.scrollWidth,
+        height: elementToCapture.offsetHeight || elementToCapture.scrollHeight,
+        scrollWidth: elementToCapture.scrollWidth,
+        scrollHeight: elementToCapture.scrollHeight,
+        clientWidth: elementToCapture.clientWidth,
+        clientHeight: elementToCapture.clientHeight
+      });
+      
+      // Check if element has valid dimensions
+      const elementWidth = elementToCapture.offsetWidth || elementToCapture.scrollWidth || elementToCapture.clientWidth;
+      const elementHeight = elementToCapture.offsetHeight || elementToCapture.scrollHeight || elementToCapture.clientHeight;
+      
+      if (!elementWidth || !elementHeight || elementWidth === 0 || elementHeight === 0) {
+        // Restore styles
+        elementToCapture.style.display = originalDisplay;
+        elementToCapture.style.visibility = originalVisibility;
+        elementToCapture.style.position = originalPosition;
+        elementToCapture.style.left = originalLeft;
+        elementToCapture.style.top = originalTop;
+        elementToCapture.style.zIndex = originalZIndex;
+        
+        toast.error('Invoice content has no dimensions. Please ensure the invoice is fully loaded.', { id: 'pdf-export' });
+        return;
+      }
+      
+      const canvas = await html2canvas(elementToCapture, {
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        allowTaint: false,
+        removeContainer: false,
+        windowWidth: elementWidth,
+        windowHeight: elementHeight,
+      });
+      
+      // Restore original styles
+      elementToCapture.style.display = originalDisplay;
+      elementToCapture.style.visibility = originalVisibility;
+      elementToCapture.style.position = originalPosition;
+      elementToCapture.style.left = originalLeft;
+      elementToCapture.style.top = originalTop;
+      elementToCapture.style.zIndex = originalZIndex;
+      
+      console.log('Canvas created:', {
+        width: canvas.width,
+        height: canvas.height
+      });
+      
+      // Clean up temporary element if we created one
+      if (tempElement && tempElement.parentNode) {
+        document.body.removeChild(tempElement);
+        tempElement = null;
+      }
+      
+      if (!canvas || canvas.width === 0 || canvas.height === 0) {
+        toast.error('Failed to capture invoice content. The invoice might be empty.', { id: 'pdf-export' });
+        return;
+      }
+      
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      
+      if (!imgData || imgData === 'data:,') {
+        toast.error('Failed to convert invoice to image.', { id: 'pdf-export' });
+        return;
+      }
+      
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 297; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      // Add first page
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add additional pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const fileName = `Invoice-${selectedInvoiceForView?.invoice_number || 'Invoice'}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+      toast.success('PDF downloaded successfully', { id: 'pdf-export' });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      
+      // Clean up temporary element if it exists
+      if (tempElement && tempElement.parentNode) {
+        try {
+          document.body.removeChild(tempElement);
+        } catch (e) {
+          console.error('Error removing temp element:', e);
+        }
+      }
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error(`Failed to generate PDF: ${errorMessage}`, { id: 'pdf-export', duration: 5000 });
     }
   };
 
@@ -176,6 +478,17 @@ export default function InvoicesPage() {
 
     return () => clearInterval(interval);
   }, [fetchInvoices]);
+
+  // Re-render invoice when template or invoice data changes
+  useEffect(() => {
+    if (invoiceTemplate && selectedInvoiceForView && (selectedRentInvoice || selectedMaintenanceInvoice)) {
+      const detailedInvoice = selectedRentInvoice || selectedMaintenanceInvoice;
+      if (detailedInvoice) {
+        const renderedHtml = renderInvoiceWithTemplate(selectedInvoiceForView, invoiceTemplate, detailedInvoice);
+        setRenderedInvoiceHtml(renderedHtml);
+      }
+    }
+  }, [invoiceTemplate, selectedInvoiceForView, selectedRentInvoice, selectedMaintenanceInvoice]);
 
   const filteredInvoices = invoices.filter(invoice => {
     const matchesSearch = !searchTerm || 
@@ -653,7 +966,13 @@ export default function InvoicesPage() {
       {showViewModal && selectedInvoiceForView && (
         <div 
           className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50"
-          onClick={() => setShowViewModal(false)}
+          onClick={() => {
+            setShowViewModal(false);
+            setInvoiceTemplate(null);
+            setRenderedInvoiceHtml('');
+            setSelectedRentInvoice(null);
+            setSelectedMaintenanceInvoice(null);
+          }}
         >
           <div 
             className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto"
@@ -667,18 +986,50 @@ export default function InvoicesPage() {
                     Invoice Details - {selectedInvoiceForView.invoice_number}
                   </h3>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowViewModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  ×
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handlePrint}
+                    className="flex items-center gap-2"
+                    title="Print Invoice"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Print
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleDownloadPDF}
+                    className="flex items-center gap-2"
+                    title="Download PDF"
+                  >
+                    <Download className="h-4 w-4" />
+                    PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowViewModal(false);
+                      setInvoiceTemplate(null);
+                      setRenderedInvoiceHtml('');
+                      setSelectedRentInvoice(null);
+                      setSelectedMaintenanceInvoice(null);
+                    }}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    ×
+                  </Button>
+                </div>
               </div>
             </div>
             
             <div className="px-6 py-4">
-              {selectedInvoiceForView.invoice_type === 'maintenance' && selectedMaintenanceInvoice ? (
+              <div ref={invoicePrintRef} className="bg-white">
+                {invoiceTemplate && renderedInvoiceHtml ? (
+                  <div 
+                    className="bg-white"
+                    dangerouslySetInnerHTML={{ __html: renderedInvoiceHtml }}
+                  />
+                ) : selectedInvoiceForView.invoice_type === 'maintenance' && selectedMaintenanceInvoice ? (
                 <div className="space-y-6">
                   {/* Invoice Header */}
                   <div className="grid grid-cols-2 gap-6">
@@ -864,6 +1215,7 @@ export default function InvoicesPage() {
                   <p className="text-gray-500">Invoice details not available for this type.</p>
                 </div>
               )}
+              </div>
             </div>
           </div>
         </div>

@@ -7,16 +7,16 @@ import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/UI/Dialog';
 import { Package, Plus, Search, Edit, Trash2, Save, X, Upload, ArrowUp, ArrowDown } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
 import { assetsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { ResponsiveTable } from '../../components/Responsive/ResponsiveTable';
+import { Pagination } from '../../components/UI/Pagination';
 
 interface Asset {
   id: number;
   name: string;
   brand?: string;
-  serial_no?: string;
   category: string;
   created_at: string;
   updated_at: string;
@@ -30,22 +30,56 @@ export default function AssetsPage() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState({
     name: '',
     brand: '',
-    serial_no: '',
     category: 'other'
   });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
     fetchAssets();
-  }, []);
+  }, [currentPage, itemsPerPage, sortColumn, sortDirection]);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      fetchAssets();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Clean up selected IDs when assets are removed
+  useEffect(() => {
+    const assetIds = new Set(assets.map(asset => asset.id));
+    setSelectedIds(prev => {
+      const validSelectedIds = Array.from(prev).filter(id => assetIds.has(id));
+      if (validSelectedIds.length !== prev.size) {
+        return new Set(validSelectedIds);
+      }
+      return prev;
+    });
+  }, [assets]);
 
   const fetchAssets = async () => {
     try {
       setLoading(true);
-      const response = await assetsAPI.getAll();
-      setAssets(response.data.assets || []);
+      const response = await assetsAPI.getAll({
+        page: currentPage,
+        per_page: itemsPerPage,
+        search: searchTerm || undefined,
+        sort_column: sortColumn || undefined,
+        sort_direction: sortDirection || undefined,
+      });
+      const assetsData = response.data.assets || response.data?.data || [];
+      setAssets(assetsData);
+      setTotalItems(response.data?.total ?? response.data?.pagination?.total ?? assetsData.length);
     } catch (error: unknown) {
       console.error('Error fetching assets:', error);
       if (error && typeof error === 'object' && 'response' in error) {
@@ -66,82 +100,18 @@ export default function AssetsPage() {
     }
   };
 
-  const filteredAssets = assets.filter(asset =>
-    asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    asset.brand?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    asset.serial_no?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    asset.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const isAllSelected = assets.length > 0 && selectedIds.size === assets.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < assets.length;
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
-      // Toggle direction if clicking the same column
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      // Set new column and default to ascending
       setSortColumn(column);
       setSortDirection('asc');
     }
-  };
-
-  const sortedAssets = [...filteredAssets].sort((a, b) => {
-    if (!sortColumn) return 0;
-
-    let aValue: string;
-    let bValue: string;
-
-    switch (sortColumn) {
-      case 'name':
-        aValue = a.name.toLowerCase();
-        bValue = b.name.toLowerCase();
-        break;
-      case 'brand':
-        aValue = (a.brand || '').toLowerCase();
-        bValue = (b.brand || '').toLowerCase();
-        break;
-      case 'serial_no':
-        aValue = (a.serial_no || '').toLowerCase();
-        bValue = (b.serial_no || '').toLowerCase();
-        break;
-      case 'category':
-        aValue = a.category.toLowerCase();
-        bValue = b.category.toLowerCase();
-        break;
-      default:
-        return 0;
-    }
-
-    if (sortDirection === 'asc') {
-      return aValue.localeCompare(bValue);
-    } else {
-      return bValue.localeCompare(aValue);
-    }
-  });
-
-  const SortableHeader = ({ column, label }: { column: string; label: string }) => {
-    const isActive = sortColumn === column;
-    return (
-      <TableHead 
-        className="cursor-pointer hover:bg-gray-100 select-none" 
-        onClick={() => handleSort(column)}
-      >
-        <div className="flex items-center space-x-1">
-          <span>{label}</span>
-          {isActive ? (
-            sortDirection === 'asc' ? (
-              <ArrowUp className="h-3 w-3 text-blue-600" />
-            ) : (
-              <ArrowDown className="h-3 w-3 text-blue-600" />
-            )
-          ) : (
-            <div className="flex flex-col">
-              <ArrowUp className="h-2 w-2 text-gray-300" />
-              <ArrowDown className="h-2 w-2 text-gray-300 -mt-1" />
-            </div>
-          )}
-        </div>
-      </TableHead>
-    );
+    setCurrentPage(1);
   };
 
   const handleAddAsset = () => {
@@ -149,7 +119,6 @@ export default function AssetsPage() {
     setFormData({
       name: '',
       brand: '',
-      serial_no: '',
       category: 'other'
     });
     setShowAddForm(true);
@@ -160,7 +129,6 @@ export default function AssetsPage() {
     setFormData({
       name: asset.name,
       brand: asset.brand || '',
-      serial_no: asset.serial_no || '',
       category: asset.category
     });
     setShowAddForm(true);
@@ -207,7 +175,6 @@ export default function AssetsPage() {
     setFormData({
       name: '',
       brand: '',
-      serial_no: '',
       category: 'other'
     });
   };
@@ -223,6 +190,49 @@ export default function AssetsPage() {
       console.error('Error deleting asset:', error);
       toast.error('Failed to delete asset');
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      return;
+    }
+
+    const count = selectedIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} asset${count > 1 ? 's' : ''}?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const deletePromises = Array.from(selectedIds).map(id => assetsAPI.delete(id));
+      await Promise.all(deletePromises);
+      toast.success(`${count} asset${count > 1 ? 's' : ''} deleted successfully`);
+      setSelectedIds(new Set());
+      fetchAssets();
+    } catch (error: unknown) {
+      console.error('Error deleting assets:', error);
+      toast.error('Failed to delete assets');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(assets.map(asset => asset.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectItem = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
   };
 
   const categoryOptions = [
@@ -258,6 +268,15 @@ export default function AssetsPage() {
             </p>
           </div>
           <div className="flex space-x-2">
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected ({selectedIds.size})
+              </Button>
+            )}
             <Link href="/assets/import" prefetch={true}>
               <Button 
                 variant="outline" 
@@ -288,10 +307,11 @@ export default function AssetsPage() {
         {/* Add/Edit Asset Dialog */}
         <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
           <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
+            <DialogHeader className="flex-col items-start">
               <DialogTitle>
                 {editingAsset ? 'Edit Asset' : 'Add Asset'}
               </DialogTitle>
+              <div className="border-b border-gray-200 w-full my-3"></div>
               <DialogDescription>
                 {editingAsset ? 'Update the asset details below.' : 'Create a new asset by filling out the form below.'}
               </DialogDescription>
@@ -315,16 +335,6 @@ export default function AssetsPage() {
                   placeholder="Enter brand"
                   value={formData.brand}
                   onChange={(e) => setFormData(prev => ({ ...prev, brand: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Serial No
-                </label>
-                <Input
-                  placeholder="Enter serial number (optional)"
-                  value={formData.serial_no}
-                  onChange={(e) => setFormData(prev => ({ ...prev, serial_no: e.target.value }))}
                 />
               </div>
               <div>
@@ -367,71 +377,173 @@ export default function AssetsPage() {
         {/* Assets Table */}
         <Card className="bg-white border border-gray-200">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900">Assets List</CardTitle>
+            <CardTitle className="text-lg font-semibold text-gray-900">Assets List ({totalItems})</CardTitle>
             <CardDescription className="text-gray-600">
               Manage your property assets and equipment
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortableHeader column="name" label="Name" />
-                    <SortableHeader column="brand" label="Brand" />
-                    <SortableHeader column="serial_no" label="Serial No" />
-                    <SortableHeader column="category" label="Category" />
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sortedAssets.map((asset) => (
-                    <TableRow key={asset.id} className="hover:bg-gray-50">
-                      <TableCell>
-                        <div className="font-medium text-gray-900">{asset.name}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-gray-600">{asset.brand || 'N/A'}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-gray-600">{asset.serial_no || 'N/A'}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-gray-600 capitalize">{asset.category}</div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditAsset(asset)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteAsset(asset.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            {sortedAssets.length === 0 && (
-              <div className="text-center py-12">
-                <Package className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No assets found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first asset.'}
-                </p>
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading assets...</p>
               </div>
+            ) : (
+              <>
+                {/* Select All Checkbox */}
+                {assets.length > 0 && (
+                  <div className="mb-4 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={(input) => {
+                        if (input) input.indeterminate = isIndeterminate;
+                      }}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <label className="text-sm text-gray-700">
+                      Select All ({selectedIds.size} selected)
+                    </label>
+                  </div>
+                )}
+                
+                <ResponsiveTable
+                  data={assets}
+                  keyExtractor={(item) => item.id.toString()}
+                  columns={[
+                    {
+                      header: (
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = isIndeterminate;
+                          }}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ),
+                      accessor: (item) => (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectItem(item.id, e.target.checked);
+                          }}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                      ),
+                      mobileLabel: 'Select',
+                      mobilePriority: 'high',
+                      className: 'w-12',
+                    },
+                    {
+                      header: (
+                        <div className="flex items-center space-x-1 cursor-pointer hover:bg-gray-100 select-none" onClick={() => handleSort('name')}>
+                          <span>Name</span>
+                          {sortColumn === 'name' ? (
+                            sortDirection === 'asc' ? (
+                              <ArrowUp className="h-3 w-3 text-blue-600" />
+                            ) : (
+                              <ArrowDown className="h-3 w-3 text-blue-600" />
+                            )
+                          ) : (
+                            <div className="flex flex-col">
+                              <ArrowUp className="h-2 w-2 text-gray-300" />
+                              <ArrowDown className="h-2 w-2 text-gray-300 -mt-1" />
+                            </div>
+                          )}
+                        </div>
+                      ),
+                      accessor: 'name',
+                      mobileLabel: 'Name',
+                      mobilePriority: 'high',
+                    },
+                    {
+                      header: (
+                        <div className="flex items-center space-x-1 cursor-pointer hover:bg-gray-100 select-none" onClick={() => handleSort('brand')}>
+                          <span>Brand</span>
+                          {sortColumn === 'brand' ? (
+                            sortDirection === 'asc' ? (
+                              <ArrowUp className="h-3 w-3 text-blue-600" />
+                            ) : (
+                              <ArrowDown className="h-3 w-3 text-blue-600" />
+                            )
+                          ) : (
+                            <div className="flex flex-col">
+                              <ArrowUp className="h-2 w-2 text-gray-300" />
+                              <ArrowDown className="h-2 w-2 text-gray-300 -mt-1" />
+                            </div>
+                          )}
+                        </div>
+                      ),
+                      accessor: (item) => item.brand || 'N/A',
+                      mobileLabel: 'Brand',
+                      mobilePriority: 'medium',
+                    },
+                    {
+                      header: (
+                        <div className="flex items-center space-x-1 cursor-pointer hover:bg-gray-100 select-none" onClick={() => handleSort('category')}>
+                          <span>Category</span>
+                          {sortColumn === 'category' ? (
+                            sortDirection === 'asc' ? (
+                              <ArrowUp className="h-3 w-3 text-blue-600" />
+                            ) : (
+                              <ArrowDown className="h-3 w-3 text-blue-600" />
+                            )
+                          ) : (
+                            <div className="flex flex-col">
+                              <ArrowUp className="h-2 w-2 text-gray-300" />
+                              <ArrowDown className="h-2 w-2 text-gray-300 -mt-1" />
+                            </div>
+                          )}
+                        </div>
+                      ),
+                      accessor: (item) => <span className="capitalize">{item.category}</span>,
+                      mobileLabel: 'Category',
+                      mobilePriority: 'high',
+                    },
+                  ]}
+                  actions={(item) => (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditAsset(item)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteAsset(item.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                  emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first asset.'}
+                  emptyIcon={<Package className="mx-auto h-12 w-12 text-gray-400" />}
+                />
+                
+                {assets.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(newSize) => {
+                      setItemsPerPage(newSize);
+                      setCurrentPage(1);
+                    }}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

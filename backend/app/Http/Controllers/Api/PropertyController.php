@@ -352,9 +352,57 @@ class PropertyController extends Controller
     /**
      * Remove the specified property
      */
-    public function destroy(Request $request, Property $property): JsonResponse
+    public function destroy(Request $request, $property = null): JsonResponse
     {
         try {
+            // Handle route model binding - $property could be a Property model or an ID
+            $propertyModel = null;
+            
+            if ($property instanceof Property) {
+                // Route model binding worked
+                $propertyModel = $property;
+            } else {
+                // Route model binding didn't work, try to resolve by ID
+                $propertyId = $property ?? $request->route('property') ?? $request->input('id');
+                
+                if (!$propertyId) {
+                    Log::warning('Property delete - no ID provided', [
+                        'request_uri' => $request->getRequestUri(),
+                        'route_params' => $request->route() ? $request->route()->parameters() : [],
+                    ]);
+                    
+                    return response()->json([
+                        'message' => 'Property ID is required'
+                    ], 400);
+                }
+                
+                $propertyModel = Property::find($propertyId);
+                
+                if (!$propertyModel) {
+                    Log::warning('Property not found for deletion', [
+                        'property_id' => $propertyId,
+                        'user_id' => $request->user()?->id,
+                        'request_uri' => $request->getRequestUri(),
+                    ]);
+                    
+                    return response()->json([
+                        'message' => 'Property not found',
+                        'property_id' => $propertyId
+                    ], 404);
+                }
+            }
+            
+            $property = $propertyModel;
+
+            Log::info('Property delete request', [
+                'property_id' => $property->id,
+                'property_name' => $property->name,
+                'user_id' => $request->user()?->id,
+                'user_role' => $request->user()?->role?->name,
+                'request_uri' => $request->getRequestUri(),
+                'method' => $request->method()
+            ]);
+
             $user = $request->user();
             
             if (!$user) {
@@ -403,6 +451,11 @@ class PropertyController extends Controller
             ]);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::warning('Property model not found during deletion', [
+                'error' => $e->getMessage(),
+                'user_id' => $request->user()?->id
+            ]);
+            
             return response()->json([
                 'message' => 'Property not found'
             ], 404);
@@ -411,7 +464,8 @@ class PropertyController extends Controller
                 'property_id' => $property->id ?? null,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'user_id' => $request->user()?->id
+                'user_id' => $request->user()?->id,
+                'request_uri' => $request->getRequestUri()
             ]);
             
             return response()->json([

@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Plus, Search, Edit, Trash2 } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/UI/Dialog';
 import { nationalitiesAPI, Nationality } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { ResponsiveTable } from '../../components/Responsive/ResponsiveTable';
+import { Pagination } from '../../components/UI/Pagination';
 
 function NationalitiesPageContent() {
   const [nationalities, setNationalities] = useState<Nationality[]>([]);
@@ -17,21 +18,53 @@ function NationalitiesPageContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingNationality, setEditingNationality] = useState<Nationality | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState({
     nationality: '',
     sort_order: 0,
   });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
     fetchNationalities();
-  }, []);
+  }, [currentPage, itemsPerPage]);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      fetchNationalities();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Clean up selected IDs when nationalities are removed
+  useEffect(() => {
+    const nationalityIds = new Set(nationalities.map(nationality => nationality.id));
+    setSelectedIds(prev => {
+      const validSelectedIds = Array.from(prev).filter(id => nationalityIds.has(id));
+      if (validSelectedIds.length !== prev.size) {
+        return new Set(validSelectedIds);
+      }
+      return prev;
+    });
+  }, [nationalities]);
 
   const fetchNationalities = async () => {
     try {
       setLoading(true);
-      const response = await nationalitiesAPI.getAll();
+      const response = await nationalitiesAPI.getAll({
+        page: currentPage,
+        per_page: itemsPerPage,
+        search: searchTerm || undefined,
+      });
       const nationalitiesData = response.data?.data || [];
       setNationalities(nationalitiesData);
+      setTotalItems(response.data?.total ?? response.data?.data?.total ?? nationalitiesData.length);
     } catch (error: unknown) {
       console.error('Error fetching nationalities:', error);
       
@@ -233,9 +266,55 @@ function NationalitiesPageContent() {
     }
   };
 
-  const filteredNationalities = nationalities.filter(nationality =>
-    nationality.nationality.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      return;
+    }
+
+    const count = selectedIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} nationality${count > 1 ? 'ies' : ''}?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const deletePromises = Array.from(selectedIds).map(id => nationalitiesAPI.delete(id));
+      await Promise.all(deletePromises);
+      toast.success(`${count} nationality${count > 1 ? 'ies' : ''} deleted successfully`);
+      setSelectedIds(new Set());
+      fetchNationalities();
+    } catch (error: unknown) {
+      console.error('Error deleting nationalities:', error);
+      const errorMessage = error instanceof Error && 'response' in error 
+        ? (error as { response: { data: { message: string } } }).response.data.message 
+        : 'Failed to delete nationalities';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(nationalities.map(nationality => nationality.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectItem = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const isAllSelected = nationalities.length > 0 && selectedIds.size === nationalities.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < nationalities.length;
 
   const resetForm = () => {
     setFormData({
@@ -254,13 +333,24 @@ function NationalitiesPageContent() {
             <h1 className="text-2xl font-bold text-gray-900">Nationalities</h1>
             <p className="text-gray-600">Manage nationalities for tenant records</p>
           </div>
-          <Button
-            onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
-          >
-            <Plus className="h-4 w-4" />
-            Add Nationality
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected ({selectedIds.size})
+              </Button>
+            )}
+            <Button
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Add Nationality
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -280,8 +370,9 @@ function NationalitiesPageContent() {
         {showCreateForm && (
           <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
             <DialogContent className="max-w-lg w-full">
-              <DialogHeader>
+              <DialogHeader className="flex-col items-start">
                 <DialogTitle>{editingNationality ? 'Edit Nationality' : 'Add New Nationality'}</DialogTitle>
+                <div className="border-b border-gray-200 w-full my-3"></div>
                 <DialogDescription>
                   {editingNationality ? 'Update the nationality details' : 'Create a new nationality'}
                 </DialogDescription>
@@ -335,10 +426,10 @@ function NationalitiesPageContent() {
           </Dialog>
         )}
 
-        {/* Nationalities List (Table View) */}
+        {/* Nationalities List */}
         <Card className="bg-white border border-gray-200">
           <CardHeader>
-            <CardTitle>Nationalities ({filteredNationalities.length})</CardTitle>
+            <CardTitle>Nationalities ({totalItems})</CardTitle>
             <CardDescription>Manage your nationalities list</CardDescription>
           </CardHeader>
           <CardContent>
@@ -347,61 +438,125 @@ function NationalitiesPageContent() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                 <p className="mt-2 text-gray-600">Loading nationalities...</p>
               </div>
-            ) : filteredNationalities.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-600">No nationalities found</p>
-                {searchTerm && (
-                  <p className="text-sm text-gray-500 mt-2">
-                    Try adjusting your search term
-                  </p>
-                )}
-              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">ID</TableHead>
-                      <TableHead>Nationality</TableHead>
-                      <TableHead className="w-24">Sort Order</TableHead>
-                      <TableHead className="w-40">Created</TableHead>
-                      <TableHead className="w-40 text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredNationalities.map((nationality) => (
-                      <TableRow key={nationality.id}>
-                        <TableCell>#{nationality.id}</TableCell>
-                        <TableCell className="font-medium">{nationality.nationality}</TableCell>
-                        <TableCell>{nationality.sort_order}</TableCell>
-                        <TableCell>{new Date(nationality.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEdit(nationality)}
-                              className="p-1"
-                              title="Edit"
-                            >
-                              <Edit className="h-4 w-4 text-blue-600" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(nationality.id)}
-                              className="p-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <>
+                {/* Select All Checkbox */}
+                {nationalities.length > 0 && (
+                  <div className="mb-4 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={(input) => {
+                        if (input) input.indeterminate = isIndeterminate;
+                      }}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <label className="text-sm text-gray-700">
+                      Select All ({selectedIds.size} selected)
+                    </label>
+                  </div>
+                )}
+                
+                <ResponsiveTable
+                  data={nationalities}
+                  keyExtractor={(item) => item.id.toString()}
+                  columns={[
+                    {
+                      header: (
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = isIndeterminate;
+                          }}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ),
+                      accessor: (item) => (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectItem(item.id, e.target.checked);
+                          }}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                      ),
+                      mobileLabel: 'Select',
+                      mobilePriority: 'high',
+                      className: 'w-12',
+                    },
+                    {
+                      header: 'ID',
+                      accessor: (item) => `#${item.id}`,
+                      mobileLabel: 'ID',
+                      mobilePriority: 'high',
+                      className: 'w-16',
+                    },
+                    {
+                      header: 'Nationality',
+                      accessor: 'nationality',
+                      mobileLabel: 'Nationality',
+                      mobilePriority: 'high',
+                    },
+                    {
+                      header: 'Sort Order',
+                      accessor: 'sort_order',
+                      mobileLabel: 'Sort',
+                      mobilePriority: 'medium',
+                      className: 'w-24',
+                    },
+                    {
+                      header: 'Created',
+                      accessor: (item) => new Date(item.created_at).toLocaleDateString(),
+                      mobileLabel: 'Created',
+                      mobilePriority: 'medium',
+                      className: 'w-40',
+                    },
+                  ]}
+                  actions={(item) => (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(item)}
+                        className="p-1"
+                        title="Edit"
+                      >
+                        <Edit className="h-4 w-4 text-blue-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(item.id)}
+                        className="p-1"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </>
+                  )}
+                  emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first nationality.'}
+                />
+                
+                {nationalities.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(newSize) => {
+                      setItemsPerPage(newSize);
+                      setCurrentPage(1);
+                    }}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

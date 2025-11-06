@@ -10,57 +10,73 @@ use App\Models\Tenant;
 use App\Models\Property;
 use App\Models\Currency;
 use App\Models\RentInvoice;
+use App\Models\Payment;
 class PaymentRecord extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'unit_id',
-        'amount',
+        'payment_id',
+        'tenant_id',
+        'property_id',
+        'rental_unit_id',
+        'rent_invoice_id',
         'payment_type_id',
         'payment_mode_id',
-        'paid_date',
-        'paid_by',
-        'mobile_no',
-        'blaz_no',
-        'account_name',
-        'account_no',
-        'bank',
-        'cheque_no',
         'currency_id',
-        'remarks',
-        'created_by_id',
-        'is_active',
+        'amount',
+        'exchange_rate',
+        'amount_in_base_currency',
+        'payment_date',
+        'due_date',
+        'reference_number',
+        'description',
+        'status',
+        'metadata',
+        'processed_by',
+        'processed_at',
     ];
 
     protected $casts = [
-        'paid_date' => 'datetime',
+        'payment_date' => 'date',
+        'due_date' => 'date',
         'amount' => 'decimal:2',
-        'is_active' => 'boolean',
+        'exchange_rate' => 'decimal:4',
+        'amount_in_base_currency' => 'decimal:2',
+        'metadata' => 'array',
+        'processed_at' => 'datetime',
     ];
+
+    /**
+     * Get the payment that owns this payment record.
+     */
+    public function payment()
+    {
+        return $this->belongsTo(Payment::class);
+    }
 
     /**
      * Get the rental unit that owns the payment record.
      */
     public function rentalUnit()
     {
-        return $this->belongsTo(RentalUnit::class, 'unit_id');
+        return $this->belongsTo(RentalUnit::class, 'rental_unit_id');
     }
 
     /**
-     * Get the tenant through the rental unit.
+     * Get the tenant for this payment record.
      */
     public function tenant()
     {
-        return $this->hasOneThrough(Tenant::class, RentalUnit::class, 'id', 'id', 'unit_id', 'tenant_id');
+        return $this->belongsTo(Tenant::class);
     }
 
     /**
-     * Get the property through the rental unit.
+     * Get the property for this payment record.
      */
     public function property()
     {
-        return $this->hasOneThrough(Property::class, RentalUnit::class, 'id', 'id', 'unit_id', 'property_id');
+        return $this->belongsTo(Property::class);
     }
 
     /**
@@ -88,18 +104,11 @@ class PaymentRecord extends Model
     }
 
     /**
-     * Get the associated rent invoice through rental unit.
+     * Get the associated rent invoice (direct relationship).
      */
     public function rentInvoice()
     {
-        return $this->hasOneThrough(
-            RentInvoice::class,
-            RentalUnit::class,
-            'id', // Foreign key on rental_units table
-            'rental_unit_id', // Foreign key on rent_invoices table
-            'unit_id', // Local key on payment_records table
-            'id' // Local key on rental_units table
-        )->where('rent_invoices.status', 'paid');
+        return $this->belongsTo(RentInvoice::class, 'rent_invoice_id');
     }
 
     /**

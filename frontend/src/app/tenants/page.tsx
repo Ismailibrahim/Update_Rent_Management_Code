@@ -84,11 +84,36 @@ export default function TenantsPage() {
   const fetchTenants = async () => {
     try {
       setLoading(true);
+      
+      // Log API configuration for debugging (only in development)
+      if (process.env.NODE_ENV === 'development') {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+        console.log('Fetching tenants from:', `${apiUrl}/tenants`);
+      }
+      
       const response = await tenantsAPI.getAll();
       setTenants(response.data.tenants || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching tenants:', error);
-      toast.error('Failed to fetch tenants');
+      
+      // Provide more detailed error information
+      if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+        console.error('Network Error Details:', {
+          code: error.code,
+          message: error.message,
+          config: error.config,
+          apiUrl: apiUrl,
+        });
+        toast.error(`Network Error: Unable to reach backend API. Please check if the server is running at ${apiUrl}`);
+      } else if (error.response) {
+        // Server responded with error status
+        const status = error.response.status;
+        const message = error.response.data?.message || `Server error (${status})`;
+        toast.error(`Failed to fetch tenants: ${message}`);
+      } else {
+        toast.error('Failed to fetch tenants. Please check your connection.');
+      }
     } finally {
       setLoading(false);
     }
@@ -407,12 +432,6 @@ export default function TenantsPage() {
             )}
             emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first tenant.'}
             emptyIcon={<Users className="mx-auto h-12 w-12 text-gray-400" />}
-            emptyAction={!searchTerm ? (
-              <Button onClick={handleAddTenant}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Tenant
-              </Button>
-            ) : undefined}
           />
         )}
       </div>

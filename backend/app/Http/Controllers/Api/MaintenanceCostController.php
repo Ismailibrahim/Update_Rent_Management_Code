@@ -36,6 +36,13 @@ class MaintenanceCostController extends Controller
                 $query->where('repair_date', '<=', $request->date_to);
             }
 
+            // Property filter - filter through rental_unit_asset -> rental_unit -> property relationship
+            if ($request->has('property_id') && $request->property_id) {
+                $query->whereHas('rentalUnitAsset.rentalUnit', function($q) use ($request) {
+                    $q->where('property_id', $request->property_id);
+                });
+            }
+
             // Use pagination instead of loading all records
             $perPage = $request->get('per_page', 15);
             $page = $request->get('page', 1);

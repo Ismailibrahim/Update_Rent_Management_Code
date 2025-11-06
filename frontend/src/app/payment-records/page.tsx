@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
@@ -8,6 +9,7 @@ import { Receipt, Search, Eye, FileText, Trash2 } from 'lucide-react';
 import { paymentRecordsAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface PaymentRecord {
   id: number;
@@ -52,8 +54,11 @@ interface PaymentRecord {
 }
 
 export default function PaymentRecordsPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [propertyFilter, setPropertyFilter] = useState('');
@@ -65,18 +70,108 @@ export default function PaymentRecordsPage() {
   const [selectedRecords, setSelectedRecords] = useState<number[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
 
+  // Redirect to login if not authenticated
   useEffect(() => {
-    fetchPaymentRecords();
-  }, []);
+    if (!authLoading && !user) {
+      // Check if token exists in localStorage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) {
+        router.push('/login');
+        return;
+      }
+    }
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
+    // Only fetch if user is authenticated
+    if (!authLoading && user) {
+      fetchPaymentRecords();
+    }
+  }, [authLoading, user]);
 
   const fetchPaymentRecords = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await paymentRecordsAPI.getAll();
-      setPaymentRecords(response.data.payment_records || []);
-    } catch (error) {
+      
+      // Debug logging
+      console.log('Payment Records API Response:', response);
+      console.log('Response data:', response.data);
+      console.log('Response data keys:', response.data ? Object.keys(response.data) : 'No data');
+      console.log('Payment records:', response.data?.payment_records);
+      console.log('Payment records type:', Array.isArray(response.data?.payment_records) ? 'Array' : typeof response.data?.payment_records);
+      console.log('Payment records length:', Array.isArray(response.data?.payment_records) ? response.data.payment_records.length : 'N/A');
+      
+      // Handle different response structures
+      let records: PaymentRecord[] = [];
+      
+      if (response.data?.payment_records) {
+        // Standard structure: { success: true, payment_records: [...], pagination: {...} }
+        records = Array.isArray(response.data.payment_records) 
+          ? response.data.payment_records 
+          : [];
+        console.log('Using payment_records from response.data.payment_records');
+      } else if (Array.isArray(response.data)) {
+        // If response.data is directly an array
+        records = response.data;
+        console.log('Using response.data as array');
+      } else if (response.data?.data) {
+        // If nested under data.data
+        records = Array.isArray(response.data.data) ? response.data.data : [];
+        console.log('Using response.data.data');
+      } else {
+        console.warn('Unexpected response structure:', {
+          data: response.data,
+          dataType: typeof response.data,
+          dataKeys: response.data ? Object.keys(response.data) : []
+        });
+        records = [];
+      }
+      
+      console.log('Final records to set:', records.length);
+      setPaymentRecords(records);
+      
+      // Show helpful message if no records
+      if (records.length === 0) {
+        console.info('No payment records found. This could mean:');
+        console.info('1. No invoices have been marked as paid yet');
+        console.info('2. Payment records need to be backfilled (run: php artisan payments:backfill)');
+        console.info('3. Check the debug endpoint: /api/payment-records/debug/check');
+      }
+    } catch (error: any) {
       console.error('Error fetching payment records:', error);
-      toast.error('Failed to fetch payment records');
+      console.error('Error details:', {
+        message: error?.message,
+        response: error?.response?.data,
+        status: error?.response?.status,
+        url: error?.config?.url,
+        baseURL: error?.config?.baseURL
+      });
+      
+      // Handle authentication errors
+      if (error?.response?.status === 401) {
+        const errorMessage = 'Authentication required. Please log in.';
+        setError(errorMessage);
+        toast.error(errorMessage);
+        // Remove invalid token
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token');
+        }
+        // Redirect to login
+        setTimeout(() => {
+          router.push('/login');
+        }, 1500);
+        setPaymentRecords([]);
+        return;
+      }
+      
+      const errorMessage = error?.response?.data?.message || 
+                          error?.message || 
+                          'Failed to fetch payment records';
+      setError(errorMessage);
+      toast.error(errorMessage);
+      setPaymentRecords([]);
     } finally {
       setLoading(false);
     }
@@ -169,6 +264,31 @@ export default function PaymentRecordsPage() {
     }
   };
 
+  // Show loading while checking authentication
+  if (authLoading || (!user && typeof window !== 'undefined' && localStorage.getItem('token'))) {
+    return (
+      <SidebarLayout>
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-600"></div>
+        </div>
+      </SidebarLayout>
+    );
+  }
+
+  // Redirect if not authenticated (handled by useEffect, but show message while redirecting)
+  if (!user) {
+    return (
+      <SidebarLayout>
+        <div className="flex justify-center items-center h-64">
+          <div className="text-center">
+            <p className="text-gray-600 mb-4">Authentication required. Redirecting to login...</p>
+            <Button onClick={() => router.push('/login')}>Go to Login</Button>
+          </div>
+        </div>
+      </SidebarLayout>
+    );
+  }
+
   if (loading) {
     return (
       <SidebarLayout>
@@ -184,11 +304,22 @@ export default function PaymentRecordsPage() {
       <div className="space-y-8">
         {/* Page Header */}
         <div className="mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Payment Records</h1>
-            <p className="mt-2 text-gray-600">
-              Detailed payment transaction records
-            </p>
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Payment Records</h1>
+              <p className="mt-2 text-gray-600">
+                Detailed payment transaction records
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={fetchPaymentRecords}
+                title="Refresh payment records"
+              >
+                Refresh
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -408,13 +539,46 @@ export default function PaymentRecordsPage() {
               </table>
             </div>
 
-            {filteredPaymentRecords.length === 0 && (
+            {filteredPaymentRecords.length === 0 && !loading && (
               <div className="text-center py-12">
                 <Receipt className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No payment records found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {searchTerm ? 'Try adjusting your search terms.' : 'Payment records will appear here when invoices are marked as paid.'}
-                </p>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  {error ? 'Error loading payment records' : 'No payment records found'}
+                </h3>
+                <div className="mt-1 text-sm text-gray-500">
+                  {error ? (
+                    <>
+                      <p>{error}</p>
+                      <button
+                        onClick={fetchPaymentRecords}
+                        className="mt-2 text-blue-600 hover:text-blue-700 underline"
+                      >
+                        Try again
+                      </button>
+                    </>
+                  ) : searchTerm || monthFilter || propertyFilter || tenantFilter ? (
+                    <p>Try adjusting your search terms or filters.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <p>Payment records will appear here when invoices are marked as paid.</p>
+                      <div className="text-xs text-gray-400 space-y-1">
+                        <p><strong>To see payment records:</strong></p>
+                        <ol className="list-decimal list-inside space-y-1 text-left max-w-md mx-auto">
+                          <li>Go to <strong>Rent Invoices</strong> page</li>
+                          <li>Mark some invoices as <strong>Paid</strong></li>
+                          <li>Payment records will be created automatically</li>
+                        </ol>
+                        <p className="mt-3">
+                          If you already have paid invoices but no records, run:
+                          <br />
+                          <code className="bg-gray-100 px-2 py-1 rounded mt-1 inline-block">
+                            php artisan payments:backfill
+                          </code>
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </CardContent>

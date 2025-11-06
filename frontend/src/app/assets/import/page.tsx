@@ -15,7 +15,6 @@ const assetFields = [
   { value: '', label: '-- Skip Column --' },
   { value: 'name', label: 'Name *' },
   { value: 'brand', label: 'Brand' },
-  { value: 'serial_no', label: 'Serial No' },
   { value: 'category', label: 'Category *' },
   { value: 'status', label: 'Status' },
 ];
@@ -404,7 +403,6 @@ export default function ImportAssetsPage() {
                         <TableRow>
                           <TableHead>Name</TableHead>
                           <TableHead>Brand</TableHead>
-                          <TableHead>Serial No</TableHead>
                           <TableHead>Category</TableHead>
                           <TableHead>Status</TableHead>
                         </TableRow>
@@ -414,7 +412,6 @@ export default function ImportAssetsPage() {
                           <TableRow key={index}>
                             <TableCell>{row.name}</TableCell>
                             <TableCell>{row.brand || 'N/A'}</TableCell>
-                            <TableCell>{row.serial_no || 'N/A'}</TableCell>
                             <TableCell>
                               <span className="text-sm capitalize">{row.category}</span>
                             </TableCell>

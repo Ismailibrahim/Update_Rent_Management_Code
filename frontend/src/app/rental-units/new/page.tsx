@@ -48,8 +48,10 @@ interface Currency {
 
 interface RentalUnit {
   id: number;
+  property_id: number;
   number_of_rooms: number;
   number_of_toilets: number;
+  status?: string;
 }
 
 function NewRentalUnitPageContent() {
@@ -61,7 +63,16 @@ function NewRentalUnitPageContent() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [unitTypes, setUnitTypes] = useState<RentalUnitType[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
-  const [selectedAssets, setSelectedAssets] = useState<Array<{assetId: number, quantity: number}>>([]);
+  // Each entry represents one asset item (qty=1) with optional location and installation date
+  const [selectedAssets, setSelectedAssets] = useState<Array<{
+    assetId: number, 
+    quantity: 1, 
+    location?: string, 
+    installationDate?: string,
+    id: string // Unique ID for React key
+  }>>([]);
+  const [assetQuantityInput, setAssetQuantityInput] = useState<string>('1');
+  const [selectedAssetId, setSelectedAssetId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [existingRentalUnits, setExistingRentalUnits] = useState<RentalUnit[]>([]);
@@ -91,6 +102,8 @@ function NewRentalUnitPageContent() {
     assets: []
   });
   const [isMounted, setIsMounted] = useState(false);
+  const [showAvailableOnly, setShowAvailableOnly] = useState(false);
+  const [allRentalUnits, setAllRentalUnits] = useState<RentalUnit[]>([]);
 
   const allowedUnitTypes = ['residential', 'office', 'shop', 'warehouse', 'other'];
   const mapToAllowedUnitType = (name: string): string => {
@@ -157,6 +170,16 @@ function NewRentalUnitPageContent() {
     }
   };
 
+  const fetchAllRentalUnits = async () => {
+    try {
+      const response = await rentalUnitsAPI.getAll();
+      setAllRentalUnits(response.data.rentalUnits || []);
+    } catch (error) {
+      console.error('Error fetching rental units:', error);
+      // Don't show error toast as this is not critical for the form
+    }
+  };
+
   const fetchPropertyDetails = useCallback(async (propertyId: number) => {
     if (isLoadingProperty || lastFetchedPropertyId.current === propertyId) {
       return; // Prevent duplicate calls
@@ -201,6 +224,7 @@ function NewRentalUnitPageContent() {
       fetchAssets();
       fetchUnitTypes();
       fetchCurrencies();
+      fetchAllRentalUnits();
       
       // If coming from a property page, fetch property details
       if (propertyIdFromUrl) {
@@ -345,25 +369,39 @@ function NewRentalUnitPageContent() {
       });
 
       // Only include assets if there are any selected
+      // Each entry is already qty=1, so we send them as separate entries
       if (selectedAssets.length > 0) {
         submitData.assets = selectedAssets.map(asset => {
-          return {
-            asset_id: asset.assetId,
-            quantity: asset.quantity || 1
+          const assetData: any = {
+            asset_id: parseInt(String(asset.assetId)), // Ensure it's an integer
+            quantity: 1 // Always 1 per entry (integer)
           };
+          
+          // Add optional fields only if they have values
+          if (asset.location && asset.location.trim()) {
+            assetData.asset_location = asset.location.trim();
+          }
+          
+          if (asset.installationDate && asset.installationDate.trim()) {
+            assetData.installation_date = asset.installationDate.trim();
+          }
+          
+          return assetData;
         });
       }
 
       // Debug log in development
       if (process.env.NODE_ENV === 'development') {
-        console.log('Submitting rental unit data:', submitData);
+        console.log('Submitting rental unit data:', JSON.stringify(submitData, null, 2));
+        if (submitData.assets) {
+          console.log('Assets being sent:', JSON.stringify(submitData.assets, null, 2));
+        }
       }
 
       await rentalUnitsAPI.create(submitData);
       
       if (selectedAssets.length > 0) {
-        const totalAssets = selectedAssets.reduce((sum, asset) => sum + asset.quantity, 0);
-        toast.success(`Rental unit created successfully with ${totalAssets} asset item(s) assigned`);
+        toast.success(`Rental unit created successfully with ${selectedAssets.length} asset item(s) assigned`);
       } else {
         toast.success('Rental unit created successfully');
       }
@@ -385,9 +423,12 @@ function NewRentalUnitPageContent() {
         if (axiosError.response?.data?.errors) {
           const errors = axiosError.response.data.errors;
           const errorMessages = Object.values(errors).flat();
-          toast.error('Validation failed: ' + errorMessages.join(', '));
+          const errorText = errorMessages.join(', ');
+          console.error('Validation errors:', errors);
+          toast.error('Validation failed: ' + errorText, { duration: 5000 });
         } else {
           const errorMessage = axiosError.response?.data?.message || 'Unknown error';
+          console.error('Error message:', errorMessage);
           toast.error('Failed to create rental unit: ' + errorMessage);
         }
       } else {
@@ -403,6 +444,35 @@ function NewRentalUnitPageContent() {
     router.push('/rental-units');
   };
 
+  const handleAddAsset = () => {
+    if (!selectedAssetId) {
+      toast.error('Please select an asset first');
+      return;
+    }
+
+    const quantity = parseInt(assetQuantityInput) || 1;
+    if (quantity <= 0) {
+      toast.error('Quantity must be at least 1');
+      return;
+    }
+
+    const assetId = parseInt(selectedAssetId);
+    const asset = assets.find(a => a.id === assetId);
+    if (asset) {
+      // Create separate entries for each quantity
+      const newEntries = Array.from({ length: quantity }, (_, i) => ({
+        assetId,
+        quantity: 1 as const,
+        location: '',
+        installationDate: '',
+        id: `${assetId}-${Date.now()}-${i}-${Math.random()}`
+      }));
+      setSelectedAssets(prev => [...prev, ...newEntries]);
+      setSelectedAssetId('');
+      setAssetQuantityInput('1');
+    }
+  };
+
   const handlePropertyChange = (propertyId: string) => {
     setFormData(prev => ({ ...prev, property_id: propertyId }));
     if (propertyId && propertyId !== propertyIdFromUrl && !isLoadingProperty) {
@@ -413,6 +483,53 @@ function NewRentalUnitPageContent() {
       setExistingRentalUnits([]);
     }
   };
+
+  // Filter properties based on checkbox state
+  const filteredProperties = useMemo(() => {
+    if (!showAvailableOnly) {
+      return properties;
+    }
+
+    // Calculate rental unit counts for each property
+    const propertyUnitCounts = new Map<number, { total: number; available: number }>();
+    
+    allRentalUnits.forEach(unit => {
+      const propertyId = unit.property_id;
+      const current = propertyUnitCounts.get(propertyId) || { total: 0, available: 0 };
+      propertyUnitCounts.set(propertyId, {
+        total: current.total + 1,
+        available: current.available + (unit.status === 'available' ? 1 : 0)
+      });
+    });
+
+    // Filter properties that have remaining capacity for new rental units
+    // Only show properties where remainingUnits > 0 (can still create new units)
+    return properties.filter(property => {
+      const counts = propertyUnitCounts.get(property.id) || { total: 0, available: 0 };
+      const maxUnits = property.number_of_rental_units || 0;
+      const existingUnits = counts.total;
+      const remainingUnits = Math.max(0, maxUnits - existingUnits);
+
+      // Only show properties that have remaining capacity
+      return remainingUnits > 0;
+    });
+  }, [properties, showAvailableOnly, allRentalUnits]);
+
+  // Clear selected property if it's filtered out when checkbox is toggled
+  useEffect(() => {
+    if (formData.property_id && showAvailableOnly) {
+      const isPropertyInFilteredList = filteredProperties.some(
+        p => p.id.toString() === formData.property_id
+      );
+      if (!isPropertyInFilteredList) {
+        // Property doesn't meet filter criteria, clear selection
+        setFormData(prev => ({ ...prev, property_id: '' }));
+        setSelectedProperty(null);
+        setExistingRentalUnits([]);
+        toast.info('Selected property has no remaining capacity. Please select a different property.');
+      }
+    }
+  }, [showAvailableOnly, filteredProperties, formData.property_id]);
 
   return (
     <SidebarLayout>
@@ -450,9 +567,20 @@ function NewRentalUnitPageContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {!propertyIdFromUrl && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Property * <span className="text-xs text-green-600">(Updated: Shows street address)</span>
-                    </label>
+                    <div className="flex items-center gap-3 mb-1">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Property * <span className="text-xs text-green-600">(Updated: Shows street address)</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={showAvailableOnly}
+                          onChange={(e) => setShowAvailableOnly(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">Available Properties</span>
+                      </label>
+                    </div>
                     <select
                       value={formData.property_id}
                       onChange={(e) => handlePropertyChange(e.target.value)}
@@ -461,7 +589,7 @@ function NewRentalUnitPageContent() {
                       suppressHydrationWarning
                     >
                       <option value="">Select a property</option>
-                      {properties.map((property) => {
+                      {filteredProperties.map((property) => {
                         const street = (property.street || '').trim();
                         const island = (property.island || '').trim();
                         
@@ -947,93 +1075,132 @@ function NewRentalUnitPageContent() {
                     Assign Assets (Optional)
                   </label>
                   <p className="text-sm text-gray-500 mb-3">
-                    Select assets from the dropdown to assign to this rental unit. You can specify the quantity for each asset.
+                    Select assets from the dropdown to assign to this rental unit. Enter a quantity and press Enter to create separate lines for each item. Each item can have its own location and installation date.
                   </p>
                   
                   {assets.length > 0 ? (
                     <div className="space-y-4">
-                      {/* Asset Dropdown */}
-                      <div>
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              const assetId = parseInt(e.target.value);
-                              // Check if asset is already selected
-                              const isAlreadySelected = selectedAssets.some(a => a.assetId === assetId);
-                              if (!isAlreadySelected) {
-                                setSelectedAssets(prev => [...prev, { assetId, quantity: 1 }]);
-                              } else {
-                                toast.error('This asset is already added. Please update the quantity if needed.');
+                      {/* Asset Dropdown with Quantity Input */}
+                      <div className="space-y-3">
+                        <div className="flex gap-3">
+                          <select
+                            value={selectedAssetId}
+                            onChange={(e) => {
+                              setSelectedAssetId(e.target.value);
+                            }}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            suppressHydrationWarning
+                          >
+                            <option value="">Select an asset...</option>
+                            {assets.map((asset) => (
+                              <option key={asset.id} value={asset.id.toString()}>
+                                {asset.name} {asset.brand && `(${asset.brand})`} - {asset.category}
+                              </option>
+                            ))}
+                          </select>
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="Qty"
+                            value={assetQuantityInput}
+                            onChange={(e) => {
+                              setAssetQuantityInput(e.target.value);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddAsset();
                               }
-                              e.target.value = ''; // Reset dropdown
-                            }
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          suppressHydrationWarning
-                        >
-                          <option value="">Select an asset to add...</option>
-                          {assets
-                            .filter(asset => !selectedAssets.some(sa => sa.assetId === asset.id))
-                            .map((asset) => (
-                            <option key={asset.id} value={asset.id.toString()}>
-                              {asset.name} {asset.brand && `(${asset.brand})`} - {asset.category}
-                            </option>
-                          ))}
-                        </select>
+                            }}
+                            className="w-24 px-2 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddAsset}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            Add
+                          </Button>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Select an asset, enter quantity, then click "Add" or press Enter. Each item will be added as a separate line (qty=1) so you can specify location and installation date for each.
+                        </p>
                       </div>
 
                       {/* Selected Assets List */}
                       {selectedAssets.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium text-gray-700">Selected Assets:</h4>
-                          <div className="space-y-2">
+                        <div className="space-y-3">
+                          <h4 className="text-sm font-medium text-gray-700">Selected Assets ({selectedAssets.length} item{selectedAssets.length !== 1 ? 's' : ''}):</h4>
+                          <div className="space-y-3">
                             {selectedAssets.map((selectedAsset, index) => {
                               const asset = assets.find(a => a.id === selectedAsset.assetId);
                               if (!asset) return null;
                               
                               return (
                                 <div
-                                  key={selectedAsset.assetId}
-                                  className="flex items-center justify-between gap-4 p-3 bg-gray-50 border border-gray-200 rounded-lg"
+                                  key={selectedAsset.id}
+                                  className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3"
                                 >
-                                  <div className="flex-1">
-                                    <div className="font-medium text-gray-900">{asset.name}</div>
-                                    <div className="text-sm text-gray-500">
-                                      {asset.brand && `${asset.brand} • `}{asset.category}
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-gray-900">{asset.name}</div>
+                                      <div className="text-sm text-gray-500">
+                                        {asset.brand && `${asset.brand} • `}{asset.category}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm text-gray-600 bg-white px-2 py-1 rounded border border-gray-300">
+                                        Qty: 1
+                                      </span>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setSelectedAssets(prev => prev.filter((_, idx) => idx !== index))}
+                                        className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-2">
-                                      <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                                        QTY:
+                                  
+                                  {/* Location and Installation Date Fields */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-gray-200">
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Location (Optional)
                                       </label>
                                       <Input
-                                        type="number"
-                                        min="1"
-                                        value={selectedAsset.quantity}
+                                        type="text"
+                                        placeholder="e.g., Living Room, Kitchen"
+                                        value={selectedAsset.location || ''}
                                         onChange={(e) => {
-                                          const quantity = parseInt(e.target.value) || 1;
-                                          if (quantity > 0) {
-                                            setSelectedAssets(prev => 
-                                              prev.map((sa, idx) => 
-                                                idx === index ? { ...sa, quantity } : sa
-                                              )
-                                            );
-                                          }
+                                          setSelectedAssets(prev => 
+                                            prev.map((sa, idx) => 
+                                              idx === index ? { ...sa, location: e.target.value } : sa
+                                            )
+                                          );
                                         }}
-                                        className="w-20 px-2 py-1 text-center border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                                       />
                                     </div>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => setSelectedAssets(prev => prev.filter((_, idx) => idx !== index))}
-                                      className="h-9 w-9 p-0 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 transition-all duration-200 shadow-sm hover:shadow-md"
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
+                                    <div>
+                                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                                        Installation Date (Optional)
+                                      </label>
+                                      <Input
+                                        type="date"
+                                        value={selectedAsset.installationDate || ''}
+                                        onChange={(e) => {
+                                          setSelectedAssets(prev => 
+                                            prev.map((sa, idx) => 
+                                              idx === index ? { ...sa, installationDate: e.target.value } : sa
+                                            )
+                                          );
+                                        }}
+                                        className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      />
+                                    </div>
                                   </div>
                                 </div>
                               );

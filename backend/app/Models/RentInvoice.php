@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use App\Models\PaymentRecord;
+use App\Models\Payment;
 use App\Models\TenantLedger;
 use App\Models\PaymentType;
 
@@ -186,22 +188,93 @@ class RentInvoice extends Model
         }
 
         // Provide sensible defaults for historical backfill if details are missing
-        $paymentTypeId = $paymentDetails['payment_type'] ?? 1; // assume 1 exists (e.g., Rent)
-        $paymentModeId = $paymentDetails['payment_mode'] ?? 1; // assume 1 exists (e.g., Cash)
+        $paymentTypeId = is_numeric($paymentDetails['payment_type'] ?? null) 
+            ? (int)$paymentDetails['payment_type'] 
+            : \App\Models\PaymentType::first()?->id ?? 1; // Use first available or default to 1
+        $paymentModeId = is_numeric($paymentDetails['payment_mode'] ?? null) 
+            ? (int)$paymentDetails['payment_mode'] 
+            : \App\Models\PaymentMode::first()?->id ?? 1; // Use first available or default to 1
+        
+        $amount = $paymentDetails['total_amount'] ?? $this->total_amount;
+        $paymentDate = $paymentDetails['payment_date'] ?? now()->toDateString();
+        
+        // Get currency ID - try to find by code first, then use first available, or default to 1
+        $currencyId = null;
+        if ($this->currency) {
+            $currency = \App\Models\Currency::where('code', $this->currency)->first();
+            if ($currency) {
+                $currencyId = $currency->id;
+            }
+        }
+        if (!$currencyId) {
+            $currencyId = \App\Models\Currency::first()?->id ?? 1; // Use first available or default to 1
+        }
+        
+        $exchangeRate = 1.0000; // Default exchange rate
+        $amountInBaseCurrency = $amount; // Same as amount if no conversion needed
 
-        PaymentRecord::create([
-            'unit_id' => $this->rental_unit_id,
-            'amount' => $paymentDetails['total_amount'] ?? $this->total_amount,
-            'payment_type_id' => $paymentTypeId,
-            'payment_mode_id' => $paymentModeId,
-            'paid_date' => $paymentDetails['payment_date'] ?? now()->toDateString(),
-            'paid_by' => $tenantFullName,
-            'mobile_no' => $tenantPhone,
-            'remarks' => $paymentDetails['notes'] ?? "Payment for invoice {$this->invoice_number}",
-            'currency_id' => 1, // Default currency ID (assuming 1 is MVR)
-            'created_by_id' => 1, // Default admin user ID
-            'is_active' => 1,
-        ]);
+        try {
+            // First create a Payment record
+            $payment = Payment::create([
+                'tenant_id' => $this->tenant_id,
+                'property_id' => $this->property_id,
+                'rental_unit_id' => $this->rental_unit_id,
+                'amount' => $amount,
+                'currency' => $this->currency ?? 'MVR',
+                'payment_type' => 'rent',
+                'payment_method' => 'manual', // Can be updated based on payment_mode
+                'payment_date' => $paymentDate,
+                'due_date' => $this->due_date,
+                'description' => $paymentDetails['notes'] ?? "Payment for invoice {$this->invoice_number}",
+                'reference_number' => $paymentDetails['reference_number'] ?? null,
+                'status' => 'completed',
+                'metadata' => $paymentDetails,
+            ]);
+
+            // Prepare PaymentRecord data
+            $paymentRecordData = [
+                'payment_id' => $payment->id,
+                'tenant_id' => $this->tenant_id,
+                'property_id' => $this->property_id,
+                'rental_unit_id' => $this->rental_unit_id,
+                'payment_type_id' => $paymentTypeId,
+                'payment_mode_id' => $paymentModeId,
+                'currency_id' => $currencyId,
+                'amount' => $amount,
+                'exchange_rate' => $exchangeRate,
+                'amount_in_base_currency' => $amountInBaseCurrency,
+                'payment_date' => $paymentDate,
+                'due_date' => $this->due_date,
+                'reference_number' => $paymentDetails['reference_number'] ?? null,
+                'description' => $paymentDetails['notes'] ?? "Payment for invoice {$this->invoice_number}",
+                'status' => 'completed',
+                'metadata' => $paymentDetails,
+                'processed_at' => now(),
+            ];
+
+            // Only add rent_invoice_id if the column exists
+            if (Schema::hasColumn('payment_records', 'rent_invoice_id')) {
+                $paymentRecordData['rent_invoice_id'] = $this->id;
+            }
+
+            // Then create a PaymentRecord
+            $paymentRecord = PaymentRecord::create($paymentRecordData);
+            
+            Log::info('Payment record created successfully', [
+                'invoice_id' => $this->id,
+                'invoice_number' => $this->invoice_number,
+                'payment_record_id' => $paymentRecord->id,
+                'payment_id' => $payment->id,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to create payment record for invoice', [
+                'invoice_id' => $this->id,
+                'invoice_number' => $this->invoice_number,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            // Don't throw - invoice is already marked as paid, payment record is secondary
+        }
     }
 
     public function markAsOverdue()
@@ -248,6 +321,7 @@ class RentInvoice extends Model
             TenantLedger::create([
                 'tenant_id' => $this->tenant_id,
                 'payment_type_id' => $paymentType->id,
+                'rental_unit_id' => $this->rental_unit_id, // Include rental unit ID
                 'transaction_date' => $paymentDetails['payment_date'] ?? now()->toDateString(),
                 'description' => "Payment for Rent Invoice {$this->invoice_number}",
                 'reference_no' => $this->invoice_number . '-PAY',
@@ -309,6 +383,7 @@ class RentInvoice extends Model
             TenantLedger::create([
                 'tenant_id' => $this->tenant_id,
                 'payment_type_id' => $paymentType->id,
+                'rental_unit_id' => $this->rental_unit_id, // Include rental unit ID
                 'transaction_date' => $this->invoice_date,
                 'description' => "Rent Invoice {$this->invoice_number} - {$unitNumber}",
                 'reference_no' => $this->invoice_number,

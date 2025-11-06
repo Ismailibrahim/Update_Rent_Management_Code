@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Plus, Search, Edit, Trash2, Eye, EyeOff, Building2 } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/UI/Dialog';
 import { rentalUnitTypesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { ResponsiveTable } from '../../components/Responsive/ResponsiveTable';
+import { Pagination } from '../../components/UI/Pagination';
 
 interface PropertyType {
   id: number;
@@ -26,21 +27,53 @@ function PropertyTypesPageContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingType, setEditingType] = useState<PropertyType | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState({
     name: '',
     is_active: true,
   });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
     fetchPropertyTypes();
-  }, []);
+  }, [currentPage, itemsPerPage]);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      fetchPropertyTypes();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Clean up selected IDs when property types are removed
+  useEffect(() => {
+    const propertyTypeIds = new Set(propertyTypes.map(pt => pt.id));
+    setSelectedIds(prev => {
+      const validSelectedIds = Array.from(prev).filter(id => propertyTypeIds.has(id));
+      if (validSelectedIds.length !== prev.size) {
+        return new Set(validSelectedIds);
+      }
+      return prev;
+    });
+  }, [propertyTypes]);
 
   const fetchPropertyTypes = async () => {
     try {
       setLoading(true);
-      const response = await rentalUnitTypesAPI.getPropertyTypes();
+      const response = await rentalUnitTypesAPI.getPropertyTypes({
+        page: currentPage,
+        per_page: itemsPerPage,
+        search: searchTerm || undefined,
+      });
       const types = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
       setPropertyTypes(types);
+      setTotalItems(response.data?.data?.total ?? response.data?.total ?? types.length);
     } catch (error: unknown) {
       console.error('Error fetching property types:', error);
       toast.error('Failed to fetch property types');
@@ -123,6 +156,52 @@ function PropertyTypesPageContent() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      return;
+    }
+
+    const count = selectedIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} property type${count > 1 ? 's' : ''}?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const deletePromises = Array.from(selectedIds).map(id => rentalUnitTypesAPI.delete(id));
+      await Promise.all(deletePromises);
+      toast.success(`${count} property type${count > 1 ? 's' : ''} deleted successfully`);
+      setSelectedIds(new Set());
+      fetchPropertyTypes();
+    } catch (error: unknown) {
+      console.error('Error deleting property types:', error);
+      const errorMessage = error instanceof Error && 'response' in error 
+        ? (error as { response: { data: { message: string } } }).response.data.message 
+        : 'Failed to delete property types';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(propertyTypes.map(propertyType => propertyType.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectItem = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
   const handleToggleStatus = async (propertyType: PropertyType) => {
     try {
       setLoading(true);
@@ -144,14 +223,13 @@ function PropertyTypesPageContent() {
     }
   };
 
-  const filteredPropertyTypes = propertyTypes.filter(propertyType =>
-    propertyType.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const isAllSelected = propertyTypes.length > 0 && selectedIds.size === propertyTypes.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < propertyTypes.length;
 
   const resetForm = () => {
     setFormData({
       name: '',
-      description: '',
       is_active: true,
     });
     setEditingType(null);
@@ -166,13 +244,24 @@ function PropertyTypesPageContent() {
             <h1 className="text-2xl font-bold text-gray-900">Property Types</h1>
             <p className="text-gray-600">Manage different types of properties (buildings/complexes)</p>
           </div>
-          <Button
-            onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
-          >
-            <Plus className="h-4 w-4" />
-            Add Property Type
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected ({selectedIds.size})
+              </Button>
+            )}
+            <Button
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Add Property Type
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -192,8 +281,9 @@ function PropertyTypesPageContent() {
         {showCreateForm && (
           <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
             <DialogContent className="max-w-lg w-full">
-              <DialogHeader>
+              <DialogHeader className="flex-col items-start">
                 <DialogTitle>{editingType ? 'Edit Property Type' : 'Add New Property Type'}</DialogTitle>
+                <div className="border-b border-gray-200 w-full my-3"></div>
                 <DialogDescription>
                   {editingType ? 'Update the property type details' : 'Create a new property type (e.g., Apartment Building, Mixed-Use Building)'}
                 </DialogDescription>
@@ -232,10 +322,10 @@ function PropertyTypesPageContent() {
           </Dialog>
         )}
 
-        {/* Property Types List (Table View) */}
+        {/* Property Types List */}
         <Card className="bg-white border border-gray-200">
           <CardHeader>
-            <CardTitle>Property Types ({filteredPropertyTypes.length})</CardTitle>
+            <CardTitle>Property Types ({totalItems})</CardTitle>
             <CardDescription>Manage your property types for buildings and complexes</CardDescription>
           </CardHeader>
           <CardContent>
@@ -244,81 +334,147 @@ function PropertyTypesPageContent() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                 <p className="mt-2 text-gray-600">Loading property types...</p>
               </div>
-            ) : filteredPropertyTypes.length === 0 ? (
-              <div className="text-center py-8">
-                <Building2 className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                <p className="text-gray-600 mb-2">No property types found</p>
-                <p className="text-sm text-gray-500">
-                  {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property type.'}
-                </p>
-              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">ID</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead className="w-32">Status</TableHead>
-                      <TableHead className="w-40">Created</TableHead>
-                      <TableHead className="w-40 text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPropertyTypes.map((propertyType) => (
-                      <TableRow key={propertyType.id} className="hover:bg-blue-50/50 transition-colors duration-150">
-                        <TableCell>#{propertyType.id}</TableCell>
-                        <TableCell className="font-medium">{propertyType.name}</TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            propertyType.is_active 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-gray-100 text-gray-800'
-                          }`}>
-                            {propertyType.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </TableCell>
-                        <TableCell>{new Date(propertyType.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleStatus(propertyType)}
-                              className="p-1"
-                              title={propertyType.is_active ? 'Deactivate' : 'Activate'}
-                            >
-                              {propertyType.is_active ? (
-                                <EyeOff className="h-4 w-4 text-orange-600" />
-                              ) : (
-                                <Eye className="h-4 w-4 text-green-600" />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEdit(propertyType)}
-                              className="p-1"
-                              title="Edit"
-                            >
-                              <Edit className="h-4 w-4 text-blue-600" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(propertyType.id)}
-                              className="p-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <>
+                {/* Select All Checkbox */}
+                {propertyTypes.length > 0 && (
+                  <div className="mb-4 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={(input) => {
+                        if (input) input.indeterminate = isIndeterminate;
+                      }}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <label className="text-sm text-gray-700">
+                      Select All ({selectedIds.size} selected)
+                    </label>
+                  </div>
+                )}
+                
+                <ResponsiveTable
+                  data={propertyTypes}
+                  keyExtractor={(item) => item.id.toString()}
+                  columns={[
+                    {
+                      header: (
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = isIndeterminate;
+                          }}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ),
+                      accessor: (item) => (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectItem(item.id, e.target.checked);
+                          }}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                      ),
+                      mobileLabel: 'Select',
+                      mobilePriority: 'high',
+                      className: 'w-12',
+                    },
+                    {
+                      header: 'ID',
+                      accessor: (item) => `#${item.id}`,
+                      mobileLabel: 'ID',
+                      mobilePriority: 'high',
+                      className: 'w-16',
+                    },
+                    {
+                      header: 'Name',
+                      accessor: 'name',
+                      mobileLabel: 'Name',
+                      mobilePriority: 'high',
+                    },
+                    {
+                      header: 'Status',
+                      accessor: (item) => (
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          item.is_active 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {item.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      ),
+                      mobileLabel: 'Status',
+                      mobilePriority: 'high',
+                      className: 'w-32',
+                    },
+                    {
+                      header: 'Created',
+                      accessor: (item) => new Date(item.created_at).toLocaleDateString(),
+                      mobileLabel: 'Created',
+                      mobilePriority: 'medium',
+                      className: 'w-40',
+                    },
+                  ]}
+                  actions={(item) => (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleStatus(item)}
+                        className="p-1"
+                        title={item.is_active ? 'Deactivate' : 'Activate'}
+                      >
+                        {item.is_active ? (
+                          <EyeOff className="h-4 w-4 text-orange-600" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-green-600" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(item)}
+                        className="p-1"
+                        title="Edit"
+                      >
+                        <Edit className="h-4 w-4 text-blue-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(item.id)}
+                        className="p-1"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </>
+                  )}
+                  emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first property type.'}
+                  emptyIcon={<Building2 className="mx-auto h-12 w-12 text-gray-400" />}
+                />
+                
+                {propertyTypes.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(newSize) => {
+                      setItemsPerPage(newSize);
+                      setCurrentPage(1);
+                    }}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

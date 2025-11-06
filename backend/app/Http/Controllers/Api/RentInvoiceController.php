@@ -30,13 +30,19 @@ class RentInvoiceController extends Controller
             }
 
             // Month filter
-            if ($request->has('month') && $request->month) {
-                $query->whereMonth('invoice_date', $request->month);
+            if ($request->has('month') && $request->month !== null && $request->month !== '') {
+                $month = (int) $request->month;
+                if ($month >= 1 && $month <= 12) {
+                    $query->whereMonth('invoice_date', $month);
+                }
             }
 
             // Year filter
-            if ($request->has('year') && $request->year) {
-                $query->whereYear('invoice_date', $request->year);
+            if ($request->has('year') && $request->year !== null && $request->year !== '') {
+                $year = (int) $request->year;
+                if ($year >= 2020) {
+                    $query->whereYear('invoice_date', $year);
+                }
             }
 
             // Tenant filter
@@ -49,9 +55,28 @@ class RentInvoiceController extends Controller
                 $query->where('rental_unit_id', $request->rental_unit_id);
             }
 
+            // Property filter
+            if ($request->has('property_id') && $request->property_id) {
+                $query->where('property_id', $request->property_id);
+            }
+
             // Use pagination instead of loading all records
             $perPage = $request->get('per_page', 15);
             $page = $request->get('page', 1);
+            
+            // If per_page is very large or not set, get all records for property details page
+            if ($request->has('property_id') && (!$request->has('per_page') || $perPage > 1000)) {
+                $invoices = $query->orderBy('invoice_date', 'desc')->get();
+                return response()->json([
+                    'invoices' => $invoices,
+                    'pagination' => [
+                        'current_page' => 1,
+                        'last_page' => 1,
+                        'per_page' => $invoices->count(),
+                        'total' => $invoices->count(),
+                    ]
+                ]);
+            }
             
             $invoices = $query->orderBy('invoice_date', 'desc')
                 ->paginate($perPage, ['*'], 'page', $page);
@@ -118,6 +143,15 @@ class RentInvoiceController extends Controller
             $lateFee = $request->late_fee ?? 0;
             $totalAmount = $rentAmount + $lateFee;
 
+            // Get month name for description
+            $invoiceDate = Carbon::parse($request->invoice_date);
+            $monthName = $invoiceDate->format('F Y');
+            
+            // Build description with month information
+            $description = $request->notes 
+                ? "Rent invoice for {$monthName} - {$request->notes}"
+                : "Rent invoice for {$monthName} - {$rentalUnit->property->name} - Unit {$rentalUnit->unit_number}";
+
             $invoice = RentInvoice::create([
                 'invoice_number' => $invoiceNumber,
                 'tenant_id' => $request->tenant_id,
@@ -130,7 +164,7 @@ class RentInvoiceController extends Controller
                 'total_amount' => $totalAmount,
                 'currency' => $rentalUnit->financial['currency'] ?? 'MVR',
                 'status' => 'pending',
-                'notes' => $request->notes,
+                'notes' => $description,
             ]);
 
             $invoice->load(['tenant', 'property', 'rentalUnit']);
@@ -265,9 +299,27 @@ class RentInvoiceController extends Controller
                 ->whereNotNull('tenant_id')
                 ->get();
 
+            // Log summary of occupied units found
+            Log::info('Rent Invoice Generation Started', [
+                'month' => $month,
+                'year' => $year,
+                'total_occupied_units' => $occupiedUnits->count(),
+                'units' => $occupiedUnits->map(function($unit) {
+                    return [
+                        'unit_id' => $unit->id,
+                        'unit_number' => $unit->unit_number,
+                        'property' => $unit->property->name ?? 'N/A',
+                        'tenant_id' => $unit->tenant_id,
+                        'tenant_name' => $unit->tenant->full_name ?? 'N/A',
+                        'rent_amount' => $unit->rent_amount ?? 0,
+                    ];
+                })->toArray()
+            ]);
+
             $generatedInvoices = [];
             $errors = [];
             $skippedTenants = [];
+            $duplicateInvoices = [];
 
             foreach ($occupiedUnits as $unit) {
                 try {
@@ -308,15 +360,22 @@ class RentInvoiceController extends Controller
                         continue;
                     }
 
-                    // Check if invoice already exists for this month/year
-                    $existingInvoice = RentInvoice::where('tenant_id', $unit->tenant_id)
-                        ->where('rental_unit_id', $unit->id)
+                    // Check if invoice already exists for this rental unit for this month/year
+                    // This prevents duplicate invoices for the same rental unit in the same month
+                    $existingInvoice = RentInvoice::where('rental_unit_id', $unit->id)
                         ->whereYear('invoice_date', $year)
                         ->whereMonth('invoice_date', $month)
                         ->first();
 
                     if ($existingInvoice) {
-                        $errors[] = "Invoice already exists for {$unit->tenant->full_name} - Unit {$unit->unit_number}";
+                        $duplicateInvoices[] = [
+                            'tenant_name' => $tenant->full_name,
+                            'unit_number' => $unit->unit_number,
+                            'invoice_number' => $existingInvoice->invoice_number,
+                            'invoice_date' => $existingInvoice->invoice_date->format('Y-m-d'),
+                            'status' => $existingInvoice->status,
+                            'reason' => 'Invoice already exists for this rental unit for the selected month'
+                        ];
                         continue;
                     }
 
@@ -328,15 +387,24 @@ class RentInvoiceController extends Controller
                     $rentAmount = $unit->rent_amount ?? 0;
                     
                     // Debug logging
-                    Log::info('Invoice Generation Debug', [
+                    Log::info('Generating Invoice for Unit', [
                         'unit_id' => $unit->id,
                         'unit_number' => $unit->unit_number,
-                        'financial_data' => $unit->financial,
-                        'rent_amount_attribute' => $unit->rent_amount,
+                        'property' => $unit->property->name ?? 'N/A',
                         'rent_amount' => $rentAmount,
-                        'tenant_name' => $tenant->full_name
+                        'currency' => $unit->currency ?? 'MVR',
+                        'tenant_id' => $tenant->id,
+                        'tenant_name' => $tenant->full_name,
+                        'lease_start' => $tenant->lease_start_date?->format('Y-m-d'),
+                        'lease_end' => $tenant->lease_end_date?->format('Y-m-d'),
+                        'invoice_number' => $invoiceNumber,
+                        'invoice_date' => $invoiceDate,
+                        'due_date' => $dueDate,
                     ]);
 
+                    // Get month name for description
+                    $monthName = Carbon::create($year, $month, 1)->format('F Y');
+                    
                     $invoice = RentInvoice::create([
                         'invoice_number' => $invoiceNumber,
                         'tenant_id' => $unit->tenant_id,
@@ -349,7 +417,7 @@ class RentInvoiceController extends Controller
                         'total_amount' => $rentAmount,
                         'currency' => $unit->currency ?? 'MVR',
                         'status' => 'pending',
-                        'notes' => "Monthly rent for {$unit->property->name} - Unit {$unit->unit_number}",
+                        'notes' => "Rent invoice for {$monthName} - {$unit->property->name} - Unit {$unit->unit_number}",
                     ]);
 
                     $invoice->load(['tenant', 'property', 'rentalUnit']);
@@ -362,12 +430,31 @@ class RentInvoiceController extends Controller
 
             DB::commit();
 
+            // Log final summary
+            Log::info('Rent Invoice Generation Completed', [
+                'month' => $month,
+                'year' => $year,
+                'total_occupied_units_checked' => $occupiedUnits->count(),
+                'invoices_generated' => count($generatedInvoices),
+                'skipped_tenants' => count($skippedTenants),
+                'duplicate_invoices' => count($duplicateInvoices),
+                'errors' => count($errors),
+            ]);
+
+            $message = 'Monthly rent invoices generated successfully';
+            if (count($duplicateInvoices) > 0) {
+                $message .= '. ' . count($duplicateInvoices) . ' duplicate invoice(s) skipped.';
+            }
+
             return response()->json([
-                'message' => 'Monthly rent invoices generated successfully',
+                'message' => $message,
+                'total_occupied_units_checked' => $occupiedUnits->count(),
                 'generated_count' => count($generatedInvoices),
                 'invoices' => $generatedInvoices,
                 'skipped_tenants' => $skippedTenants,
                 'skipped_count' => count($skippedTenants),
+                'duplicate_invoices' => $duplicateInvoices,
+                'duplicate_count' => count($duplicateInvoices),
                 'errors' => $errors
             ]);
 

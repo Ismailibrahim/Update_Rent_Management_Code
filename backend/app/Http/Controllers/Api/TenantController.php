@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class TenantController extends Controller
@@ -37,7 +38,7 @@ class TenantController extends Controller
             $page = $request->get('page', 1);
             
             $tenants = $query->with(['rentalUnits' => function($q) {
-                $q->select('id', 'tenant_id', 'property_id', 'unit_number', 'status')
+                $q->select('id', 'tenant_id', 'property_id', 'unit_number', 'status', 'rent_amount', 'currency')
                   ->with(['property' => function($q) {
                       $q->select('id', 'name');
                   }]);
@@ -428,5 +429,340 @@ class TenantController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Bulk create multiple tenants (for pre-installation)
+     */
+    public function bulkStore(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'tenants' => 'required|array|min:1|max:200',
+            'tenants.*.tenant_type' => 'nullable|in:individual,company',
+            'tenants.*.first_name' => 'nullable|string|max:100',
+            'tenants.*.last_name' => 'nullable|string|max:100',
+            'tenants.*.date_of_birth' => 'nullable|date',
+            'tenants.*.national_id' => 'nullable|string|max:50',
+            'tenants.*.nationality' => 'nullable|string|max:100',
+            'tenants.*.gender' => 'nullable|in:male,female,other',
+            'tenants.*.email' => 'nullable|email|max:255',
+            'tenants.*.phone' => 'nullable|string|max:20',
+            'tenants.*.address' => 'nullable|string',
+            'tenants.*.city' => 'nullable|string|max:100',
+            'tenants.*.postal_code' => 'nullable|string|max:20',
+            'tenants.*.emergency_contact_name' => 'nullable|string|max:100',
+            'tenants.*.emergency_contact_phone' => 'nullable|string|max:20',
+            'tenants.*.emergency_contact_relationship' => 'nullable|string|max:50',
+            'tenants.*.employment_company' => 'nullable|string|max:100',
+            'tenants.*.employment_position' => 'nullable|string|max:100',
+            'tenants.*.employment_salary' => 'nullable|numeric|min:0',
+            'tenants.*.employment_phone' => 'nullable|string|max:20',
+            'tenants.*.bank_name' => 'nullable|string|max:100',
+            'tenants.*.account_number' => 'nullable|string|max:50',
+            'tenants.*.account_holder_name' => 'nullable|string|max:100',
+            'tenants.*.status' => 'nullable|in:active,inactive,suspended',
+            'tenants.*.notes' => 'nullable|string',
+            'tenants.*.company_name' => 'nullable|string|max:255',
+            'tenants.*.company_address' => 'nullable|string',
+            'tenants.*.company_registration_number' => 'nullable|string|max:100',
+            'tenants.*.company_gst_tin' => 'nullable|string|max:100',
+            'tenants.*.company_telephone' => 'nullable|string|max:20',
+            'tenants.*.company_email' => 'nullable|email|max:255',
+            'options' => 'nullable|array',
+            'options.skip_duplicates' => 'nullable|boolean',
+            'options.skip_errors' => 'nullable|boolean',
+            'options.validate_only' => 'nullable|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 400);
+        }
+
+        $options = $request->input('options', []);
+        $skipDuplicates = $options['skip_duplicates'] ?? false;
+        $skipErrors = $options['skip_errors'] ?? false;
+        $validateOnly = $options['validate_only'] ?? false;
+
+        $tenants = $request->input('tenants', []);
+        $created = [];
+        $errors = [];
+        $skipped = [];
+
+        DB::beginTransaction();
+
+        try {
+            foreach ($tenants as $index => $tenantData) {
+                $rowNumber = $index + 1;
+
+                try {
+                    // Validate tenant type specific requirements
+                    $tenantType = $tenantData['tenant_type'] ?? 'individual';
+                    
+                    if ($tenantType === 'individual') {
+                        if (empty($tenantData['first_name']) || empty($tenantData['last_name'])) {
+                            $errors[] = [
+                                'row' => $rowNumber,
+                                'data' => $tenantData,
+                                'error' => 'First name and last name are required for individual tenants'
+                            ];
+                            if (!$skipErrors) {
+                                throw new \Exception('Validation failed for row ' . $rowNumber);
+                            }
+                            continue;
+                        }
+                        if (empty($tenantData['email']) || empty($tenantData['phone'])) {
+                            $errors[] = [
+                                'row' => $rowNumber,
+                                'data' => $tenantData,
+                                'error' => 'Email and phone are required for individual tenants'
+                            ];
+                            if (!$skipErrors) {
+                                throw new \Exception('Validation failed for row ' . $rowNumber);
+                            }
+                            continue;
+                        }
+                    } else if ($tenantType === 'company') {
+                        $requiredFields = ['company_name', 'company_address', 'company_registration_number', 'company_telephone', 'company_email'];
+                        $missingFields = [];
+                        foreach ($requiredFields as $field) {
+                            if (empty($tenantData[$field])) {
+                                $missingFields[] = $field;
+                            }
+                        }
+                        if (!empty($missingFields)) {
+                            $errors[] = [
+                                'row' => $rowNumber,
+                                'data' => $tenantData,
+                                'error' => 'Missing required company fields: ' . implode(', ', $missingFields)
+                            ];
+                            if (!$skipErrors) {
+                                throw new \Exception('Validation failed for row ' . $rowNumber);
+                            }
+                            continue;
+                        }
+                    }
+
+                    // Check for duplicates
+                    $isDuplicate = false;
+                    if (!empty($tenantData['email'])) {
+                        $existing = Tenant::where('email', $tenantData['email'])->first();
+                        if ($existing) {
+                            if ($skipDuplicates) {
+                                $skipped[] = [
+                                    'row' => $rowNumber,
+                                    'data' => $tenantData,
+                                    'reason' => 'Duplicate email: ' . $tenantData['email']
+                                ];
+                                continue;
+                            } else {
+                                $isDuplicate = true;
+                            }
+                        }
+                    }
+
+                    if (!$isDuplicate && !empty($tenantData['phone'])) {
+                        $existing = Tenant::where('phone', $tenantData['phone'])->first();
+                        if ($existing) {
+                            if ($skipDuplicates) {
+                                $skipped[] = [
+                                    'row' => $rowNumber,
+                                    'data' => $tenantData,
+                                    'reason' => 'Duplicate phone: ' . $tenantData['phone']
+                                ];
+                                continue;
+                            } else {
+                                $isDuplicate = true;
+                            }
+                        }
+                    }
+
+                    if ($isDuplicate) {
+                        $errors[] = [
+                            'row' => $rowNumber,
+                            'data' => $tenantData,
+                            'error' => 'Duplicate tenant (email or phone already exists)'
+                        ];
+                        if (!$skipErrors) {
+                            throw new \Exception('Duplicate tenant in row ' . $rowNumber);
+                        }
+                        continue;
+                    }
+
+                    // Set default status
+                    $tenantData['status'] = $tenantData['status'] ?? 'active';
+                    $tenantData['tenant_type'] = $tenantType;
+
+                    // Convert empty strings to null
+                    foreach ($tenantData as $key => $value) {
+                        if ($value === '') {
+                            $tenantData[$key] = null;
+                        }
+                    }
+
+                    // Convert employment_salary to float if provided
+                    if (isset($tenantData['employment_salary']) && $tenantData['employment_salary'] !== null) {
+                        $tenantData['employment_salary'] = floatval($tenantData['employment_salary']);
+                    }
+
+                    // If validate only, don't create
+                    if ($validateOnly) {
+                        $created[] = [
+                            'row' => $rowNumber,
+                            'data' => $tenantData,
+                            'status' => 'valid'
+                        ];
+                        continue;
+                    }
+
+                    // Create tenant
+                    $tenant = Tenant::create($tenantData);
+                    $created[] = [
+                        'row' => $rowNumber,
+                        'tenant' => $tenant,
+                        'status' => 'created'
+                    ];
+
+                } catch (\Exception $e) {
+                    $errors[] = [
+                        'row' => $rowNumber,
+                        'data' => $tenantData,
+                        'error' => $e->getMessage()
+                    ];
+                    
+                    if (!$skipErrors) {
+                        DB::rollBack();
+                        return response()->json([
+                            'message' => 'Bulk creation failed',
+                            'success' => count($created),
+                            'failed' => count($errors),
+                            'skipped' => count($skipped),
+                            'tenants' => $created,
+                            'errors' => $errors,
+                            'skipped' => $skipped
+                        ], 400);
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Bulk tenant creation completed',
+                'success' => count($created),
+                'failed' => count($errors),
+                'skipped' => count($skipped),
+                'tenants' => $created,
+                'errors' => $errors,
+                'skipped' => $skipped
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Bulk tenant creation error: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'message' => 'Bulk tenant creation failed',
+                'error' => $e->getMessage(),
+                'success' => count($created),
+                'failed' => count($errors),
+                'skipped' => count($skipped),
+                'tenants' => $created,
+                'errors' => $errors,
+                'skipped' => $skipped
+            ], 500);
+        }
+    }
+
+    /**
+     * Download bulk tenant creation template
+     */
+    public function downloadTemplate(): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="bulk_tenant_template.csv"',
+        ];
+
+        $callback = function() {
+            $file = fopen('php://output', 'w');
+            
+            // Headers
+            fputcsv($file, [
+                'tenant_type',
+                'first_name',
+                'last_name',
+                'email',
+                'phone',
+                'date_of_birth',
+                'national_id',
+                'nationality',
+                'gender',
+                'address',
+                'city',
+                'postal_code',
+                'emergency_contact_name',
+                'emergency_contact_phone',
+                'emergency_contact_relationship',
+                'employment_company',
+                'employment_position',
+                'employment_salary',
+                'employment_phone',
+                'bank_name',
+                'account_number',
+                'account_holder_name',
+                'status',
+                'notes',
+                'company_name',
+                'company_address',
+                'company_registration_number',
+                'company_gst_tin',
+                'company_telephone',
+                'company_email'
+            ]);
+
+            // Example row
+            fputcsv($file, [
+                'individual',
+                'John',
+                'Doe',
+                'john.doe@example.com',
+                '+9601234567',
+                '1990-01-01',
+                'A123456',
+                'Maldivian',
+                'male',
+                '123 Main Street',
+                'Male',
+                '20001',
+                'Jane Doe',
+                '+9601234568',
+                'Spouse',
+                'ABC Company',
+                'Manager',
+                '5000',
+                '+9601234569',
+                'Bank of Maldives',
+                '1234567890',
+                'John Doe',
+                'active',
+                'Example tenant',
+                '',
+                '',
+                '',
+                '',
+                '',
+                ''
+            ]);
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 }

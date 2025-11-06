@@ -91,9 +91,17 @@ class RentalUnitController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Rental Units Index Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
             return response()->json([
                 'message' => 'Failed to fetch rental units',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
             ], 500);
         }
     }
@@ -142,7 +150,11 @@ class RentalUnitController extends Controller
             'photos' => 'nullable|array',
             'notes' => 'nullable|string',
             'assets' => 'nullable|array',
-            'assets.*' => 'nullable',
+            'assets.*.asset_id' => 'required|exists:assets,id',
+            'assets.*.quantity' => 'required|integer|min:1',
+            'assets.*.asset_location' => 'nullable|string|max:255',
+            'assets.*.installation_date' => 'nullable|date',
+            'assets.*.serial_numbers' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -262,45 +274,48 @@ class RentalUnitController extends Controller
                     $assetId = is_array($assetData) ? $assetData['asset_id'] : $assetData;
                     $quantity = is_array($assetData) ? ($assetData['quantity'] ?? 1) : 1;
                     $serialNumbers = is_array($assetData) && isset($assetData['serial_numbers']) ? trim($assetData['serial_numbers']) : null;
+                    $assetLocation = is_array($assetData) && isset($assetData['asset_location']) ? trim($assetData['asset_location']) : null;
+                    $installationDate = is_array($assetData) && isset($assetData['installation_date']) ? $assetData['installation_date'] : null;
                     
                     $asset = Asset::find($assetId);
                     if ($asset) {
-                        // Check if asset is already assigned to THIS specific rental unit
-                        $existingAssignment = RentalUnitAsset::where('rental_unit_id', $rentalUnit->id)
-                            ->where('asset_id', $assetId)
-                            ->where('is_active', true)
-                            ->first();
-                            
-                        if (!$existingAssignment) {
-                            $assignmentData = [
-                                'rental_unit_id' => $rentalUnit->id,
-                                'asset_id' => $assetId,
-                                'assigned_date' => now(),
-                                'notes' => 'Assigned during unit creation',
-                                'is_active' => true,
-                                'quantity' => $quantity,
-                                'status' => 'working',
-                            ];
-                            
-                            if ($serialNumbers !== null) {
-                                $assignmentData['serial_numbers'] = $serialNumbers;
-                            }
-                            
-                            RentalUnitAsset::create($assignmentData);
-                            
-                            Log::info('Asset assigned to rental unit', [
-                                'rental_unit_id' => $rentalUnit->id,
-                                'asset_id' => $assetId,
-                                'asset_name' => $asset->name,
-                                'quantity' => $quantity
-                            ]);
-                        } else {
-                            Log::info('Asset already assigned to this rental unit', [
-                                'rental_unit_id' => $rentalUnit->id,
-                                'asset_id' => $assetId,
-                                'asset_name' => $asset->name
-                            ]);
+                        // Allow multiple entries of the same asset for different locations/installation dates
+                        // No longer checking for existing assignments since we support multiple entries
+                        $assignmentData = [
+                            'rental_unit_id' => $rentalUnit->id,
+                            'asset_id' => $assetId,
+                            'assigned_date' => now(),
+                            'notes' => 'Assigned during unit creation',
+                            'is_active' => true,
+                            'quantity' => $quantity,
+                            'status' => 'working',
+                        ];
+                        
+                        if ($serialNumbers !== null && $serialNumbers !== '') {
+                            $assignmentData['serial_numbers'] = $serialNumbers;
                         }
+                        
+                        if ($assetLocation !== null && $assetLocation !== '') {
+                            $assignmentData['asset_location'] = $assetLocation;
+                        }
+                        
+                        if ($installationDate !== null && $installationDate !== '') {
+                            $assignmentData['installation_date'] = $installationDate;
+                        } else {
+                            // Default to today's date if not provided
+                            $assignmentData['installation_date'] = now()->toDateString();
+                        }
+                        
+                        RentalUnitAsset::create($assignmentData);
+                        
+                        Log::info('Asset assigned to rental unit', [
+                            'rental_unit_id' => $rentalUnit->id,
+                            'asset_id' => $assetId,
+                            'asset_name' => $asset->name,
+                            'quantity' => $quantity,
+                            'location' => $assetLocation,
+                            'installation_date' => $installationDate
+                        ]);
                     } else {
                         Log::warning('Asset not found', [
                             'asset_id' => $assetId,
@@ -940,6 +955,8 @@ class RentalUnitController extends Controller
             'assets.*.asset_id' => 'required|exists:assets,id',
             'assets.*.quantity' => 'required|integer|min:1',
             'assets.*.serial_numbers' => 'nullable|string',
+            'assets.*.asset_location' => 'nullable|string|max:255',
+            'assets.*.installation_date' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
@@ -960,6 +977,8 @@ class RentalUnitController extends Controller
                 $assetId = $assetData['asset_id'];
                 $quantity = $assetData['quantity'];
                 $serialNumbers = isset($assetData['serial_numbers']) ? trim($assetData['serial_numbers']) : null;
+                $assetLocation = isset($assetData['asset_location']) ? trim($assetData['asset_location']) : null;
+                $installationDate = isset($assetData['installation_date']) ? $assetData['installation_date'] : null;
                 
                 $asset = Asset::find($assetId);
                 
@@ -992,6 +1011,14 @@ class RentalUnitController extends Controller
                             
                             if ($serialNumbers !== null) {
                                 $updateData['serial_numbers'] = $serialNumbers;
+                            }
+                            
+                            if ($assetLocation !== null) {
+                                $updateData['asset_location'] = $assetLocation;
+                            }
+                            
+                            if ($installationDate !== null) {
+                                $updateData['installation_date'] = $installationDate;
                             }
                             
                             $updated = $existingAssignment->update($updateData);
@@ -1032,6 +1059,17 @@ class RentalUnitController extends Controller
                 
                 if ($serialNumbers !== null) {
                     $assignmentData['serial_numbers'] = $serialNumbers;
+                }
+                
+                if ($assetLocation !== null) {
+                    $assignmentData['asset_location'] = $assetLocation;
+                }
+                
+                if ($installationDate !== null) {
+                    $assignmentData['installation_date'] = $installationDate;
+                } else {
+                    // Default to today's date if not provided
+                    $assignmentData['installation_date'] = now()->toDateString();
                 }
                 
                 $assignment = RentalUnitAsset::create($assignmentData);
@@ -1108,15 +1146,234 @@ class RentalUnitController extends Controller
     public function getAssets(RentalUnit $rentalUnit): JsonResponse
     {
         try {
-            $assets = $rentalUnit->assets()->wherePivot('is_active', true)->get();
+            // Get RentalUnitAsset records with relationships loaded
+            $rentalUnitAssets = RentalUnitAsset::with(['asset', 'rentalUnit'])
+                ->where('rental_unit_id', $rentalUnit->id)
+                ->where('is_active', true)
+                ->orderBy('updated_at', 'desc')
+                ->get();
+
+            // Transform to match frontend expectations
+            $assets = $rentalUnitAssets->map(function ($rentalUnitAsset) {
+                return [
+                    'id' => $rentalUnitAsset->id,
+                    'asset_id' => $rentalUnitAsset->asset_id,
+                    'rental_unit_id' => $rentalUnitAsset->rental_unit_id,
+                    'quantity' => $rentalUnitAsset->quantity,
+                    'serial_numbers' => $rentalUnitAsset->serial_numbers,
+                    'purchase_date' => $rentalUnitAsset->assigned_date?->format('Y-m-d'),
+                    'warranty_end_date' => null, // Not stored in current schema
+                    'estimated_life_remaining' => null, // Not stored in current schema
+                    'status' => $rentalUnitAsset->status ?? 'active',
+                    'asset' => $rentalUnitAsset->asset ? [
+                        'id' => $rentalUnitAsset->asset->id,
+                        'name' => $rentalUnitAsset->asset->name,
+                        'brand' => $rentalUnitAsset->asset->brand,
+                        'category' => $rentalUnitAsset->asset->category,
+                    ] : null,
+                    'rental_unit' => $rentalUnitAsset->rentalUnit ? [
+                        'id' => $rentalUnitAsset->rentalUnit->id,
+                        'unit_number' => $rentalUnitAsset->rentalUnit->unit_number,
+                    ] : null,
+                ];
+            });
 
             return response()->json([
                 'assets' => $assets
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Get Assets Failed', [
+                'rental_unit_id' => $rentalUnit->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json([
                 'message' => 'Failed to fetch assets',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Bulk assign assets to multiple rental units
+     */
+    public function bulkAssignAssets(Request $request): JsonResponse
+    {
+        Log::info('Bulk Assign Assets Request', [
+            'request_data' => $request->all()
+        ]);
+
+        $validator = Validator::make($request->all(), [
+            'rental_unit_ids' => 'required|array|min:1',
+            'rental_unit_ids.*' => 'required|exists:rental_units,id',
+            'assets' => 'required|array|min:1',
+            'assets.*.asset_id' => 'required|exists:assets,id',
+            'assets.*.quantity' => 'required|integer|min:1',
+            'assets.*.serial_numbers' => 'nullable|string',
+            'assets.*.asset_location' => 'nullable|string|max:255',
+            'assets.*.installation_date' => 'nullable|date',
+        ]);
+
+        if ($validator->fails()) {
+            Log::error('Bulk Assign Assets Validation Failed', [
+                'errors' => $validator->errors()
+            ]);
+            return response()->json([
+                'message' => 'Validation failed',
+                'errors' => $validator->errors()
+            ], 400);
+        }
+
+        try {
+            $rentalUnitIds = $request->rental_unit_ids;
+            $assets = $request->assets;
+            
+            $results = [
+                'success' => 0,
+                'failed' => 0,
+                'total_units' => count($rentalUnitIds),
+                'total_assets' => count($assets),
+                'unit_results' => []
+            ];
+
+            DB::beginTransaction();
+
+            foreach ($rentalUnitIds as $rentalUnitId) {
+                $unitResult = [
+                    'rental_unit_id' => $rentalUnitId,
+                    'success' => 0,
+                    'failed' => 0,
+                    'skipped' => 0,
+                    'errors' => []
+                ];
+
+                $rentalUnit = RentalUnit::find($rentalUnitId);
+                
+                if (!$rentalUnit) {
+                    $unitResult['failed'] = count($assets);
+                    $unitResult['errors'][] = 'Rental unit not found';
+                    $results['failed']++;
+                    $results['unit_results'][] = $unitResult;
+                    continue;
+                }
+
+                foreach ($assets as $assetData) {
+                    try {
+                        $assetId = $assetData['asset_id'];
+                        $quantity = $assetData['quantity'];
+                        $serialNumbers = isset($assetData['serial_numbers']) ? trim($assetData['serial_numbers']) : null;
+                        $assetLocation = isset($assetData['asset_location']) ? trim($assetData['asset_location']) : null;
+                        $installationDate = isset($assetData['installation_date']) ? $assetData['installation_date'] : null;
+                        
+                        $asset = Asset::find($assetId);
+                        
+                        if (!$asset) {
+                            $unitResult['failed']++;
+                            $unitResult['errors'][] = "Asset ID {$assetId} not found";
+                            continue;
+                        }
+
+                        // Check if asset is already assigned to this rental unit
+                        $existingAssignment = RentalUnitAsset::where('rental_unit_id', $rentalUnitId)
+                            ->where('asset_id', $assetId)
+                            ->first();
+                            
+                        if ($existingAssignment) {
+                            // Update existing assignment
+                            $updateData = [
+                                'quantity' => $quantity,
+                                'is_active' => true,
+                                'assigned_date' => now(),
+                                'notes' => 'Updated via bulk assignment',
+                                'status' => 'working'
+                            ];
+                            
+                            if ($serialNumbers !== null) {
+                                $updateData['serial_numbers'] = $serialNumbers;
+                            }
+                            
+                            if ($assetLocation !== null) {
+                                $updateData['asset_location'] = $assetLocation;
+                            }
+                            
+                            if ($installationDate !== null) {
+                                $updateData['installation_date'] = $installationDate;
+                            }
+                            
+                            $existingAssignment->update($updateData);
+                            $unitResult['success']++;
+                        } else {
+                            // Create new assignment
+                            $assignmentData = [
+                                'rental_unit_id' => $rentalUnitId,
+                                'asset_id' => $assetId,
+                                'quantity' => $quantity,
+                                'assigned_date' => now(),
+                                'notes' => 'Assigned via bulk assignment',
+                                'is_active' => true,
+                                'status' => 'working',
+                            ];
+                            
+                            if ($serialNumbers !== null) {
+                                $assignmentData['serial_numbers'] = $serialNumbers;
+                            }
+                            
+                            if ($assetLocation !== null) {
+                                $assignmentData['asset_location'] = $assetLocation;
+                            }
+                            
+                            if ($installationDate !== null) {
+                                $assignmentData['installation_date'] = $installationDate;
+                            } else {
+                                // Default to today's date if not provided
+                                $assignmentData['installation_date'] = now()->toDateString();
+                            }
+                            
+                            RentalUnitAsset::create($assignmentData);
+                            $unitResult['success']++;
+                        }
+                    } catch (\Exception $e) {
+                        $unitResult['failed']++;
+                        $unitResult['errors'][] = "Asset ID {$assetData['asset_id']}: " . $e->getMessage();
+                        Log::error('Error assigning asset in bulk operation', [
+                            'rental_unit_id' => $rentalUnitId,
+                            'asset_id' => $assetData['asset_id'],
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+
+                if ($unitResult['success'] > 0) {
+                    $results['success']++;
+                } else {
+                    $results['failed']++;
+                }
+
+                $results['unit_results'][] = $unitResult;
+            }
+
+            DB::commit();
+
+            Log::info('Bulk Assign Assets Completed', [
+                'total_units' => count($rentalUnitIds),
+                'success' => $results['success'],
+                'failed' => $results['failed']
+            ]);
+
+            return response()->json([
+                'message' => 'Bulk asset assignment completed',
+                'results' => $results
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Bulk Assign Assets Failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'message' => 'Failed to assign assets',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -1132,6 +1389,8 @@ class RentalUnitController extends Controller
             'maintenance_notes' => 'nullable|string|max:1000',
             'quantity' => 'nullable|integer|min:1',
             'serial_numbers' => 'nullable|string',
+            'asset_location' => 'nullable|string|max:255',
+            'installation_date' => 'nullable|date',
         ]);
 
         if ($validator->fails()) {
@@ -1168,6 +1427,14 @@ class RentalUnitController extends Controller
             if ($request->has('serial_numbers')) {
                 $updateData['serial_numbers'] = $request->serial_numbers ? trim($request->serial_numbers) : null;
             }
+            
+            if ($request->has('asset_location')) {
+                $updateData['asset_location'] = $request->asset_location ? trim($request->asset_location) : null;
+            }
+            
+            if ($request->has('installation_date')) {
+                $updateData['installation_date'] = $request->installation_date;
+            }
 
             $assignment->update($updateData);
 
@@ -1189,17 +1456,22 @@ class RentalUnitController extends Controller
     /**
      * Get all rental unit assets that require maintenance
      */
-    public function getMaintenanceAssets(): JsonResponse
+    public function getMaintenanceAssets(Request $request): JsonResponse
     {
         try {
-            $maintenanceAssets = RentalUnitAsset::with(['asset', 'rentalUnit.property', 'maintenanceCosts'])
+            $query = RentalUnitAsset::with(['asset', 'rentalUnit.property', 'maintenanceCosts'])
                 ->whereIn('status', ['maintenance', 'repaired'])
                 ->where('is_active', true)
-                ->orderBy('updated_at', 'desc')
-                ->get();
+                ->orderBy('updated_at', 'desc');
+
+            // Use pagination
+            $perPage = $request->get('per_page', 15);
+            $page = $request->get('page', 1);
+            
+            $maintenanceAssets = $query->paginate($perPage, ['*'], 'page', $page);
 
             // Transform the data to include asset details and rental unit info
-            $transformedAssets = $maintenanceAssets->map(function ($assignment) {
+            $transformedAssets = $maintenanceAssets->getCollection()->map(function ($assignment) {
                 // Get the most recent maintenance cost
                 $maintenanceCost = $assignment->maintenanceCosts->sortByDesc('created_at')->first();
                 
@@ -1237,7 +1509,13 @@ class RentalUnitController extends Controller
 
             return response()->json([
                 'success' => true,
-                'assets' => $transformedAssets
+                'assets' => $transformedAssets->values()->all(),
+                'pagination' => [
+                    'current_page' => $maintenanceAssets->currentPage(),
+                    'last_page' => $maintenanceAssets->lastPage(),
+                    'per_page' => $maintenanceAssets->perPage(),
+                    'total' => $maintenanceAssets->total(),
+                ]
             ]);
 
         } catch (\Exception $e) {

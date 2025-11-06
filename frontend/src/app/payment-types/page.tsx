@@ -9,6 +9,8 @@ import { CreditCard, Plus, Search, Edit, Trash2, Save, X } from 'lucide-react';
 import { paymentTypesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { ResponsiveTable } from '../../components/Responsive/ResponsiveTable';
+import { Pagination } from '../../components/UI/Pagination';
 
 interface PaymentType {
   id: number;
@@ -25,21 +27,54 @@ export default function PaymentTypesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingPaymentType, setEditingPaymentType] = useState<PaymentType | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     is_active: true
   });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
     fetchPaymentTypes();
-  }, []);
+  }, [currentPage, itemsPerPage]);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      fetchPaymentTypes();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Clean up selected IDs when payment types are removed
+  useEffect(() => {
+    const paymentTypeIds = new Set(paymentTypes.map(pt => pt.id));
+    setSelectedIds(prev => {
+      const validSelectedIds = Array.from(prev).filter(id => paymentTypeIds.has(id));
+      if (validSelectedIds.length !== prev.size) {
+        return new Set(validSelectedIds);
+      }
+      return prev;
+    });
+  }, [paymentTypes]);
 
   const fetchPaymentTypes = async () => {
     try {
       setLoading(true);
-      const response = await paymentTypesAPI.getAll();
-      setPaymentTypes(response.data.payment_types || []);
+      const response = await paymentTypesAPI.getAll({
+        page: currentPage,
+        per_page: itemsPerPage,
+        search: searchTerm || undefined,
+      });
+      const paymentTypesData = response.data.payment_types || response.data?.data || [];
+      setPaymentTypes(paymentTypesData);
+      setTotalItems(response.data?.total ?? response.data?.pagination?.total ?? paymentTypesData.length);
     } catch (error) {
       console.error('Error fetching payment types:', error);
       toast.error('Failed to fetch payment types');
@@ -48,10 +83,9 @@ export default function PaymentTypesPage() {
     }
   };
 
-  const filteredPaymentTypes = paymentTypes.filter(type =>
-    type.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    type.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const isAllSelected = paymentTypes.length > 0 && selectedIds.size === paymentTypes.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < paymentTypes.length;
 
   const handleAddPaymentType = () => {
     setEditingPaymentType(null);
@@ -137,10 +171,54 @@ export default function PaymentTypesPage() {
     }
   };
 
-  // Calculate statistics
-  const totalPaymentTypes = paymentTypes.length;
-  const activePaymentTypes = paymentTypes.filter(type => type.is_active).length;
-  const inactivePaymentTypes = paymentTypes.filter(type => !type.is_active).length;
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      return;
+    }
+
+    const count = selectedIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} payment type${count > 1 ? 's' : ''}?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const deletePromises = Array.from(selectedIds).map(id => paymentTypesAPI.delete(id));
+      await Promise.all(deletePromises);
+      toast.success(`${count} payment type${count > 1 ? 's' : ''} deleted successfully`);
+      setSelectedIds(new Set());
+      fetchPaymentTypes();
+    } catch (error: unknown) {
+      console.error('Error deleting payment types:', error);
+      const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
+      
+      if (axiosError.response?.status === 422) {
+        toast.error(axiosError.response.data?.message || 'Cannot delete some payment types because they are being used in ledger entries.');
+      } else {
+        toast.error(axiosError.response?.data?.message || 'Failed to delete payment types');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(paymentTypes.map(paymentType => paymentType.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectItem = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
 
   if (loading) {
     return (
@@ -163,43 +241,21 @@ export default function PaymentTypesPage() {
               Manage different types of payments
             </p>
           </div>
-          <Button onClick={handleAddPaymentType} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
-            <Plus className="h-4 w-4" />
-            Add Payment Type
-          </Button>
-        </div>
-
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-white border border-gray-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Payment Types</CardTitle>
-              <CreditCard className="h-4 w-4 text-gray-400" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{totalPaymentTypes}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border border-gray-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Active Types</CardTitle>
-              <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{activePaymentTypes}</div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white border border-gray-200">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Inactive Types</CardTitle>
-              <div className="h-2 w-2 bg-gray-400 rounded-full"></div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{inactivePaymentTypes}</div>
-            </CardContent>
-          </Card>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected ({selectedIds.size})
+              </Button>
+            )}
+            <Button onClick={handleAddPaymentType} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium">
+              <Plus className="h-4 w-4" />
+              Add Payment Type
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -216,10 +272,11 @@ export default function PaymentTypesPage() {
         {/* Add/Edit Payment Type Dialog */}
         <Dialog open={showAddForm} onOpenChange={setShowAddForm}>
           <DialogContent className="sm:max-w-[425px]">
-            <DialogHeader>
+            <DialogHeader className="flex-col items-start">
               <DialogTitle>
                 {editingPaymentType ? 'Edit Payment Type' : 'Add Payment Type'}
               </DialogTitle>
+              <div className="border-b border-gray-200 w-full my-3"></div>
               <DialogDescription>
                 {editingPaymentType ? 'Update the payment type details below.' : 'Create a new payment type by filling out the form below.'}
               </DialogDescription>
@@ -281,81 +338,141 @@ export default function PaymentTypesPage() {
         {/* Payment Types Table */}
         <Card className="bg-white border border-gray-200">
           <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900">Payment Types List</CardTitle>
+            <CardTitle className="text-lg font-semibold text-gray-900">Payment Types List ({totalItems})</CardTitle>
             <CardDescription className="text-gray-600">
               Manage your payment types and their settings
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Description</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Created</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-600">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPaymentTypes.map((paymentType) => (
-                    <tr key={paymentType.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4">
-                        <div className="font-medium text-gray-900">{paymentType.name}</div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="text-gray-600">
-                          {paymentType.description || 'No description'}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
+            {loading ? (
+              <div className="text-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-2 text-gray-600">Loading payment types...</p>
+              </div>
+            ) : (
+              <>
+                {/* Select All Checkbox */}
+                {paymentTypes.length > 0 && (
+                  <div className="mb-4 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={(input) => {
+                        if (input) input.indeterminate = isIndeterminate;
+                      }}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <label className="text-sm text-gray-700">
+                      Select All ({selectedIds.size} selected)
+                    </label>
+                  </div>
+                )}
+                
+                <ResponsiveTable
+                  data={paymentTypes}
+                  keyExtractor={(item) => item.id.toString()}
+                  columns={[
+                    {
+                      header: (
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = isIndeterminate;
+                          }}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ),
+                      accessor: (item) => (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectItem(item.id, e.target.checked);
+                          }}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                      ),
+                      mobileLabel: 'Select',
+                      mobilePriority: 'high',
+                      className: 'w-12',
+                    },
+                    {
+                      header: 'Name',
+                      accessor: 'name',
+                      mobileLabel: 'Name',
+                      mobilePriority: 'high',
+                    },
+                    {
+                      header: 'Description',
+                      accessor: (item) => item.description || 'No description',
+                      mobileLabel: 'Description',
+                      mobilePriority: 'medium',
+                    },
+                    {
+                      header: 'Status',
+                      accessor: (item) => (
                         <span className={`px-2 py-1 text-xs rounded-full ${
-                          paymentType.is_active 
+                          item.is_active 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-gray-100 text-gray-800'
                         }`}>
-                          {paymentType.is_active ? 'Active' : 'Inactive'}
+                          {item.is_active ? 'Active' : 'Inactive'}
                         </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-gray-500">
-                          {new Date(paymentType.created_at).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-end space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditPaymentType(paymentType)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeletePaymentType(paymentType.id)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {filteredPaymentTypes.length === 0 && (
-              <div className="text-center py-12">
-                <CreditCard className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No payment types found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  {searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first payment type.'}
-                </p>
-              </div>
+                      ),
+                      mobileLabel: 'Status',
+                      mobilePriority: 'high',
+                      className: 'w-32',
+                    },
+                    {
+                      header: 'Created',
+                      accessor: (item) => new Date(item.created_at).toLocaleDateString(),
+                      mobileLabel: 'Created',
+                      mobilePriority: 'medium',
+                      className: 'w-40',
+                    },
+                  ]}
+                  actions={(item) => (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditPaymentType(item)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeletePaymentType(item.id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                  emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first payment type.'}
+                  emptyIcon={<CreditCard className="mx-auto h-12 w-12 text-gray-400" />}
+                />
+                
+                {paymentTypes.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(newSize) => {
+                      setItemsPerPage(newSize);
+                      setCurrentPage(1);
+                    }}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

@@ -21,11 +21,13 @@ import {
   TrendingUp,
   Search,
   Eye,
-  Tool,
   Clock,
   CheckCircle2,
   AlertCircle,
-  Upload
+  Upload,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import {
   propertiesAPI,
@@ -90,7 +92,6 @@ interface Asset {
     id: number;
     name: string;
     brand?: string;
-    serial_no?: string;
     category: string;
   };
   rental_unit: {
@@ -123,7 +124,8 @@ interface MaintenanceRequest {
 interface MaintenanceCost {
   id: number;
   repair_cost: number;
-  currency: string;
+  currency?: string | { code: string; id: number; name?: string };
+  currency_id?: number;
   description?: string;
   repair_date?: string;
   repair_provider?: string;
@@ -180,11 +182,22 @@ export default function PropertyDetailsPage() {
   const [rentalUnitsLoading, setRentalUnitsLoading] = useState(false);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
   
   // Filter states
   const [maintenanceStatusFilter, setMaintenanceStatusFilter] = useState<string>('all');
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
   const [maintenanceSearchTerm, setMaintenanceSearchTerm] = useState('');
+  
+  // Payment History pagination
+  const [paymentHistoryPage, setPaymentHistoryPage] = useState(1);
+  const paymentHistoryPerPage = 10;
+
+  // Maintenance Log pagination
+  const [maintenancePage, setMaintenancePage] = useState(1);
+  const [maintenanceTotal, setMaintenanceTotal] = useState(0);
+  const [maintenanceLastPage, setMaintenanceLastPage] = useState(1);
+  const maintenancePerPage = 10;
 
   // Component unmount tracking (must be declared before use in callbacks)
   const isMountedRef = useRef(true);
@@ -263,11 +276,10 @@ export default function PropertyDetailsPage() {
 
   // Fetch assets for all rental units (lazy loaded)
   const fetchAssets = useCallback(async () => {
-    if (!isMountedRef.current || assetsLoading || assetsFetchedRef.current) return; // Prevent duplicate fetches
+    if (!isMountedRef.current || assetsLoading) return; // Prevent duplicate concurrent fetches
     
     try {
       setAssetsLoading(true);
-      assetsFetchedRef.current = true;
       const units = rentalUnits.length > 0 ? rentalUnits : (await rentalUnitsAPI.getByProperty(parseInt(propertyId))).data?.rentalUnits || [];
       
       if (!isMountedRef.current) return;
@@ -275,6 +287,7 @@ export default function PropertyDetailsPage() {
       if (!units || units.length === 0) {
         setAssets([]);
         setAssetsLoading(false);
+        assetsFetchedRef.current = true;
         return;
       }
 
@@ -283,7 +296,9 @@ export default function PropertyDetailsPage() {
         if (!unit || !unit.id) return [];
         try {
           const assetsResponse = await rentalUnitsAPI.getAssets(unit.id);
-          return assetsResponse?.data?.assets || [];
+          const assets = assetsResponse?.data?.assets || [];
+          console.log(`Fetched ${assets.length} assets for unit ${unit.id}:`, assets);
+          return assets;
         } catch (err) {
           console.error(`Error fetching assets for unit ${unit.id}:`, err);
           return []; // Return empty array on error
@@ -291,12 +306,25 @@ export default function PropertyDetailsPage() {
       });
 
       const assetArrays = await Promise.all(assetPromises);
-      const allAssets = assetArrays.flat().filter(asset => asset && asset.asset && asset.rental_unit);
+      const allAssets = assetArrays.flat().filter(asset => {
+        // More lenient filtering - just check if asset exists
+        if (!asset) return false;
+        // If it has the nested structure, use it; otherwise try to handle different formats
+        if (asset.asset && asset.rental_unit) return true;
+        // Log if structure is unexpected
+        if (asset.id || asset.asset_id) {
+          console.warn('Asset with unexpected structure:', asset);
+        }
+        return false;
+      });
+      
+      console.log(`Total assets after filtering: ${allAssets.length}`, allAssets);
       
       if (!isMountedRef.current) return;
       
       setAssets(allAssets);
       setAssetsLoading(false);
+      assetsFetchedRef.current = true;
     } catch (error) {
       if (!isMountedRef.current) return;
       
@@ -305,29 +333,54 @@ export default function PropertyDetailsPage() {
       setAssetsLoading(false);
       assetsFetchedRef.current = false; // Reset on error to allow retry
     }
-  }, [propertyId, rentalUnits.length, assetsLoading]);
+  }, [propertyId, rentalUnits]);
 
-  // Fetch maintenance requests
-  const fetchMaintenance = useCallback(async () => {
-    if (!isMountedRef.current || maintenanceLoading || maintenanceFetchedRef.current) return; // Prevent duplicate fetches
+  // Fetch maintenance requests (with pagination)
+  const fetchMaintenance = useCallback(async (page: number = 1, fetchAllCosts: boolean = false) => {
+    if (!isMountedRef.current || maintenanceLoading) return; // Only prevent concurrent fetches
     
     try {
       setMaintenanceLoading(true);
-      maintenanceFetchedRef.current = true;
 
-      const [requestsResponse, costsResponse] = await Promise.all([
-        maintenanceAPI.getAll({ property_id: propertyId }),
-        maintenanceCostsAPI.getAll({ property_id: propertyId })
-      ]);
+      // Fetch paginated maintenance requests
+      const requestsResponse = await maintenanceAPI.getAll({ 
+        property_id: propertyId, 
+        per_page: maintenancePerPage,
+        page: page
+      });
+      
+      // For YTD calculation, fetch all costs (or at least all for current year)
+      // For table display, we only need the paginated requests
+      const costsResponse = fetchAllCosts 
+        ? await maintenanceCostsAPI.getAll({ property_id: propertyId, per_page: 1000 })
+        : null;
       
       if (!isMountedRef.current) return;
       
-      const requests = requestsResponse?.data?.maintenanceRequests?.data || requestsResponse?.data?.maintenanceRequests || [];
-      const costs = costsResponse?.data?.maintenanceCosts || costsResponse?.data?.data || [];
+      // Handle paginated response - check for items array or direct array
+      // Backend returns snake_case (maintenance_requests) but frontend may expect camelCase
+      const requests = requestsResponse?.data?.maintenance_requests || 
+                       requestsResponse?.data?.maintenanceRequests?.data || 
+                       requestsResponse?.data?.maintenanceRequests || 
+                       (Array.isArray(requestsResponse?.data?.maintenanceRequests) ? requestsResponse.data.maintenanceRequests : []);
+      
+      // Extract pagination info
+      const pagination = requestsResponse?.data?.pagination || {};
+      setMaintenanceTotal(pagination.total || requests.length);
+      setMaintenanceLastPage(pagination.last_page || 1);
+      
+      // Handle costs (only if fetching all for YTD calculation)
+      if (costsResponse) {
+        const costs = costsResponse?.data?.maintenance_costs || 
+                      costsResponse?.data?.maintenanceCosts?.data || 
+                      costsResponse?.data?.maintenanceCosts || 
+                      (Array.isArray(costsResponse?.data?.maintenanceCosts) ? costsResponse.data.maintenanceCosts : []);
+        setMaintenanceCosts(Array.isArray(costs) ? costs : []);
+      }
       
       setMaintenanceRequests(Array.isArray(requests) ? requests : []);
-      setMaintenanceCosts(Array.isArray(costs) ? costs : []);
       setMaintenanceLoading(false);
+      maintenanceFetchedRef.current = true; // Mark as fetched after successful load
     } catch (error: any) {
       if (!isMountedRef.current) return;
       
@@ -340,31 +393,38 @@ export default function PropertyDetailsPage() {
       setMaintenanceLoading(false);
       maintenanceFetchedRef.current = false; // Reset on error to allow retry
     }
-  }, [propertyId, maintenanceLoading]);
+  }, [propertyId, maintenanceLoading, maintenancePerPage]);
 
   // Fetch rent invoices (lazy loaded - only when needed)
   const fetchRentInvoices = useCallback(async () => {
     // Prevent duplicate fetches
-    if (!isMountedRef.current || invoicesFetchedRef.current) return;
+    if (!isMountedRef.current || invoicesFetchedRef.current || invoicesLoading) return;
     
     try {
+      setInvoicesLoading(true);
       invoicesFetchedRef.current = true;
-      const response = await rentInvoicesAPI.getAll({ property_id: propertyId });
+      const response = await rentInvoicesAPI.getAll({ property_id: propertyId, per_page: 1000 });
       
       if (!isMountedRef.current) return;
       
-      const invoices = response?.data?.rentInvoices || response?.data?.data || [];
+      // Backend returns 'invoices' not 'rentInvoices'
+      const invoices = response?.data?.invoices || response?.data?.data || [];
+      console.log(`Fetched ${invoices.length} rent invoices for property ${propertyId}:`, invoices);
       setRentInvoices(Array.isArray(invoices) ? invoices : []);
+      setInvoicesLoading(false);
+      // Reset pagination to page 1 when invoices are refreshed
+      setPaymentHistoryPage(1);
     } catch (error: any) {
       if (!isMountedRef.current) return;
       
       console.error('Error fetching rent invoices:', error);
-      // Silently fail for invoices - not critical for initial load
+      toast.error('Failed to fetch rent invoices');
       // Set empty array to prevent retry loops
       setRentInvoices([]);
+      setInvoicesLoading(false);
       invoicesFetchedRef.current = false; // Reset on error to allow retry
     }
-  }, [propertyId]);
+  }, [propertyId, invoicesLoading]);
 
   // Initial data fetch - only essential data (no invoices - lazy loaded)
   useEffect(() => {
@@ -376,6 +436,11 @@ export default function PropertyDetailsPage() {
     assetsFetchedRef.current = false;
     maintenanceFetchedRef.current = false;
     invoicesFetchedRef.current = false;
+    
+    // Reset pagination when property changes
+    setMaintenancePage(1);
+    setMaintenanceTotal(0);
+    setMaintenanceLastPage(1);
     
     const loadData = async () => {
       try {
@@ -402,17 +467,50 @@ export default function PropertyDetailsPage() {
   useEffect(() => {
     if (!isMountedRef.current) return;
 
-    if (activeTab === 'assets' && !assetsLoading && !assetsFetchedRef.current && rentalUnits.length > 0) {
-      fetchAssets();
+    // Fetch assets for both 'overview' and 'assets' tabs to show summary
+    if ((activeTab === 'assets' || activeTab === 'overview') && !assetsLoading) {
+      if (activeTab === 'assets') {
+        // Always reset the ref when assets tab becomes active to allow refreshing
+        assetsFetchedRef.current = false;
+      }
+      
+      // Fetch assets if we have rental units
+      if (rentalUnits.length > 0) {
+        // For overview tab, only fetch if not already fetched (to avoid unnecessary refetches)
+        // For assets tab, always fetch (ref was reset above)
+        if (!assetsFetchedRef.current) {
+          fetchAssets();
+        }
+      }
     }
-    if (activeTab === 'maintenance' && !maintenanceLoading && !maintenanceFetchedRef.current) {
-      fetchMaintenance();
+    if (activeTab === 'maintenance' && !maintenanceLoading) {
+      // Reset the ref when tab becomes active to allow refreshing
+      if (maintenanceFetchedRef.current) {
+        maintenanceFetchedRef.current = false;
+      }
+      // Fetch maintenance requests with pagination and all costs for YTD calculation
+      fetchMaintenance(maintenancePage, true);
     }
-    if (activeTab === 'financials' && !invoicesFetchedRef.current) {
+    if (activeTab === 'financials') {
+      // Reset the ref when tab becomes active to allow refreshing
+      if (invoicesFetchedRef.current) {
+        invoicesFetchedRef.current = false;
+      }
       fetchRentInvoices();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, rentalUnits.length]);
+  }, [activeTab]);
+
+  // Fetch assets when rental units become available and we're on overview or assets tab
+  useEffect(() => {
+    if (!isMountedRef.current) return;
+    
+    // Fetch assets when rental units load, if we're on overview or assets tab
+    if ((activeTab === 'assets' || activeTab === 'overview') && !assetsLoading && rentalUnits.length > 0 && !assetsFetchedRef.current) {
+      fetchAssets();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rentalUnits.length, activeTab]);
 
   // Calculations - with null safety
   const occupiedUnits = (rentalUnits || []).filter(u => u && u.status === 'occupied' && u.tenant_id);
@@ -492,7 +590,10 @@ export default function PropertyDetailsPage() {
         return false;
       }
     })
-    .reduce((sum, cost) => sum + (cost?.repair_cost || 0), 0);
+    .reduce((sum, cost) => {
+      const repairCost = parseFloat(String(cost?.repair_cost || 0));
+      return sum + (isNaN(repairCost) ? 0 : repairCost);
+    }, 0);
 
   // Filtered maintenance - with null safety
   const filteredMaintenance = (maintenanceRequests || []).filter(req => {
@@ -896,13 +997,13 @@ export default function PropertyDetailsPage() {
                   {assetsLoading ? (
                     <span className="text-gray-400 animate-pulse">Loading...</span>
                   ) : (
-                    assets.length || '-'
+                    assets.length || 0
                   )}
                 </div>
                 <p className="text-sm text-gray-600 mt-1">
                   {assets.length === 0 && !assetsLoading
-                    ? 'View Assets tab to load asset count'
-                    : 'Tracked assets across all units'}
+                    ? 'No assets tracked yet'
+                    : `${assets.length} tracked asset${assets.length !== 1 ? 's' : ''} across all units`}
                 </p>
               </CardContent>
             </Card>
@@ -994,10 +1095,23 @@ export default function PropertyDetailsPage() {
                   className="pl-10"
                 />
               </div>
-              <Button onClick={() => router.push(`/assets?property_id=${propertyId}`)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Asset
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    assetsFetchedRef.current = false;
+                    fetchAssets();
+                  }}
+                  disabled={assetsLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${assetsLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+                <Button onClick={() => router.push(`/assets?property_id=${propertyId}`)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Asset
+                </Button>
+              </div>
             </div>
 
             <Card>
@@ -1005,10 +1119,19 @@ export default function PropertyDetailsPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center">
                     <Package className="h-5 w-5 mr-2" />
-                    Assets/Inventory ({filteredAssets.length})
+                    Assets/Inventory 
+                    {assetSearchTerm ? (
+                      <span className="ml-2 text-base font-normal text-gray-600">
+                        ({filteredAssets.length} of {assets.length})
+                      </span>
+                    ) : (
+                      <span className="ml-2 text-base font-normal text-gray-600">
+                        ({assets.length})
+                      </span>
+                    )}
                   </CardTitle>
                   <div className="text-sm font-medium text-gray-600">
-                    Total Value: {filteredAssets.length} assets
+                    {assets.length > 0 ? `${assets.length} asset${assets.length !== 1 ? 's' : ''}` : 'No assets'}
                   </div>
                 </div>
               </CardHeader>
@@ -1036,10 +1159,10 @@ export default function PropertyDetailsPage() {
                         mobilePriority: 'high',
                       },
                       {
-                        header: 'Model/Serial',
+                        header: 'Serial',
                         accessor: (asset) => (
                           <div className="text-sm">
-                            {asset?.asset?.serial_no || asset?.serial_numbers || '-'}
+                            {asset?.serial_numbers || '-'}
                           </div>
                         ),
                         mobileLabel: 'Serial',
@@ -1104,7 +1227,7 @@ export default function PropertyDetailsPage() {
                           onClick={() => asset?.asset_id && asset?.rental_unit_id && router.push(`/maintenance?asset_id=${asset.asset_id}&rental_unit_id=${asset.rental_unit_id}`)}
                           title="Log Service/Repair"
                         >
-                          <Tool className="h-4 w-4" />
+                          <Wrench className="h-4 w-4" />
                         </Button>
                       </>
                     )}
@@ -1136,7 +1259,18 @@ export default function PropertyDetailsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-4xl font-bold text-blue-600">
-                  {maintenanceCosts.length > 0 && maintenanceCosts[0]?.currency ? maintenanceCosts[0].currency : 'MVR'} {ytdMaintenanceSpend.toLocaleString()}
+                  {(() => {
+                    const getCurrencyCode = (cost: MaintenanceCost | null) => {
+                      if (!cost) return 'MVR';
+                      if (typeof cost.currency === 'string') return cost.currency;
+                      if (cost.currency && typeof cost.currency === 'object' && 'code' in cost.currency) {
+                        return cost.currency.code;
+                      }
+                      return 'MVR';
+                    };
+                    const currencyCode = maintenanceCosts.length > 0 ? getCurrencyCode(maintenanceCosts[0]) : 'MVR';
+                    return `${currencyCode} ${ytdMaintenanceSpend.toLocaleString()}`;
+                  })()}
                 </div>
                 <p className="text-sm text-gray-600 mt-2">
                   Year-to-date maintenance costs for {new Date().getFullYear()}
@@ -1166,15 +1300,34 @@ export default function PropertyDetailsPage() {
                   <option value="in_progress">In Progress</option>
                   <option value="completed">Completed</option>
                 </select>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    maintenanceFetchedRef.current = false;
+                    setMaintenancePage(1);
+                    fetchMaintenance(1, true);
+                  }}
+                  disabled={maintenanceLoading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${maintenanceLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
               </div>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Wrench className="h-5 w-5 mr-2" />
-                  Maintenance Log ({filteredMaintenance.length})
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center">
+                    <Wrench className="h-5 w-5 mr-2" />
+                    Maintenance Log ({maintenanceTotal > 0 ? maintenanceTotal : filteredMaintenance.length})
+                  </CardTitle>
+                  {maintenanceTotal > 0 && (
+                    <p className="text-sm text-gray-500">
+                      {maintenanceTotal} total record{maintenanceTotal !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {maintenanceLoading ? (
@@ -1182,6 +1335,7 @@ export default function PropertyDetailsPage() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
                 ) : filteredMaintenance.length > 0 ? (
+                  <>
                   <ResponsiveTable
                     data={filteredMaintenance}
                     keyExtractor={(req) => req?.id?.toString() || `maintenance-${Math.random()}`}
@@ -1271,6 +1425,76 @@ export default function PropertyDetailsPage() {
                     )}
                     emptyMessage="No maintenance records found"
                   />
+                  
+                  {/* Pagination */}
+                  {maintenanceTotal > maintenancePerPage && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t mt-4">
+                      <div className="text-sm text-gray-600">
+                        Showing <span className="font-medium">{(maintenancePage - 1) * maintenancePerPage + 1}</span> to{' '}
+                        <span className="font-medium">{Math.min(maintenancePage * maintenancePerPage, maintenanceTotal)}</span> of{' '}
+                        <span className="font-medium">{maintenanceTotal}</span> records
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const newPage = Math.max(1, maintenancePage - 1);
+                            setMaintenancePage(newPage);
+                            fetchMaintenance(newPage, false);
+                          }}
+                          disabled={maintenancePage === 1 || maintenanceLoading}
+                        >
+                          <ChevronLeft className="h-4 w-4 mr-1" />
+                          Previous
+                        </Button>
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(5, Math.ceil(maintenanceTotal / maintenancePerPage)) }, (_, i) => {
+                            const totalPages = Math.ceil(maintenanceTotal / maintenancePerPage);
+                            let pageNum;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (maintenancePage <= 3) {
+                              pageNum = i + 1;
+                            } else if (maintenancePage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = maintenancePage - 2 + i;
+                            }
+                            return (
+                              <Button
+                                key={pageNum}
+                                variant={maintenancePage === pageNum ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => {
+                                  setMaintenancePage(pageNum);
+                                  fetchMaintenance(pageNum, false);
+                                }}
+                                className={maintenancePage === pageNum ? "min-w-[2.5rem]" : "min-w-[2.5rem]"}
+                                disabled={maintenanceLoading}
+                              >
+                                {pageNum}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const newPage = Math.min(Math.ceil(maintenanceTotal / maintenancePerPage), maintenancePage + 1);
+                            setMaintenancePage(newPage);
+                            fetchMaintenance(newPage, false);
+                          }}
+                          disabled={maintenancePage >= Math.ceil(maintenanceTotal / maintenancePerPage) || maintenanceLoading}
+                        >
+                          Next
+                          <ChevronRight className="h-4 w-4 ml-1" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  </>
                 ) : (
                     <div className="text-center py-12 text-gray-500">
                       <Wrench className="h-16 w-16 mx-auto mb-4 opacity-50" />
@@ -1293,13 +1517,29 @@ export default function PropertyDetailsPage() {
                   <CardTitle className="text-sm font-medium text-gray-600">Total Income</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-green-600">
-                    {rentInvoices.length > 0 && rentInvoices[0]?.currency ? rentInvoices[0].currency : 'MVR'} {(rentInvoices || [])
-                      .filter(inv => inv && inv.status === 'paid')
-                      .reduce((sum, inv) => sum + (inv?.total_amount || 0), 0)
-                      .toLocaleString()}
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">From paid invoices</p>
+                  {invoicesLoading ? (
+                    <div className="text-3xl font-bold text-gray-400 animate-pulse">Loading...</div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold text-green-600">
+                        {(() => {
+                          const paidInvoices = (rentInvoices || []).filter(inv => inv && inv.status === 'paid');
+                          const totalIncome = paidInvoices.reduce((sum, inv) => {
+                            const amount = parseFloat(String(inv?.total_amount || 0));
+                            return sum + (isNaN(amount) ? 0 : amount);
+                          }, 0);
+                          const currency = paidInvoices.length > 0 && paidInvoices[0]?.currency ? paidInvoices[0].currency : 'MVR';
+                          return `${currency} ${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        })()}
+                      </div>
+                      <p className="text-sm text-gray-500 mt-2">
+                        {(() => {
+                          const paidCount = (rentInvoices || []).filter(inv => inv && inv.status === 'paid').length;
+                          return `${paidCount} paid invoice${paidCount !== 1 ? 's' : ''}`;
+                        })()}
+                      </p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1308,10 +1548,27 @@ export default function PropertyDetailsPage() {
                   <CardTitle className="text-sm font-medium text-gray-600">Total Expenses</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-red-600">
-                    {maintenanceCosts.length > 0 && maintenanceCosts[0]?.currency ? maintenanceCosts[0].currency : 'MVR'} {ytdMaintenanceSpend.toLocaleString()}
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">Maintenance costs YTD</p>
+                  {maintenanceLoading ? (
+                    <div className="text-3xl font-bold text-gray-400 animate-pulse">Loading...</div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold text-red-600">
+                        {(() => {
+                          const getCurrencyCode = (cost: MaintenanceCost | null) => {
+                            if (!cost) return 'MVR';
+                            if (typeof cost.currency === 'string') return cost.currency;
+                            if (cost.currency && typeof cost.currency === 'object' && 'code' in cost.currency) {
+                              return cost.currency.code;
+                            }
+                            return 'MVR';
+                          };
+                          const currency = maintenanceCosts.length > 0 ? getCurrencyCode(maintenanceCosts[0]) : 'MVR';
+                          return `${currency} ${ytdMaintenanceSpend.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        })()}
+                      </div>
+                      <p className="text-sm text-gray-500 mt-2">Maintenance costs YTD ({new Date().getFullYear()})</p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1320,50 +1577,148 @@ export default function PropertyDetailsPage() {
                   <CardTitle className="text-sm font-medium text-gray-600">Net Profit</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-3xl font-bold text-blue-600">
-                    {rentInvoices.length > 0 && rentInvoices[0]?.currency ? rentInvoices[0].currency : 'MVR'} {
-                      Math.max(0, (rentInvoices || [])
-                        .filter(inv => inv && inv.status === 'paid')
-                        .reduce((sum, inv) => sum + (inv?.total_amount || 0), 0) - ytdMaintenanceSpend)
-                        .toLocaleString()}
-                  </div>
-                  <p className="text-sm text-gray-500 mt-2">Income - Expenses</p>
+                  {(invoicesLoading || maintenanceLoading) ? (
+                    <div className="text-3xl font-bold text-gray-400 animate-pulse">Loading...</div>
+                  ) : (
+                    <>
+                      <div className="text-3xl font-bold text-blue-600">
+                        {(() => {
+                          const paidInvoices = (rentInvoices || []).filter(inv => inv && inv.status === 'paid');
+                          const totalIncome = paidInvoices.reduce((sum, inv) => {
+                            const amount = parseFloat(String(inv?.total_amount || 0));
+                            return sum + (isNaN(amount) ? 0 : amount);
+                          }, 0);
+                          const netProfit = Math.max(0, totalIncome - ytdMaintenanceSpend);
+                          const getCurrencyCode = (cost: MaintenanceCost | null) => {
+                            if (!cost) return 'MVR';
+                            if (typeof cost.currency === 'string') return cost.currency;
+                            if (cost.currency && typeof cost.currency === 'object' && 'code' in cost.currency) {
+                              return cost.currency.code;
+                            }
+                            return 'MVR';
+                          };
+                          const currency = paidInvoices.length > 0 && paidInvoices[0]?.currency 
+                            ? paidInvoices[0].currency 
+                            : (maintenanceCosts.length > 0 ? getCurrencyCode(maintenanceCosts[0]) : 'MVR');
+                          return `${currency} ${netProfit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        })()}
+                      </div>
+                      <p className="text-sm text-gray-500 mt-2">Income - Expenses</p>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>
 
             <Card>
               <CardHeader>
-                <CardTitle>Payment History</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Payment History</CardTitle>
+                  {rentInvoices.length > 0 && (
+                    <p className="text-sm text-gray-500">
+                      {rentInvoices.length} total invoice{rentInvoices.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
-                {rentInvoices.length > 0 ? (
-                  <div className="space-y-4">
-                    {rentInvoices.slice(0, 10).map((invoice) => (
-                      invoice ? (
-                        <div key={invoice.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                          <div>
-                            <p className="font-medium text-gray-900">{invoice.invoice_number || '-'}</p>
-                            <p className="text-sm text-gray-500">
-                              {invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : '-'}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-gray-900">
-                              {invoice.currency || 'MVR'} {invoice.total_amount?.toLocaleString() || '0'}
-                            </p>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                              invoice.status === 'paid' ? 'bg-green-100 text-green-800' :
-                              invoice.status === 'overdue' ? 'bg-red-100 text-red-800' :
-                              'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {invoice.status || 'unknown'}
-                            </span>
-                          </div>
-                        </div>
-                      ) : null
-                    ))}
+                {invoicesLoading ? (
+                  <div className="flex justify-center items-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                   </div>
+                ) : rentInvoices.length > 0 ? (
+                  <>
+                    <div className="space-y-4 mb-6">
+                      {rentInvoices
+                        .slice((paymentHistoryPage - 1) * paymentHistoryPerPage, paymentHistoryPage * paymentHistoryPerPage)
+                        .map((invoice) => (
+                          invoice ? (
+                            <div key={invoice.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                              <div>
+                                <p className="font-medium text-gray-900">{invoice.invoice_number || '-'}</p>
+                                <p className="text-sm text-gray-500">
+                                  {invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : '-'}
+                                  {invoice.due_date && (
+                                    <span className="ml-2">
+                                      (Due: {new Date(invoice.due_date).toLocaleDateString()})
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-semibold text-gray-900">
+                                  {invoice.currency || 'MVR'} {parseFloat(String(invoice.total_amount || 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                  invoice.status === 'paid' ? 'bg-green-100 text-green-800' :
+                                  invoice.status === 'overdue' ? 'bg-red-100 text-red-800' :
+                                  'bg-yellow-100 text-yellow-800'
+                                }`}>
+                                  {invoice.status || 'unknown'}
+                                </span>
+                              </div>
+                            </div>
+                          ) : null
+                        ))}
+                    </div>
+                    
+                    {/* Pagination */}
+                    {rentInvoices.length > paymentHistoryPerPage && (
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t">
+                        <div className="text-sm text-gray-600">
+                          Showing <span className="font-medium">{(paymentHistoryPage - 1) * paymentHistoryPerPage + 1}</span> to{' '}
+                          <span className="font-medium">{Math.min(paymentHistoryPage * paymentHistoryPerPage, rentInvoices.length)}</span> of{' '}
+                          <span className="font-medium">{rentInvoices.length}</span> invoices
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaymentHistoryPage(prev => Math.max(1, prev - 1))}
+                            disabled={paymentHistoryPage === 1}
+                          >
+                            <ChevronLeft className="h-4 w-4 mr-1" />
+                            Previous
+                          </Button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(5, Math.ceil(rentInvoices.length / paymentHistoryPerPage)) }, (_, i) => {
+                              const totalPages = Math.ceil(rentInvoices.length / paymentHistoryPerPage);
+                              let pageNum;
+                              if (totalPages <= 5) {
+                                pageNum = i + 1;
+                              } else if (paymentHistoryPage <= 3) {
+                                pageNum = i + 1;
+                              } else if (paymentHistoryPage >= totalPages - 2) {
+                                pageNum = totalPages - 4 + i;
+                              } else {
+                                pageNum = paymentHistoryPage - 2 + i;
+                              }
+                              return (
+                                <Button
+                                  key={pageNum}
+                                  variant={paymentHistoryPage === pageNum ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => setPaymentHistoryPage(pageNum)}
+                                  className={paymentHistoryPage === pageNum ? "min-w-[2.5rem]" : "min-w-[2.5rem]"}
+                                >
+                                  {pageNum}
+                                </Button>
+                              );
+                            })}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaymentHistoryPage(prev => Math.min(Math.ceil(rentInvoices.length / paymentHistoryPerPage), prev + 1))}
+                            disabled={paymentHistoryPage >= Math.ceil(rentInvoices.length / paymentHistoryPerPage)}
+                          >
+                            Next
+                            <ChevronRight className="h-4 w-4 ml-1" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 ) : (
                     <div className="text-center py-12 text-gray-500">
                       <DollarSign className="h-16 w-16 mx-auto mb-4 opacity-50" />

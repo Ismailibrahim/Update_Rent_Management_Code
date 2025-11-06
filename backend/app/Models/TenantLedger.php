@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class TenantLedger extends Model
@@ -195,15 +196,6 @@ class TenantLedger extends Model
             static::updateSubsequentBalances($ledger->tenant_id, $ledger->transaction_date);
         });
 
-        static::updating(function ($ledger) {
-            // If amounts are being changed, we need to recalculate
-            if ($ledger->isDirty(['debit_amount', 'credit_amount'])) {
-                // Store original values for recalculation
-                $ledger->original_debit = $ledger->getOriginal('debit_amount');
-                $ledger->original_credit = $ledger->getOriginal('credit_amount');
-            }
-        });
-
         static::updated(function ($ledger) {
             // If amounts were changed, recalculate all balances for this tenant
             if ($ledger->wasChanged(['debit_amount', 'credit_amount'])) {
@@ -244,26 +236,32 @@ class TenantLedger extends Model
     // Helper method to recalculate all balances for a tenant
     private static function recalculateAllBalances($tenantId)
     {
-        $allEntries = static::forTenant($tenantId)
-            ->orderByTransactionDate('asc')
-            ->orderBy('ledger_id', 'asc')
-            ->get();
+        try {
+            $allEntries = static::forTenant($tenantId)
+                ->orderByTransactionDate('asc')
+                ->orderBy('ledger_id', 'asc')
+                ->get();
 
-        $runningBalance = 0.00;
+            $runningBalance = 0.00;
 
-        foreach ($allEntries as $entry) {
-            if ($entry->debit_amount > 0) {
-                // Debit: tenant owes money (increase balance)
-                $runningBalance += $entry->debit_amount;
-            } else {
-                // Credit: tenant paid money (decrease balance)
-                $runningBalance -= $entry->credit_amount;
+            foreach ($allEntries as $entry) {
+                if ($entry->debit_amount > 0) {
+                    // Debit: tenant owes money (increase balance)
+                    $runningBalance += $entry->debit_amount;
+                } else {
+                    // Credit: tenant paid money (decrease balance)
+                    $runningBalance -= $entry->credit_amount;
+                }
+
+                // Update balance directly using DB to avoid triggering model events
+                // This prevents infinite loops when updating balances
+                DB::table('tenant_ledgers')
+                    ->where('ledger_id', $entry->ledger_id)
+                    ->update(['balance' => $runningBalance]);
             }
-
-            // Update balance without triggering events to avoid infinite loops
-            $entry->timestamps = false;
-            $entry->update(['balance' => $runningBalance]);
-            $entry->timestamps = true;
+        } catch (\Exception $e) {
+            Log::error('Error recalculating balances for tenant ' . $tenantId . ': ' . $e->getMessage());
+            throw $e;
         }
     }
 

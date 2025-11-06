@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, Tenant, PaymentType } from '@/services/api';
+import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, paymentModesAPI, Tenant, PaymentType, PaymentMode } from '@/services/api';
 import { safeToISODate } from '@/utils/date';
 import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
@@ -35,8 +35,10 @@ export default function EditTenantLedgerPage() {
   
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+  const [paymentModes, setPaymentModes] = useState<PaymentMode[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [fullAmountChecked, setFullAmountChecked] = useState(false);
   const [formData, setFormData] = useState<TenantLedgerFormData>({
     tenant_id: 0,
     payment_type_id: 0,
@@ -56,34 +58,51 @@ export default function EditTenantLedgerPage() {
   }, [ledgerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadData = async () => {
+    if (!ledgerId) {
+      toast.error('Invalid ledger entry ID');
+      router.push('/tenant-ledger');
+      return;
+    }
+
     setLoading(true);
     try {
-      const [tenantsRes, paymentTypesRes, ledgerRes] = await Promise.all([
+      const [tenantsRes, paymentTypesRes, paymentModesRes, ledgerRes] = await Promise.all([
         tenantsAPI.getAll(),
         paymentTypesAPI.getAll(),
+        paymentModesAPI.getAll(),
         tenantLedgerAPI.getById(Number(ledgerId)),
       ]);
 
       const tenantsData = tenantsRes.data?.tenants || [];
       const paymentTypesData = paymentTypesRes.data?.payment_types || [];
+      const paymentModesData = paymentModesRes.data?.payment_modes || [];
       
       setTenants(tenantsData);
       setPaymentTypes(paymentTypesData);
+      setPaymentModes(paymentModesData);
       
       // Populate form with existing data
-      const ledger = ledgerRes.data;
+      // Backend returns { success: true, data: {...} }, so we need to access ledgerRes.data.data
+      const ledger = ledgerRes.data?.data || ledgerRes.data;
+      
+      if (!ledger || !ledger.ledger_id) {
+        console.error('Invalid ledger data received:', ledgerRes);
+        toast.error('Failed to load ledger entry data');
+        router.push('/tenant-ledger');
+        return;
+      }
       
       // Safe date handling using utility function
       const transactionDate = safeToISODate(ledger.transaction_date);
       
       setFormData({
-        tenant_id: ledger.tenant_id,
-        payment_type_id: ledger.payment_type_id,
-        transaction_date: transactionDate,
-        description: ledger.description,
+        tenant_id: ledger.tenant_id || 0,
+        payment_type_id: ledger.payment_type_id || 0,
+        transaction_date: transactionDate || new Date().toISOString().slice(0, 10),
+        description: ledger.description || '',
         reference_no: ledger.reference_no || '',
-        debit_amount: ledger.debit_amount,
-        credit_amount: ledger.credit_amount,
+        debit_amount: ledger.debit_amount ?? 0,
+        credit_amount: ledger.credit_amount ?? 0,
         payment_method: ledger.payment_method || '',
         transfer_reference_no: ledger.transfer_reference_no || '',
         remarks: ledger.remarks || '',
@@ -91,7 +110,8 @@ export default function EditTenantLedgerPage() {
       });
     } catch (error) {
       console.error('Error loading data:', error);
-      toast.error('Failed to load ledger entry');
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosError.response?.data?.message || 'Failed to load ledger entry');
       router.push('/tenant-ledger');
     } finally {
       setLoading(false);
@@ -106,33 +126,75 @@ export default function EditTenantLedgerPage() {
       // Validation
       if (!formData.tenant_id || formData.tenant_id === 0 || !formData.payment_type_id || formData.payment_type_id === 0 || !formData.description) {
         toast.error('Please fill in all required fields');
+        setSaving(false);
         return;
       }
 
       if (formData.debit_amount === 0 && formData.credit_amount === 0) {
         toast.error('Either debit or credit amount must be greater than 0');
+        setSaving(false);
         return;
       }
 
       if (formData.debit_amount > 0 && formData.credit_amount > 0) {
         toast.error('Cannot have both debit and credit amounts in the same transaction');
+        setSaving(false);
         return;
       }
 
+      // Ensure transaction_date is in YYYY-MM-DD format (date only, no time)
+      const transactionDate = safeToISODate(formData.transaction_date);
+
       const submitData = {
-        ...formData,
+        tenant_id: formData.tenant_id,
+        payment_type_id: formData.payment_type_id,
+        transaction_date: transactionDate,
+        description: formData.description,
+        reference_no: formData.reference_no || null,
         debit_amount: formData.debit_amount || 0,
         credit_amount: formData.credit_amount || 0,
+        payment_method: formData.payment_method || null,
+        transfer_reference_no: formData.transfer_reference_no || null,
+        remarks: formData.remarks || null,
+        created_by: formData.created_by || null,
       };
+
+      console.log('Submitting update with data:', submitData);
 
       await tenantLedgerAPI.update(Number(ledgerId), submitData);
       toast.success('Ledger entry updated successfully');
       router.push('/tenant-ledger');
     } catch (error: unknown) {
       console.error('Error updating ledger entry:', error);
-      const axiosError = error as { response?: { data?: { message?: string } } };
-      console.error('Error response:', axiosError.response);
-      toast.error(axiosError.response?.data?.message || 'Failed to update ledger entry');
+      const axiosError = error as { 
+        response?: { 
+          status?: number;
+          data?: { 
+            message?: string;
+            error?: string;
+            errors?: Record<string, string[]>;
+          } 
+        } 
+      };
+      
+      if (axiosError.response) {
+        console.error('Error response status:', axiosError.response.status);
+        console.error('Error response data:', axiosError.response.data);
+        
+        // Handle validation errors
+        if (axiosError.response.status === 422 && axiosError.response.data?.errors) {
+          const errorMessages = Object.values(axiosError.response.data.errors).flat();
+          toast.error(errorMessages.join(', ') || 'Validation failed');
+        } else {
+          // Handle other errors
+          const errorMessage = axiosError.response.data?.error || 
+                              axiosError.response.data?.message || 
+                              'Failed to update ledger entry';
+          toast.error(errorMessage);
+        }
+      } else {
+        toast.error('Failed to update ledger entry. Please check your connection.');
+      }
     } finally {
       setSaving(false);
     }
@@ -224,7 +286,7 @@ export default function EditTenantLedgerPage() {
                     </label>
                     <Input
                       type="date"
-                      value={formData.transaction_date}
+                      value={formData.transaction_date || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, transaction_date: e.target.value }))}
                       required
                     />
@@ -236,7 +298,7 @@ export default function EditTenantLedgerPage() {
                     </label>
                     <Input
                       type="text"
-                      value={formData.description}
+                      value={formData.description || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                       placeholder="e.g., Monthly Rent, Security Deposit, Maintenance Fee"
                       required
@@ -249,7 +311,7 @@ export default function EditTenantLedgerPage() {
                     </label>
                     <Input
                       type="text"
-                      value={formData.reference_no}
+                      value={formData.reference_no || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, reference_no: e.target.value }))}
                       placeholder="Invoice number, receipt number, or transaction ID"
                     />
@@ -270,12 +332,19 @@ export default function EditTenantLedgerPage() {
                       type="number"
                       step="0.01"
                       min="0"
-                      value={formData.debit_amount}
-                      onChange={(e) => setFormData(prev => ({ 
-                        ...prev, 
-                        debit_amount: Number(e.target.value),
-                        credit_amount: Number(e.target.value) > 0 ? 0 : prev.credit_amount
-                      }))}
+                      value={formData.debit_amount ?? 0}
+                      onChange={(e) => {
+                        const newDebitAmount = Number(e.target.value) || 0;
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          debit_amount: newDebitAmount,
+                          credit_amount: newDebitAmount > 0 ? 0 : prev.credit_amount
+                        }));
+                        // Uncheck "Full Amount" if user changes debit amount
+                        if (fullAmountChecked) {
+                          setFullAmountChecked(false);
+                        }
+                      }}
                       placeholder="0.00"
                     />
                     <p className="text-sm text-gray-500 mt-1">
@@ -284,19 +353,54 @@ export default function EditTenantLedgerPage() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Credit Amount (Payment Received)
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Credit Amount (Payment Received)
+                      </label>
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={fullAmountChecked}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setFullAmountChecked(checked);
+                            if (checked) {
+                              // Copy debit amount to credit amount
+                              setFormData(prev => ({
+                                ...prev,
+                                credit_amount: prev.debit_amount || 0,
+                                debit_amount: 0 // Clear debit when credit is set
+                              }));
+                            } else {
+                              // Clear credit amount
+                              setFormData(prev => ({
+                                ...prev,
+                                credit_amount: 0
+                              }));
+                            }
+                          }}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">Full Amount</span>
+                      </label>
+                    </div>
                     <Input
                       type="number"
                       step="0.01"
                       min="0"
-                      value={formData.credit_amount}
-                      onChange={(e) => setFormData(prev => ({ 
-                        ...prev, 
-                        credit_amount: Number(e.target.value),
-                        debit_amount: Number(e.target.value) > 0 ? 0 : prev.debit_amount
-                      }))}
+                      value={formData.credit_amount ?? 0}
+                      onChange={(e) => {
+                        const newCreditAmount = Number(e.target.value) || 0;
+                        setFormData(prev => ({ 
+                          ...prev, 
+                          credit_amount: newCreditAmount,
+                          debit_amount: newCreditAmount > 0 ? 0 : prev.debit_amount
+                        }));
+                        // Uncheck "Full Amount" if user manually changes the value
+                        if (fullAmountChecked) {
+                          setFullAmountChecked(false);
+                        }
+                      }}
                       placeholder="0.00"
                     />
                     <p className="text-sm text-gray-500 mt-1">
@@ -309,19 +413,15 @@ export default function EditTenantLedgerPage() {
                         Payment Method
                       </label>
                       <Select
-                        value={formData.payment_method}
+                        value={formData.payment_method || ''}
                         onChange={(e) => setFormData(prev => ({ ...prev, payment_method: e.target.value }))}
                       >
                         <option value="">Select Payment Method</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Bank Transfer">Bank Transfer</option>
-                        <option value="Check">Check</option>
-                        <option value="Credit Card">Credit Card</option>
-                        <option value="Debit Card">Debit Card</option>
-                        <option value="Online Payment">Online Payment</option>
-                        <option value="Mobile Payment">Mobile Payment</option>
-                        <option value="Money Order">Money Order</option>
-                        <option value="Other">Other</option>
+                        {paymentModes.filter(mode => mode.is_active).map(mode => (
+                          <option key={mode.id} value={mode.name}>
+                            {mode.name}
+                          </option>
+                        ))}
                       </Select>
                     </div>
 
@@ -331,7 +431,7 @@ export default function EditTenantLedgerPage() {
                     </label>
                     <Input
                       type="text"
-                      value={formData.transfer_reference_no}
+                      value={formData.transfer_reference_no || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, transfer_reference_no: e.target.value }))}
                       placeholder="Bank transaction ID, check number, or payment reference"
                     />
@@ -343,7 +443,7 @@ export default function EditTenantLedgerPage() {
                     </label>
                     <Input
                       type="text"
-                      value={formData.created_by}
+                      value={formData.created_by || ''}
                       onChange={(e) => setFormData(prev => ({ ...prev, created_by: e.target.value }))}
                       placeholder="User who created this entry"
                     />
@@ -361,7 +461,7 @@ export default function EditTenantLedgerPage() {
                   Remarks
                 </label>
                 <Textarea
-                  value={formData.remarks}
+                  value={formData.remarks || ''}
                   onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
                   placeholder="Any additional notes, comments, or special instructions"
                   rows={4}

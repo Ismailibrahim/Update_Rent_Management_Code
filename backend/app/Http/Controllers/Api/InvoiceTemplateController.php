@@ -57,19 +57,67 @@ class InvoiceTemplateController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            $validator = Validator::make($request->all(), [
+            // Get all request data
+            $requestData = $request->all();
+            
+            // Log incoming request for debugging
+            \Log::info('InvoiceTemplate store request:', [
+                'all_data' => $requestData,
+                'json_content' => $request->getContent(),
+                'has_template_data' => isset($requestData['template_data']),
+                'template_data_value' => $requestData['template_data'] ?? 'NOT SET',
+                'template_data_type' => isset($requestData['template_data']) ? gettype($requestData['template_data']) : 'NOT SET',
+                'all_keys' => array_keys($requestData),
+            ]);
+            
+            // Ensure template_data is always present and is an array
+            if (!isset($requestData['template_data']) || $requestData['template_data'] === null) {
+                $requestData['template_data'] = [];
+            }
+            // Convert object to array if needed (JSON objects come as stdClass in PHP)
+            if (is_object($requestData['template_data'])) {
+                $requestData['template_data'] = json_decode(json_encode($requestData['template_data']), true) ?? [];
+            }
+            // Ensure it's an array
+            if (!is_array($requestData['template_data'])) {
+                $requestData['template_data'] = [];
+            }
+            
+            // Set defaults for boolean fields if not provided
+            if (!isset($requestData['is_active'])) {
+                $requestData['is_active'] = true;
+            } else {
+                // Convert string booleans to actual booleans
+                $requestData['is_active'] = filter_var($requestData['is_active'], FILTER_VALIDATE_BOOLEAN);
+            }
+            if (!isset($requestData['is_default'])) {
+                $requestData['is_default'] = false;
+            } else {
+                $requestData['is_default'] = filter_var($requestData['is_default'], FILTER_VALIDATE_BOOLEAN);
+            }
+            
+            $validator = Validator::make($requestData, [
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:500',
                 'type' => 'required|in:rent,maintenance,both',
-                'template_data' => 'required|array',
+                'template_data' => 'nullable|array', // Changed to nullable - we provide default below
                 'html_content' => 'nullable|string',
                 'styles' => 'nullable|array',
                 'logo_path' => 'nullable|string',
-                'is_active' => 'boolean',
-                'is_default' => 'boolean',
+                'is_active' => 'sometimes|boolean',
+                'is_default' => 'sometimes|boolean',
             ]);
+            
+            // After validation, ensure template_data is set (validation allows null, but we need array)
+            if (!isset($requestData['template_data']) || !is_array($requestData['template_data'])) {
+                $requestData['template_data'] = [];
+            }
 
             if ($validator->fails()) {
+                \Log::error('InvoiceTemplate validation failed:', [
+                    'errors' => $validator->errors()->toArray(),
+                    'request_data' => $requestData,
+                ]);
                 return response()->json([
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
@@ -77,6 +125,16 @@ class InvoiceTemplateController extends Controller
             }
 
             $data = $validator->validated();
+            
+            // Ensure template_data is always an array in the validated data
+            // (it might be null from validation, but we need it as an array)
+            if (!isset($data['template_data']) || !is_array($data['template_data'])) {
+                $data['template_data'] = [];
+            }
+            // Convert object to array if needed (shouldn't happen after our preprocessing, but just in case)
+            if (is_object($data['template_data'])) {
+                $data['template_data'] = json_decode(json_encode($data['template_data']), true) ?? [];
+            }
 
             // If setting as default, unset other defaults of the same type
             if (isset($data['is_default']) && $data['is_default']) {
@@ -125,7 +183,13 @@ class InvoiceTemplateController extends Controller
         try {
             $template = InvoiceTemplate::findOrFail($id);
 
-            $validator = Validator::make($request->all(), [
+            // Merge request data with defaults if template_data is being updated
+            $requestData = $request->all();
+            if (isset($requestData['template_data']) && $requestData['template_data'] === null) {
+                $requestData['template_data'] = [];
+            }
+            
+            $validator = Validator::make($requestData, [
                 'name' => 'sometimes|required|string|max:255',
                 'description' => 'nullable|string|max:500',
                 'type' => 'sometimes|required|in:rent,maintenance,both',
@@ -145,6 +209,16 @@ class InvoiceTemplateController extends Controller
             }
 
             $data = $validator->validated();
+            
+            // Ensure template_data is always an array if provided
+            if (isset($data['template_data'])) {
+                if (is_object($data['template_data'])) {
+                    $data['template_data'] = (array) $data['template_data'];
+                }
+                if (!is_array($data['template_data'])) {
+                    $data['template_data'] = [];
+                }
+            }
 
             // If setting as default, unset other defaults of the same type
             if (isset($data['is_default']) && $data['is_default']) {

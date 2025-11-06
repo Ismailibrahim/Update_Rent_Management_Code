@@ -325,7 +325,6 @@ export interface Asset {
   id: number;
   name: string;
   brand?: string;
-  serial_no?: string;
   category: string;
   status: string;
   maintenance_notes?: string;

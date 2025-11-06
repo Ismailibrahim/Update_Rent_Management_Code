@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
+import { Select } from '../../components/UI/Select';
 import { Wrench, RefreshCw, Trash2 } from 'lucide-react';
 import { rentalUnitsAPI, maintenanceCostsAPI, maintenanceRequestsAPI, currenciesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -80,12 +81,29 @@ export default function MaintenancePage() {
   });
   const [currenciesLoading, setCurrenciesLoading] = useState(true);
   const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
-  const allSelected = maintenanceAssets.length > 0 && selectedAssetIds.length === maintenanceAssets.length;
-  const partiallySelected = selectedAssetIds.length > 0 && selectedAssetIds.length < maintenanceAssets.length;
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [loadingCostDetails, setLoadingCostDetails] = useState<number | null>(null);
+  const [savingCost, setSavingCost] = useState(false);
+  const [processingDone, setProcessingDone] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const perPage = 15;
+
+  // Filter assets based on status
+  const filteredAssets = useMemo(() => {
+    if (!statusFilter) {
+      return maintenanceAssets;
+    }
+    return maintenanceAssets.filter(asset => asset.status === statusFilter);
+  }, [maintenanceAssets, statusFilter]);
+
+  const allSelected = filteredAssets.length > 0 && selectedAssetIds.length === filteredAssets.length;
+  const partiallySelected = selectedAssetIds.length > 0 && selectedAssetIds.length < filteredAssets.length;
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedAssetIds(maintenanceAssets.map(a => a.id));
+      setSelectedAssetIds(filteredAssets.map(a => a.id));
     } else {
       setSelectedAssetIds([]);
     }
@@ -140,7 +158,7 @@ export default function MaintenancePage() {
       await Promise.all([...deletions, ...requestDeletions, ...assetUpdates]);
       toast.success('Selected maintenance records deleted and assets reset to working');
       setSelectedAssetIds([]);
-      fetchMaintenanceAssets();
+      fetchMaintenanceAssets(currentPage);
     } catch (e) {
       console.error('Bulk delete failed', e);
       toast.error('Failed to delete selected items');
@@ -148,9 +166,18 @@ export default function MaintenancePage() {
   };
 
   useEffect(() => {
-    fetchMaintenanceAssets();
+    fetchMaintenanceAssets(currentPage);
     fetchCurrencies();
-  }, []);
+  }, [currentPage]);
+
+  // Reset to page 1 when status filter changes
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    } else {
+      fetchMaintenanceAssets(1);
+    }
+  }, [statusFilter]);
 
   // Set default currency when currencies load
   useEffect(() => {
@@ -198,10 +225,13 @@ export default function MaintenancePage() {
     }
   };
 
-  const fetchMaintenanceAssets = async () => {
+  const fetchMaintenanceAssets = async (page: number = currentPage) => {
     try {
       setLoading(true);
-      const response = await rentalUnitsAPI.getMaintenanceAssets();
+      const response = await rentalUnitsAPI.getMaintenanceAssets({
+        page,
+        per_page: perPage
+      });
       const assets = response.data.assets || [];
       setMaintenanceAssets(assets);
       
@@ -212,32 +242,12 @@ export default function MaintenancePage() {
       });
       setMaintenanceQuantities(quantities);
 
-      // Check which assets have cost details
-      console.log('🔍 Checking which assets have cost details...');
-      const assetsWithCostsSet = new Set<number>();
-      for (const asset of assets) {
-        try {
-          console.log(`Checking asset ${asset.id} (${asset.name}) for cost details...`);
-          const costResponse = await maintenanceCostsAPI.getByRentalUnitAsset(asset.id);
-          console.log(`Cost response for asset ${asset.id}:`, costResponse.data);
-          
-          if (costResponse.data && costResponse.data.maintenance_costs && costResponse.data.maintenance_costs.length > 0) {
-            console.log(`✅ Asset ${asset.id} has cost details`);
-            assetsWithCostsSet.add(asset.id);
-          } else {
-            console.log(`❌ Asset ${asset.id} has no cost details`);
-          }
-        } catch (error) {
-          // Asset doesn't have cost details yet
-          console.log(`❌ Error checking cost details for asset ${asset.id}:`, error);
-        }
+      // Update pagination state
+      if (response.data.pagination) {
+        setCurrentPage(response.data.pagination.current_page);
+        setTotalPages(response.data.pagination.last_page);
+        setTotal(response.data.pagination.total);
       }
-      console.log('Assets with costs:', Array.from(assetsWithCostsSet));
-      
-      // Debug: Log the final state
-      console.log('🔍 Final assetsWithCosts state:', Array.from(assetsWithCostsSet));
-      console.log('🔍 Total assets found:', assets.length);
-      console.log('🔍 Assets with costs count:', assetsWithCostsSet.size);
     } catch (error) {
       console.error('Error fetching maintenance assets:', error);
       toast.error('Failed to fetch maintenance assets');
@@ -247,41 +257,23 @@ export default function MaintenancePage() {
   };
 
   const handleCostFormSubmit = async () => {
-    console.log('🚀 handleCostFormSubmit called!');
-    console.log('🚀 Current costForm state:', costForm);
-    console.log('🚀 isEditing:', isEditing);
-    console.log('🚀 existingCostData:', existingCostData);
-    
     if (!selectedAsset || !costForm.repair_cost) {
       toast.error('Please fill in the repair cost');
       return;
     }
 
+    setSavingCost(true);
+
     try {
+      // Validate that repair_cost is a valid number
+      const repairCost = parseFloat(costForm.repair_cost);
+      if (isNaN(repairCost) || repairCost <= 0) {
+        toast.error('Please enter a valid repair cost');
+        return;
+      }
+
       if (isEditing && existingCostData) {
         // Update existing maintenance cost
-        console.log('🔍 DEBUG: Updating maintenance cost with data:', {
-          id: existingCostData.id,
-          repair_cost: parseFloat(costForm.repair_cost),
-          currency: costForm.currency,
-          description: costForm.description,
-          repair_date: costForm.repair_date,
-          repair_provider: costForm.repair_provider,
-          notes: costForm.notes,
-        });
-        
-        console.log('🔍 DEBUG: Raw costForm.repair_cost:', costForm.repair_cost);
-        console.log('🔍 DEBUG: Parsed repair_cost:', parseFloat(costForm.repair_cost));
-        console.log('🔍 DEBUG: Is NaN?', isNaN(parseFloat(costForm.repair_cost)));
-        console.log('🔍 DEBUG: Full costForm object:', costForm);
-        
-        // Validate that repair_cost is a valid number
-        const repairCost = parseFloat(costForm.repair_cost);
-        if (isNaN(repairCost) || repairCost <= 0) {
-          toast.error('Please enter a valid repair cost');
-          return;
-        }
-        
         await maintenanceCostsAPI.update(existingCostData.id, {
           repair_cost: repairCost,
           currency_id: costForm.currency_id ? parseInt(costForm.currency_id) : undefined,
@@ -293,16 +285,10 @@ export default function MaintenancePage() {
 
         toast.success('Maintenance cost updated successfully');
         handleCloseModal();
-        fetchMaintenanceAssets(); // Refresh the maintenance assets list
+        // Only refresh the specific asset instead of all assets
+        fetchMaintenanceAssets(currentPage);
       } else {
         // Create new maintenance cost
-        // Validate that repair_cost is a valid number
-        const repairCost = parseFloat(costForm.repair_cost);
-        if (isNaN(repairCost) || repairCost <= 0) {
-          toast.error('Please enter a valid repair cost');
-          return;
-        }
-        
         await maintenanceCostsAPI.create({
           rental_unit_asset_id: selectedAsset.id,
           repair_cost: repairCost,
@@ -314,34 +300,31 @@ export default function MaintenancePage() {
         }, costForm.bills);
 
         toast.success('Maintenance cost recorded successfully');
-        fetchMaintenanceAssets(); // Refresh the maintenance assets list
         handleCloseModal();
+        fetchMaintenanceAssets(currentPage);
       }
       
     } catch (error) {
       console.error('Error recording maintenance cost:', error);
       toast.error(`Failed to ${isEditing ? 'update' : 'record'} maintenance cost`);
+    } finally {
+      setSavingCost(false);
     }
   };
 
   const markAssetAsWorking = async (asset: Asset) => {
-    console.log('=== MARK ASSET AS WORKING START ===');
-    console.log('Asset ID:', asset.id);
-    console.log('Asset Name:', asset.name);
+    setProcessingDone(asset.id);
     
     try {
-      console.log('✅ Proceeding to update asset status (cost details already verified)');
       const quantity = maintenanceQuantities[asset.id] || 1;
       
       // First, update maintenance cost status to 'paid' to make it visible on Maintenance Cost page
-      console.log('Updating maintenance cost status to paid...');
       const costResponse = await maintenanceCostsAPI.getByRentalUnitAsset(asset.id);
       if (costResponse.data?.maintenance_costs?.length > 0) {
         // Find the most recent cost record
         const recentCost = costResponse.data.maintenance_costs[0];
         
         // Create a maintenance request first
-        console.log('Creating maintenance request...');
         const maintenanceRequestResponse = await maintenanceRequestsAPI.create({
           title: `Maintenance for ${asset.name}`,
           description: `Maintenance completed for ${asset.name} in ${asset.rental_unit?.property?.name || 'Unknown Property'} - Unit ${asset.rental_unit?.unit_number || 'Unknown'}`,
@@ -349,7 +332,7 @@ export default function MaintenancePage() {
           rental_unit_id: asset.rental_unit_id,
           tenant_id: asset.rental_unit?.tenant?.id || undefined,
           priority: 'medium',
-          status: 'repaired', // Set to repaired status
+          status: 'repaired',
           request_date: new Date().toISOString().split('T')[0],
           completed_date: new Date().toISOString().split('T')[0],
           actual_cost: recentCost.repair_cost,
@@ -363,38 +346,41 @@ export default function MaintenancePage() {
             status: 'paid',
             maintenance_request_id: maintenanceRequestId
           });
-          console.log('✅ Maintenance cost linked to maintenance request');
         } else {
           // Fallback: just update the cost status
           await maintenanceCostsAPI.update(recentCost.id, { status: 'paid' });
-          console.log('✅ Maintenance cost status updated to paid (no request created)');
         }
       }
       
-      console.log('Updating asset status to repaired...');
-      try {
-        await rentalUnitsAPI.updateAssetStatus(asset.rental_unit_id, asset.asset_id, { 
-          status: 'repaired',
-          quantity: quantity
-        });
-      } catch (error: unknown) {
-        console.error('❌ Error updating asset status:', error);
-        if (error && typeof error === 'object' && 'response' in error) {
-          const axiosError = error as { response?: { data?: unknown; status?: number } };
-          console.error('❌ Error response:', axiosError.response?.data);
-          console.error('❌ Error status:', axiosError.response?.status);
-        }
-        throw error; // Re-throw to maintain existing error handling
+      // Validate required fields
+      if (!asset.rental_unit_id || !asset.asset_id) {
+        toast.error('Invalid asset data. Please refresh and try again.');
+        throw new Error('Missing required IDs');
       }
       
-      console.log('✅ Asset status updated successfully');
+      // Ensure IDs are numbers
+      const rentalUnitId = parseInt(String(asset.rental_unit_id), 10);
+      const assetId = parseInt(String(asset.asset_id), 10);
+      
+      if (isNaN(rentalUnitId) || isNaN(assetId)) {
+        toast.error('Invalid asset ID format. Please refresh and try again.');
+        throw new Error('Invalid ID format');
+      }
+      
+      const updateData = { 
+        status: 'repaired',
+        quantity: quantity
+      };
+      
+      await rentalUnitsAPI.updateAssetStatus(rentalUnitId, assetId, updateData);
+      
       toast.success(`${asset.name} (Qty: ${quantity}) maintenance completed and marked as repaired`);
-      fetchMaintenanceAssets(); // Refresh the list
-      console.log('=== MARK ASSET AS WORKING END (SUCCESS) ===');
+      fetchMaintenanceAssets(currentPage); // Refresh the list
     } catch (error) {
-      console.error('❌ Error in markAssetAsWorking:', error);
+      console.error('Error in markAssetAsWorking:', error);
       toast.error('Failed to update asset status');
-      console.log('=== MARK ASSET AS WORKING END (ERROR) ===');
+    } finally {
+      setProcessingDone(null);
     }
   };
 
@@ -416,26 +402,20 @@ export default function MaintenancePage() {
   };
 
   const handleCostDetailsClick = async (asset: Asset) => {
-    console.log('=== HANDLE COST DETAILS CLICK START ===');
-    console.log('Asset ID:', asset.id);
-    console.log('Asset Name:', asset.name);
+    setLoadingCostDetails(asset.id);
     
     try {
       // Ensure currencies are loaded before opening form
       if (currencies.length === 0 && !currenciesLoading) {
-        console.log('Currencies not loaded, fetching...');
         await fetchCurrencies();
       }
       
       // Check if maintenance cost already exists for this asset
-      console.log('Checking for existing maintenance cost...');
       const response = await maintenanceCostsAPI.getByRentalUnitAsset(asset.id);
-      console.log('Cost response:', response.data);
       
       if (response.data && response.data.maintenance_costs && response.data.maintenance_costs.length > 0) {
         // Load existing maintenance cost data
         const existingCost = response.data.maintenance_costs[0];
-        console.log('✅ Found existing maintenance cost:', existingCost);
         
         setExistingCostData(existingCost);
         setIsEditing(true);
@@ -453,18 +433,14 @@ export default function MaintenancePage() {
           notes: existingCost.notes || '',
           bills: []
         });
-        
-        console.log('✅ Form populated with existing data');
       } else {
         // No existing cost, start fresh
-        console.log('ℹ️ No existing maintenance cost found, starting fresh');
         setExistingCostData(null);
         setIsEditing(false);
         
         // Reset form to defaults
         const defaultCurrency = currencies.find(c => c.is_default) || currencies[0];
         if (!defaultCurrency && currencies.length === 0) {
-          console.warn('No currencies available, cannot set default');
           toast.error('Please wait for currencies to load or add currencies in the Currencies page.');
           return;
         }
@@ -481,12 +457,11 @@ export default function MaintenancePage() {
       
       setSelectedAsset(asset);
       setShowCostForm(true);
-      console.log('✅ Cost details form opened');
-      console.log('=== HANDLE COST DETAILS CLICK END (SUCCESS) ===');
     } catch (error) {
-      console.error('❌ Error in handleCostDetailsClick:', error);
+      console.error('Error in handleCostDetailsClick:', error);
       toast.error('Failed to load maintenance cost details');
-      console.log('=== HANDLE COST DETAILS CLICK END (ERROR) ===');
+    } finally {
+      setLoadingCostDetails(null);
     }
   };
 
@@ -524,7 +499,7 @@ export default function MaintenancePage() {
             <Button 
               variant="outline" 
               onClick={() => {
-                fetchMaintenanceAssets();
+                fetchMaintenanceAssets(currentPage);
               }}
               className="flex items-center"
             >
@@ -543,58 +518,78 @@ export default function MaintenancePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Status Filter */}
+            <div className="mb-4 flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-gray-700">Filter by Status:</label>
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-48"
+                >
+                  <option value="">All Status</option>
+                  <option value="maintenance">Maintenance</option>
+                  <option value="repaired">Repaired</option>
+                </Select>
+              </div>
+              {statusFilter && (
+                <span className="text-sm text-gray-500">
+                  Showing {filteredAssets.length} of {maintenanceAssets.length} assets
+                </span>
+              )}
+            </div>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-600 w-10">
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs w-8">
                       <input
                         type="checkbox"
                         checked={allSelected}
                         ref={(input) => { if (input) input.indeterminate = partiallySelected; }}
                         onChange={(e) => toggleSelectAll(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                     </th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Asset Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Brand</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Category</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Location</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Quantity</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Cost Amount</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Repair Date</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Maintenance Notes</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-600">Actions</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Asset Name</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Brand</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Category</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Location</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Qty</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Cost</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Date</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Status</th>
+                    <th className="text-left py-1.5 px-2 font-medium text-gray-600 text-xs">Notes</th>
+                    <th className="text-right py-1.5 px-2 font-medium text-gray-600 text-xs">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {maintenanceAssets.map((asset) => (
+                  {filteredAssets.map((asset) => (
                     <tr key={asset.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4">
+                      <td className="py-1.5 px-2">
                         <input
                           type="checkbox"
                           checked={selectedAssetIds.includes(asset.id)}
                           onChange={(e) => toggleSelectOne(asset.id, e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         />
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="font-medium text-gray-900">{asset.name}</div>
+                      <td className="py-1.5 px-2">
+                        <div className="font-medium text-gray-900 text-xs">{asset.name}</div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="text-gray-600">{asset.brand || 'N/A'}</div>
+                      <td className="py-1.5 px-2">
+                        <div className="text-gray-600 text-xs">{asset.brand || 'N/A'}</div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="text-gray-600">{asset.category}</div>
+                      <td className="py-1.5 px-2">
+                        <div className="text-gray-600 text-xs">{asset.category}</div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-gray-600">
+                      <td className="py-1.5 px-2">
+                        <div className="text-xs text-gray-600">
                           <div className="font-medium">{asset.rental_unit.property.name}</div>
-                          <div className="text-gray-500">Unit {asset.rental_unit.unit_number}</div>
+                          <div className="text-gray-500 text-[10px]">Unit {asset.rental_unit.unit_number}</div>
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-1.5 px-2">
                         <input
                           type="number"
                           min="1"
@@ -606,11 +601,11 @@ export default function MaintenancePage() {
                               [asset.id]: newQuantity
                             }));
                           }}
-                          className="w-16 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className="w-12 px-1.5 py-0.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-gray-600">
+                      <td className="py-1.5 px-2">
+                        <div className="text-xs text-gray-600">
                           {(() => {
                             // Find maintenance cost for this asset
                             const costData = maintenanceAssets.find(a => a.id === asset.id);
@@ -618,24 +613,24 @@ export default function MaintenancePage() {
                               const currencyCode = costData.maintenance_cost.currency?.code || costData.maintenance_cost.currency || 'MVR';
                               return `${currencyCode} ${parseFloat(costData.maintenance_cost.repair_cost).toLocaleString()}`;
                             }
-                            return <span className="text-gray-400">No cost recorded</span>;
+                            return <span className="text-gray-400 text-[10px]">No cost</span>;
                           })()}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-gray-600">
+                      <td className="py-1.5 px-2">
+                        <div className="text-xs text-gray-600">
                           {(() => {
                             // Find maintenance cost for this asset
                             const costData = maintenanceAssets.find(a => a.id === asset.id);
                             if (costData && costData.maintenance_cost && costData.maintenance_cost.repair_date) {
-                              return new Date(costData.maintenance_cost.repair_date).toLocaleDateString();
+                              return new Date(costData.maintenance_cost.repair_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                             }
-                            return <span className="text-gray-400">No date set</span>;
+                            return <span className="text-gray-400 text-[10px]">No date</span>;
                           })()}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-full ${
+                      <td className="py-1.5 px-2">
+                        <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${
                           asset.status === 'repaired' 
                             ? 'bg-green-100 text-green-800' 
                             : 'bg-orange-100 text-orange-800'
@@ -643,26 +638,34 @@ export default function MaintenancePage() {
                           {asset.status === 'repaired' ? 'Repaired' : 'Maintenance'}
                         </span>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm text-gray-600 max-w-xs">
+                      <td className="py-1.5 px-2">
+                        <div className="text-xs text-gray-600 max-w-xs">
                           {asset.maintenance_notes ? (
-                            <div className="bg-yellow-50 p-2 rounded border">
+                            <div className="bg-yellow-50 p-1 rounded border text-[10px] line-clamp-2">
                               {asset.maintenance_notes}
                             </div>
                           ) : (
-                            <span className="text-gray-400">No notes provided</span>
+                            <span className="text-gray-400 text-[10px]">No notes</span>
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-end space-x-2">
+                      <td className="py-1.5 px-2">
+                        <div className="flex justify-end space-x-1">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleCostDetailsClick(asset)}
-                            className="text-blue-600 hover:text-blue-700"
+                            disabled={loadingCostDetails === asset.id}
+                            className="text-blue-600 hover:text-blue-700 text-xs px-2 py-1 h-7"
                           >
-                            Cost Details
+                            {loadingCostDetails === asset.id ? (
+                              <>
+                                <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                <span className="text-[10px]">Loading</span>
+                              </>
+                            ) : (
+                              <span className="text-xs">Cost</span>
+                            )}
                           </Button>
                           {asset.status === 'maintenance' && (
                             <Button
@@ -671,23 +674,13 @@ export default function MaintenancePage() {
                               onClick={async (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                console.log('🔴 DONE BUTTON CLICKED for asset:', asset.id);
                                 
                                 // Direct API check - only allow if cost details were added AFTER asset was put into maintenance
                                 try {
-                                  console.log('🔍 DEBUG: Checking cost details via API for asset ID:', asset.id);
-                                  console.log('🔍 DEBUG: Asset details:', asset);
-                                  console.log('🔍 DEBUG: Asset updated_at:', asset.updated_at);
-                                  
                                   const response = await maintenanceCostsAPI.getByRentalUnitAsset(asset.id);
-                                  console.log('🔍 DEBUG: Full API response:', response);
-                                  console.log('🔍 DEBUG: Response data:', response.data);
-                                  console.log('🔍 DEBUG: Maintenance costs array:', response.data?.maintenance_costs);
-                                  console.log('🔍 DEBUG: Array length:', response.data?.maintenance_costs?.length);
                                   
                                   if (!response.data || !response.data.maintenance_costs || response.data.maintenance_costs.length === 0) {
-                                    console.log('🚫 BLOCKED: No cost details found');
-                                    toast.error('Please fill out cost details first. Click &quot;Cost Details&quot; button to record maintenance costs before marking as done.');
+                                    toast.error('Please fill out cost details first. Click "Cost Details" button to record maintenance costs before marking as done.');
                                     return;
                                   }
                                   
@@ -695,32 +688,33 @@ export default function MaintenancePage() {
                                   const assetMaintenanceDate = new Date(asset.updated_at);
                                   const recentCosts = response.data.maintenance_costs.filter((cost: { created_at: string }) => {
                                     const costDate = new Date(cost.created_at);
-                                    const isRecent = costDate >= assetMaintenanceDate;
-                                    console.log('🔍 DEBUG: Cost created_at:', cost.created_at, 'Asset updated_at:', asset.updated_at, 'Is recent:', isRecent);
-                                    return isRecent;
+                                    return costDate >= assetMaintenanceDate;
                                   });
                                   
-                                  console.log('🔍 DEBUG: Recent costs count:', recentCosts.length);
-                                  
                                   if (recentCosts.length === 0) {
-                                    console.log('🚫 BLOCKED: No recent cost details found (all costs are older than maintenance date)');
-                                    toast.error('Please add fresh cost details for this maintenance cycle. Click &quot;Cost Details&quot; button to record new maintenance costs.');
+                                    toast.error('Please add fresh cost details for this maintenance cycle. Click "Cost Details" button to record new maintenance costs.');
                                     return;
                                   }
                                   
-                                  console.log('✅ Recent cost details found, proceeding...');
                                   markAssetAsWorking(asset);
                                 } catch (error) {
-                                  console.log('🚫 BLOCKED: Error checking cost details:', error);
-                                  console.log('🚫 DEBUG: Error details:', error);
-                                  toast.error('Please fill out cost details first. Click &quot;Cost Details&quot; button to record maintenance costs before marking as done.');
+                                  console.error('Error checking cost details:', error);
+                                  toast.error('Please fill out cost details first. Click "Cost Details" button to record maintenance costs before marking as done.');
                                   return;
                                 }
                               }}
-                              className="text-green-600 hover:text-green-700 border-green-200"
+                              disabled={processingDone === asset.id}
+                              className="text-green-600 hover:text-green-700 border-green-200 text-xs px-2 py-1 h-7"
                               title="Mark as done"
                             >
-                              Done
+                              {processingDone === asset.id ? (
+                                <>
+                                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                  <span className="text-[10px]">Processing</span>
+                                </>
+                              ) : (
+                                <span className="text-xs">Done</span>
+                              )}
                             </Button>
                           )}
                         </div>
@@ -731,13 +725,71 @@ export default function MaintenancePage() {
               </table>
             </div>
 
-            {maintenanceAssets.length === 0 && (
+            {filteredAssets.length === 0 && (
               <div className="text-center py-12">
                 <Wrench className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No assets requiring maintenance</h3>
+                <h3 className="mt-2 text-sm font-medium text-gray-900">
+                  {statusFilter ? `No assets with status "${statusFilter}"` : 'No assets requiring maintenance'}
+                </h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  All assets are in working condition.
+                  {statusFilter ? 'Try selecting a different status filter.' : 'All assets are in working condition.'}
                 </p>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+                <div>
+                  <p className="text-sm text-gray-700">
+                    Showing <span className="font-medium">{(currentPage - 1) * perPage + 1}</span> to{' '}
+                    <span className="font-medium">{Math.min(currentPage * perPage, total)}</span> of{' '}
+                    <span className="font-medium">{total}</span> results
+                  </p>
+                </div>
+                <div>
+                  <nav className="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchMaintenanceAssets(currentPage - 1)}
+                      disabled={currentPage === 1 || loading}
+                      className="rounded-l-md"
+                    >
+                      Previous
+                    </Button>
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "default" : "outline"}
+                          onClick={() => fetchMaintenanceAssets(pageNum)}
+                          disabled={loading}
+                          className={currentPage === pageNum ? "z-10 bg-blue-600 text-white" : ""}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchMaintenanceAssets(currentPage + 1)}
+                      disabled={currentPage === totalPages || loading}
+                      className="rounded-r-md"
+                    >
+                      Next
+                    </Button>
+                  </nav>
+                </div>
               </div>
             )}
           </CardContent>
@@ -994,9 +1046,16 @@ export default function MaintenancePage() {
                 </Button>
                 <Button
                   onClick={handleCostFormSubmit}
-                  disabled={!costForm.repair_cost}
+                  disabled={!costForm.repair_cost || savingCost}
                 >
-                  {isEditing ? 'Update' : 'Save'}
+                  {savingCost ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    isEditing ? 'Update' : 'Save'
+                  )}
                 </Button>
               </div>
             </div>

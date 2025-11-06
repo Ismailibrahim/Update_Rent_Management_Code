@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use App\Models\PaymentRecord;
 
 class PaymentRecordController extends Controller
@@ -17,8 +18,25 @@ class PaymentRecordController extends Controller
     public function index(Request $request): JsonResponse
     {
         try {
+            // Check if payment_records table exists
+            if (!Schema::hasTable('payment_records')) {
+                return response()->json([
+                    'success' => true,
+                    'payment_records' => [],
+                    'pagination' => [
+                        'current_page' => 1,
+                        'last_page' => 1,
+                        'per_page' => 15,
+                        'total' => 0,
+                    ],
+                    'message' => 'Payment records table does not exist. Please run migrations.'
+                ]);
+            }
+
             // Load relationships without any filtering to include deactivated units
-            $query = PaymentRecord::with([
+            $relationships = [
+                'tenant',
+                'property',
                 'rentalUnit' => function($query) {
                     // Don't filter by is_active - include all units (active and deactivated)
                     $query->with(['tenant', 'property']);
@@ -26,15 +44,32 @@ class PaymentRecordController extends Controller
                 'paymentType', 
                 'paymentMode',
                 'currency',
-                'rentInvoice'
-            ]);
+            ];
+
+            // Only load rentInvoice relationship if the column exists
+            if (Schema::hasColumn('payment_records', 'rent_invoice_id')) {
+                $relationships[] = 'rentInvoice';
+            }
+
+            // First, check raw count without relationships
+            $rawCount = PaymentRecord::count();
+            Log::info('Payment Records Raw Count (before relationships):', ['count' => $rawCount]);
+            
+            // If no records found, log a sample query to debug
+            if ($rawCount === 0) {
+                Log::warning('No payment records found in database. Checking if table is accessible...');
+                $sampleQuery = \DB::table('payment_records')->limit(1)->get();
+                Log::info('Direct DB query result:', ['count' => $sampleQuery->count(), 'sample' => $sampleQuery->first()]);
+            }
+            
+            $query = PaymentRecord::with($relationships);
             
             // Apply filters if provided
             if ($request->has('search')) {
                 $search = $request->get('search');
                 $query->where(function($q) use ($search) {
-                    $q->where('remarks', 'like', "%{$search}%")
-                      ->orWhere('paid_by', 'like', "%{$search}%")
+                    $q->where('description', 'like', "%{$search}%")
+                      ->orWhere('reference_number', 'like', "%{$search}%")
                       ->orWhereHas('rentalUnit.tenant', function($tenantQuery) use ($search) {
                           $tenantQuery->where('first_name', 'like', "%{$search}%")
                                      ->orWhere('last_name', 'like', "%{$search}%")
@@ -45,7 +80,7 @@ class PaymentRecordController extends Controller
             }
             
             if ($request->has('status')) {
-                $query->where('is_active', $request->get('status') === 'completed' ? 1 : 0);
+                $query->where('status', $request->get('status'));
             }
             
             // Use pagination instead of loading all records
@@ -61,7 +96,7 @@ class PaymentRecordController extends Controller
                 'per_page' => $paymentRecords->perPage(),
                 'sample_record' => $paymentRecords->first() ? [
                     'id' => $paymentRecords->first()->id,
-                    'unit_id' => $paymentRecords->first()->unit_id,
+                    'rental_unit_id' => $paymentRecords->first()->rental_unit_id,
                     'rent_invoice' => $paymentRecords->first()->rentInvoice ? [
                         'id' => $paymentRecords->first()->rentInvoice->id,
                         'invoice_number' => $paymentRecords->first()->rentInvoice->invoice_number,
@@ -85,10 +120,14 @@ class PaymentRecordController extends Controller
                         'No tenant'
                 ]);
                 
+                // Get tenant and property - prefer direct relationships, fallback to rental unit relationships
+                $tenant = $record->tenant ?? $record->rentalUnit?->tenant;
+                $property = $record->property ?? $record->rentalUnit?->property;
+                
                 return [
                     'id' => $record->id,
-                    'tenant_id' => $record->rentalUnit->tenant_id ?? null,
-                    'property_id' => $record->rentalUnit->property_id ?? null,
+                    'tenant_id' => $record->tenant_id ?? $record->rentalUnit?->tenant_id ?? null,
+                    'property_id' => $record->property_id ?? $record->rentalUnit?->property_id ?? null,
                     'payment_type_id' => $record->payment_type_id,
                     'payment_mode_id' => $record->payment_mode_id,
                     'amount' => $record->amount,
@@ -101,10 +140,10 @@ class PaymentRecordController extends Controller
                         'status' => $record->rentalUnit->status,
                         'unit_type' => $record->rentalUnit->unit_type ?? null,
                     ] : null,
-                    'reference_number' => $record->remarks, // Using remarks as reference
-                    'payment_date' => $record->paid_date,
-                    'status' => $record->is_active ? 'completed' : 'pending',
-                    'notes' => $record->remarks,
+                    'reference_number' => $record->reference_number,
+                    'payment_date' => $record->payment_date ? $record->payment_date->format('Y-m-d') : null,
+                    'status' => $record->status ?? 'pending',
+                    'notes' => $record->description,
                     'rent_invoice' => $record->rentInvoice ? [
                         'id' => $record->rentInvoice->id,
                         'invoice_number' => $record->rentInvoice->invoice_number,
@@ -114,11 +153,11 @@ class PaymentRecordController extends Controller
                         'due_date' => $record->rentInvoice->due_date,
                         'status' => $record->rentInvoice->status,
                     ] : null,
-                    'tenant' => $record->rentalUnit->tenant ? [
-                        'name' => $record->rentalUnit->tenant->full_name
+                    'tenant' => $tenant ? [
+                        'name' => $tenant->full_name ?? ($tenant->first_name . ' ' . $tenant->last_name)
                     ] : null,
-                    'property' => $record->rentalUnit->property ? [
-                        'name' => $record->rentalUnit->property->name
+                    'property' => $property ? [
+                        'name' => $property->name
                     ] : null,
                     'paymentType' => $record->paymentType ? [
                         'name' => $record->paymentType->name
@@ -290,6 +329,55 @@ class PaymentRecordController extends Controller
                 'success' => false,
                 'message' => 'Failed to delete payment record',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Debug endpoint to check payment records status
+     */
+    public function debugCheck(Request $request): JsonResponse
+    {
+        try {
+            $info = [
+                'table_exists' => Schema::hasTable('payment_records'),
+                'rent_invoice_id_column_exists' => false,
+                'total_payment_records' => 0,
+                'total_paid_invoices' => 0,
+                'sample_payment_records' => [],
+            ];
+
+            if ($info['table_exists']) {
+                $info['rent_invoice_id_column_exists'] = Schema::hasColumn('payment_records', 'rent_invoice_id');
+                $info['total_payment_records'] = PaymentRecord::count();
+                
+                // Get sample records
+                $sampleRecords = PaymentRecord::limit(5)->get();
+                $info['sample_payment_records'] = $sampleRecords->map(function($record) {
+                    return [
+                        'id' => $record->id,
+                        'amount' => $record->amount,
+                        'payment_date' => $record->payment_date,
+                        'rent_invoice_id' => $record->rent_invoice_id ?? null,
+                        'tenant_id' => $record->tenant_id,
+                        'property_id' => $record->property_id,
+                    ];
+                });
+
+                // Check paid invoices
+                $info['total_paid_invoices'] = \App\Models\RentInvoice::where('status', 'paid')->count();
+            }
+
+            return response()->json([
+                'success' => true,
+                'debug_info' => $info
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Debug check failed',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ], 500);
         }
     }

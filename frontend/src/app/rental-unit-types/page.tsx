@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
 import { Plus, Search, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/UI/Table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/UI/Dialog';
 import { rentalUnitTypesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+import { ResponsiveTable } from '../../components/Responsive/ResponsiveTable';
+import { Pagination } from '../../components/UI/Pagination';
 
 interface RentalUnitType {
   id: number;
@@ -27,36 +28,60 @@ function RentalUnitTypesPageContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingType, setEditingType] = useState<RentalUnitType | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     is_active: true,
   });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalItems, setTotalItems] = useState(0);
 
   useEffect(() => {
     fetchUnitTypes();
-  }, []);
+  }, [currentPage, itemsPerPage]);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+      fetchUnitTypes();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Clean up selected IDs when unit types are removed
+  useEffect(() => {
+    const unitTypeIds = new Set(unitTypes.map(ut => ut.id));
+    setSelectedIds(prev => {
+      const validSelectedIds = Array.from(prev).filter(id => unitTypeIds.has(id));
+      if (validSelectedIds.length !== prev.size) {
+        return new Set(validSelectedIds);
+      }
+      return prev;
+    });
+  }, [unitTypes]);
 
   const fetchUnitTypes = async () => {
     try {
       setLoading(true);
-      console.log('Fetching unit types...');
-      console.log('API base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api');
-      console.log('Token exists:', typeof window !== 'undefined' ? !!localStorage.getItem('token') : 'N/A');
       
       // Filter by category='unit' to only show rental unit types (not property types)
-      const response = await rentalUnitTypesAPI.getUnitTypes({ active_only: false });
-      console.log('Unit types API response:', response);
-      console.log('Response data:', response.data);
-      console.log('Response data.unitTypes:', response.data?.unitTypes);
-      console.log('Response data.data.unitTypes:', response.data?.data?.unitTypes);
+      const response = await rentalUnitTypesAPI.getUnitTypes({ 
+        active_only: false,
+        page: currentPage,
+        per_page: itemsPerPage,
+        search: searchTerm || undefined,
+      });
       
       const unitTypes = (response.data?.data?.unitTypes ?? response.data?.unitTypes) || [];
-      console.log('Setting unit types:', unitTypes);
       setUnitTypes(unitTypes);
+      setTotalItems(response.data?.data?.total ?? response.data?.total ?? unitTypes.length);
       
-      if (unitTypes.length === 0) {
-        console.warn('No unit types found in response. Make sure unit types are created with category="unit"');
+      if (unitTypes.length === 0 && !searchTerm) {
         toast.error('No unit types found. Please create unit types first.', { duration: 4000 });
       }
     } catch (error: unknown) {
@@ -91,19 +116,11 @@ function RentalUnitTypesPageContent() {
         is_active: formData.is_active ?? true,
       };
       
-      console.log('Submitting rental unit type data:', submitData);
-      
       if (editingType) {
-        console.log('Updating unit type:', editingType.id);
-        console.log('Update data being sent:', submitData);
-        const response = await rentalUnitTypesAPI.update(editingType.id, submitData);
-        console.log('Update response:', response);
+        await rentalUnitTypesAPI.update(editingType.id, submitData);
         toast.success('Rental unit type updated successfully');
       } else {
-        console.log('Creating new unit type');
-        console.log('Create data being sent:', submitData);
-        const response = await rentalUnitTypesAPI.create(submitData);
-        console.log('Create response:', response);
+        await rentalUnitTypesAPI.create(submitData);
         toast.success('Rental unit type created successfully');
       }
       
@@ -128,7 +145,6 @@ function RentalUnitTypesPageContent() {
   };
 
   const handleEdit = (unitType: RentalUnitType) => {
-    console.log('Editing unit type:', unitType);
     setEditingType(unitType);
     setFormData({
       name: unitType.name,
@@ -159,6 +175,56 @@ function RentalUnitTypesPageContent() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) {
+      return;
+    }
+
+    const count = selectedIds.size;
+    if (!confirm(`Are you sure you want to delete ${count} rental unit type${count > 1 ? 's' : ''}?`)) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const deletePromises = Array.from(selectedIds).map(id => rentalUnitTypesAPI.delete(id));
+      await Promise.all(deletePromises);
+      toast.success(`${count} rental unit type${count > 1 ? 's' : ''} deleted successfully`);
+      setSelectedIds(new Set());
+      fetchUnitTypes();
+    } catch (error: unknown) {
+      console.error('Error deleting unit types:', error);
+      const errorMessage = error instanceof Error && 'response' in error 
+        ? (error as { response: { data: { message: string } } }).response.data.message 
+        : 'Failed to delete rental unit types';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(unitTypes.map(unitType => unitType.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectItem = (id: number, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const isAllSelected = unitTypes.length > 0 && selectedIds.size === unitTypes.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < unitTypes.length;
+
   const handleToggleStatus = async (unitType: RentalUnitType) => {
     try {
       setLoading(true);
@@ -181,11 +247,6 @@ function RentalUnitTypesPageContent() {
     }
   };
 
-  const filteredUnitTypes = unitTypes.filter(unitType =>
-    unitType.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    unitType.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   const resetForm = () => {
     setFormData({
       name: '',
@@ -204,13 +265,24 @@ function RentalUnitTypesPageContent() {
             <h1 className="text-2xl font-bold text-gray-900">Rental Unit Types</h1>
             <p className="text-gray-600">Manage different types of rental units</p>
           </div>
-          <Button
-            onClick={() => setShowCreateForm(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
-          >
-            <Plus className="h-4 w-4" />
-            Add Unit Type
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <Button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Selected ({selectedIds.size})
+              </Button>
+            )}
+            <Button
+              onClick={() => setShowCreateForm(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg transition-all duration-200 font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Add Unit Type
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
@@ -230,8 +302,9 @@ function RentalUnitTypesPageContent() {
         {showCreateForm && (
           <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
             <DialogContent className="max-w-lg w-full">
-              <DialogHeader>
+              <DialogHeader className="flex-col items-start">
                 <DialogTitle>{editingType ? 'Edit Unit Type' : 'Add New Unit Type'}</DialogTitle>
+                <div className="border-b border-gray-200 w-full my-3"></div>
                 <DialogDescription>
                   {editingType ? 'Update the rental unit type details' : 'Create a new rental unit type'}
                 </DialogDescription>
@@ -270,10 +343,10 @@ function RentalUnitTypesPageContent() {
           </Dialog>
         )}
 
-        {/* Unit Types List (Table View) */}
+        {/* Unit Types List */}
         <Card className="bg-white border border-gray-200">
           <CardHeader>
-            <CardTitle>Unit Types ({filteredUnitTypes.length})</CardTitle>
+            <CardTitle>Unit Types ({totalItems})</CardTitle>
             <CardDescription>Manage your rental unit types</CardDescription>
           </CardHeader>
           <CardContent>
@@ -282,73 +355,142 @@ function RentalUnitTypesPageContent() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                 <p className="mt-2 text-gray-600">Loading unit types...</p>
               </div>
-            ) : filteredUnitTypes.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-600">No unit types found</p>
-              </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16">ID</TableHead>
-                      <TableHead>Name</TableHead>
-                      <TableHead className="w-32">Status</TableHead>
-                      <TableHead className="w-40">Created</TableHead>
-                      <TableHead className="w-40 text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredUnitTypes.map((unitType) => (
-                      <TableRow key={unitType.id}>
-                        <TableCell>#{unitType.id}</TableCell>
-                        <TableCell className="font-medium">{unitType.name}</TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded-full text-xs ${unitType.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                            {unitType.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </TableCell>
-                        <TableCell>{new Date(unitType.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleToggleStatus(unitType)}
-                              className="p-1"
-                              title={unitType.is_active ? 'Deactivate' : 'Activate'}
-                            >
-                              {unitType.is_active ? (
-                                <EyeOff className="h-4 w-4 text-orange-600" />
-                              ) : (
-                                <Eye className="h-4 w-4 text-green-600" />
-                              )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEdit(unitType)}
-                              className="p-1"
-                              title="Edit"
-                            >
-                              <Edit className="h-4 w-4 text-blue-600" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDelete(unitType.id)}
-                              className="p-1"
-                              title="Delete"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              <>
+                {/* Select All Checkbox */}
+                {unitTypes.length > 0 && (
+                  <div className="mb-4 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      ref={(input) => {
+                        if (input) input.indeterminate = isIndeterminate;
+                      }}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                    />
+                    <label className="text-sm text-gray-700">
+                      Select All ({selectedIds.size} selected)
+                    </label>
+                  </div>
+                )}
+                
+                <ResponsiveTable
+                  data={unitTypes}
+                  keyExtractor={(item) => item.id.toString()}
+                  columns={[
+                    {
+                      header: (
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = isIndeterminate;
+                          }}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ),
+                      accessor: (item) => (
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectItem(item.id, e.target.checked);
+                          }}
+                          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                      ),
+                      mobileLabel: 'Select',
+                      mobilePriority: 'high',
+                      className: 'w-12',
+                    },
+                    {
+                      header: 'ID',
+                      accessor: (item) => `#${item.id}`,
+                      mobileLabel: 'ID',
+                      mobilePriority: 'high',
+                      className: 'w-16',
+                    },
+                    {
+                      header: 'Name',
+                      accessor: 'name',
+                      mobileLabel: 'Name',
+                      mobilePriority: 'high',
+                    },
+                    {
+                      header: 'Status',
+                      accessor: (item) => (
+                        <span className={`px-2 py-1 rounded-full text-xs ${item.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                          {item.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      ),
+                      mobileLabel: 'Status',
+                      mobilePriority: 'high',
+                      className: 'w-32',
+                    },
+                    {
+                      header: 'Created',
+                      accessor: (item) => new Date(item.created_at).toLocaleDateString(),
+                      mobileLabel: 'Created',
+                      mobilePriority: 'medium',
+                      className: 'w-40',
+                    },
+                  ]}
+                  actions={(item) => (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleStatus(item)}
+                        className="p-1"
+                        title={item.is_active ? 'Deactivate' : 'Activate'}
+                      >
+                        {item.is_active ? (
+                          <EyeOff className="h-4 w-4 text-orange-600" />
+                        ) : (
+                          <Eye className="h-4 w-4 text-green-600" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(item)}
+                        className="p-1"
+                        title="Edit"
+                      >
+                        <Edit className="h-4 w-4 text-blue-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(item.id)}
+                        className="p-1"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </>
+                  )}
+                  emptyMessage={searchTerm ? 'Try adjusting your search terms.' : 'Get started by adding your first unit type.'}
+                />
+                
+                {unitTypes.length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={(newSize) => {
+                      setItemsPerPage(newSize);
+                      setCurrentPage(1);
+                    }}
+                  />
+                )}
+              </>
             )}
           </CardContent>
         </Card>

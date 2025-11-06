@@ -82,6 +82,7 @@ export default function RentalUnitsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProperty, setSelectedProperty] = useState<string>('all');
+  const [occupancyFilter, setOccupancyFilter] = useState<string>('all');
 
   useEffect(() => {
     fetchRentalUnits();
@@ -129,7 +130,12 @@ export default function RentalUnitsPage() {
     
     const matchesProperty = selectedProperty === 'all' || unit.property_id.toString() === selectedProperty;
     
-    return matchesSearch && matchesProperty;
+    const matchesOccupancy = 
+      occupancyFilter === 'all' ||
+      (occupancyFilter === 'occupied' && unit.status === 'occupied') ||
+      (occupancyFilter === 'vacant' && unit.status === 'available');
+    
+    return matchesSearch && matchesProperty && matchesOccupancy;
   });
 
   const formatUnitType = (t?: string) => {
@@ -248,6 +254,15 @@ export default function RentalUnitsPage() {
               className="pl-12 pr-4 py-2.5 border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-lg shadow-sm transition-all duration-200"
             />
           </div>
+          <select
+            value={occupancyFilter}
+            onChange={(e) => setOccupancyFilter(e.target.value)}
+            className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500 shadow-sm transition-all duration-200"
+          >
+            <option value="all">All Units</option>
+            <option value="occupied">Occupied</option>
+            <option value="vacant">Vacant</option>
+          </select>
           <select
             value={selectedProperty}
             onChange={(e) => setSelectedProperty(e.target.value)}
@@ -389,12 +404,16 @@ export default function RentalUnitsPage() {
                           <div className="text-sm text-gray-900">
                             {unit.assets && unit.assets.length > 0 ? (
                               <div className="space-y-1">
-                                {unit.assets.slice(0, 2).map((asset) => {
+                                {unit.assets.slice(0, 2).map((asset, assetIndex) => {
                                   const isMaintenance = asset.pivot?.status === 'maintenance';
                                   const isActiveAssignment = asset.pivot?.is_active !== false;
                                   const qty = asset.pivot?.quantity ?? undefined;
+                                  // Use pivot ID if available, otherwise use composite key
+                                  const uniqueKey = asset.pivot?.id 
+                                    ? `pivot-${asset.pivot.id}` 
+                                    : `${unit.id}-${asset.id}-${assetIndex}-${asset.pivot?.assigned_date || assetIndex}`;
                                   return (
-                                    <div key={asset.id} className="flex items-center space-x-1">
+                                    <div key={uniqueKey} className="flex items-center space-x-1">
                                       <span className={`inline-flex px-1 py-0.5 text-xs rounded-full border truncate ${
                                         isMaintenance
                                           ? 'bg-orange-50 text-orange-800 border-orange-200'
@@ -551,13 +570,17 @@ export default function RentalUnitsPage() {
                     <div className="pt-2 border-t border-gray-100">
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Assets</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {unit.assets.slice(0, 4).map((asset) => {
+                        {unit.assets.slice(0, 4).map((asset, assetIndex) => {
                           const isMaintenance = asset.pivot?.status === 'maintenance';
                           const isActiveAssignment = asset.pivot?.is_active !== false;
                           const qty = asset.pivot?.quantity ?? undefined;
+                          // Use pivot ID if available, otherwise use composite key
+                          const uniqueKey = asset.pivot?.id 
+                            ? `pivot-${asset.pivot.id}` 
+                            : `${unit.id}-${asset.id}-${assetIndex}-${asset.pivot?.assigned_date || assetIndex}`;
                           return (
                             <span
-                              key={asset.id}
+                              key={uniqueKey}
                               className={`inline-flex px-2 py-1 text-xs rounded-full border ${
                                 isMaintenance
                                   ? 'bg-orange-50 text-orange-800 border-orange-200'
@@ -627,7 +650,7 @@ export default function RentalUnitsPage() {
             <Building2 className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No rental units found</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || selectedProperty !== 'all' ? 'Try adjusting your search terms or filters.' : 'Get started by adding your first rental unit using the button above.'}
+              {searchTerm || selectedProperty !== 'all' || occupancyFilter !== 'all' ? 'Try adjusting your search terms or filters.' : 'Get started by adding your first rental unit using the button above.'}
             </p>
           </div>
         )}

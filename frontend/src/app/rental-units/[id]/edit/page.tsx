@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/UI/Card';
 import { Button } from '../../../../components/UI/Button';
 import { Input } from '../../../../components/UI/Input';
-import { ArrowLeft, Save, X } from 'lucide-react';
+import { ArrowLeft, Save, X, User } from 'lucide-react';
 import { rentalUnitsAPI, propertiesAPI, assetsAPI, tenantsAPI, rentalUnitTypesAPI } from '../../../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../../../components/Layout/SidebarLayout';
@@ -23,12 +23,13 @@ interface Asset {
   id: number;
   name: string;
   brand?: string;
-  serial_no?: string;
   category: string;
   status?: string;
   maintenance_notes?: string;
   quantity?: number;
   serial_numbers?: string; // Serial numbers for items assigned to this rental unit
+  asset_location?: string; // Location of asset within the rental unit
+  installation_date?: string; // Installation date of the asset
 }
 
 interface Tenant {
@@ -53,8 +54,11 @@ export default function EditRentalUnitPage() {
   const [originalAssets, setOriginalAssets] = useState<number[]>([]); // Track originally assigned assets
   const [maintenanceNotes, setMaintenanceNotes] = useState<{[key: number]: {notes: string}}>({});
   const [serialNumbers, setSerialNumbers] = useState<{[key: number]: string}>({});
+  const [assetLocations, setAssetLocations] = useState<{[key: number]: string}>({});
+  const [installationDates, setInstallationDates] = useState<{[key: number]: string}>({});
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
+  const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
   const [formData, setFormData] = useState({
     property_id: '',
     unit_number: '',
@@ -111,6 +115,20 @@ export default function EditRentalUnitPage() {
         notes: unit.notes || ''
       });
 
+      // Store current tenant information if available
+      if (unit.tenant) {
+        setCurrentTenant({
+          id: unit.tenant.id,
+          first_name: unit.tenant.first_name || '',
+          last_name: unit.tenant.last_name || '',
+          email: unit.tenant.email || '',
+          phone: unit.tenant.phone || '',
+          full_name: unit.tenant.full_name || `${unit.tenant.first_name || ''} ${unit.tenant.last_name || ''}`.trim()
+        });
+      } else {
+        setCurrentTenant(null);
+      }
+
       // Set selected assets with quantities and maintenance details
       if (unit.assets && unit.assets.length > 0) {
         console.log('Unit assets:', unit.assets);
@@ -120,7 +138,7 @@ export default function EditRentalUnitPage() {
         // Update asset quantities and status from the unit's assets
         setAssets(prevAssets => {
           return prevAssets.map(asset => {
-            const unitAsset = unit.assets.find((ua: { id: number; pivot?: { quantity?: number; status?: string; serial_numbers?: string } }) => ua.id === asset.id);
+            const unitAsset = unit.assets.find((ua: { id: number; pivot?: { quantity?: number; status?: string; serial_numbers?: string; asset_location?: string; installation_date?: string } }) => ua.id === asset.id);
             if (unitAsset) {
               console.log(`Asset ${asset.id} pivot data:`, unitAsset.pivot);
               return { 
@@ -128,7 +146,9 @@ export default function EditRentalUnitPage() {
                 quantity: unitAsset.pivot?.quantity || 1,
                 status: unitAsset.pivot?.status || 'working',
                 // Handle serial_numbers gracefully - it might not exist if migration hasn't run
-                serial_numbers: (unitAsset.pivot && 'serial_numbers' in unitAsset.pivot) ? (unitAsset.pivot.serial_numbers || '') : ''
+                serial_numbers: (unitAsset.pivot && 'serial_numbers' in unitAsset.pivot) ? (unitAsset.pivot.serial_numbers || '') : '',
+                asset_location: (unitAsset.pivot && 'asset_location' in unitAsset.pivot) ? (unitAsset.pivot.asset_location || '') : '',
+                installation_date: (unitAsset.pivot && 'installation_date' in unitAsset.pivot) ? (unitAsset.pivot.installation_date || '') : ''
               };
             }
             return asset;
@@ -138,16 +158,26 @@ export default function EditRentalUnitPage() {
         // Initialize maintenance notes state from pivot data
         const initialNotes: { [key: number]: { notes: string } } = {};
         const initialSerialNumbers: { [key: number]: string } = {};
-        unit.assets.forEach((ua: { id: number; pivot?: { maintenance_notes?: string; serial_numbers?: string } }) => {
+        const initialAssetLocations: { [key: number]: string } = {};
+        const initialInstallationDates: { [key: number]: string } = {};
+        unit.assets.forEach((ua: { id: number; pivot?: { maintenance_notes?: string; serial_numbers?: string; asset_location?: string; installation_date?: string } }) => {
           if (ua.pivot && typeof ua.pivot.maintenance_notes === 'string' && ua.pivot.maintenance_notes.length > 0) {
             initialNotes[ua.id] = { notes: ua.pivot.maintenance_notes };
           }
           if (ua.pivot && typeof ua.pivot.serial_numbers === 'string' && ua.pivot.serial_numbers.length > 0) {
             initialSerialNumbers[ua.id] = ua.pivot.serial_numbers;
           }
+          if (ua.pivot && typeof ua.pivot.asset_location === 'string' && ua.pivot.asset_location.length > 0) {
+            initialAssetLocations[ua.id] = ua.pivot.asset_location;
+          }
+          if (ua.pivot && typeof ua.pivot.installation_date === 'string' && ua.pivot.installation_date.length > 0) {
+            initialInstallationDates[ua.id] = ua.pivot.installation_date;
+          }
         });
         setMaintenanceNotes(initialNotes);
         setSerialNumbers(initialSerialNumbers);
+        setAssetLocations(initialAssetLocations);
+        setInstallationDates(initialInstallationDates);
       } else {
         setSelectedAssets([]);
         setOriginalAssets([]);
@@ -301,11 +331,12 @@ export default function EditRentalUnitPage() {
       // Add newly selected assets
       if (assetsToAdd.length > 0) {
         try {
-          // Prepare assets with quantities and serial numbers
+          // Prepare assets with quantities, location, and installation date
           const assetsWithQuantities = assetsToAdd.map(assetId => {
             const asset = assets.find(a => a.id === assetId);
             console.log(`Asset ${assetId}:`, asset);
-            const assetData: { asset_id: number; quantity: number; serial_numbers?: string } = {
+            const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
+            const assetData: { asset_id: number; quantity: number; serial_numbers?: string; asset_location?: string; installation_date?: string } = {
               asset_id: assetId,
               quantity: asset?.quantity || 1
             };
@@ -315,6 +346,16 @@ export default function EditRentalUnitPage() {
             if (serialNumbersValue.trim()) {
               assetData.serial_numbers = serialNumbersValue.trim();
             }
+            
+            // Include asset location if provided
+            const assetLocationValue = assetLocations[assetId] || asset?.asset_location || '';
+            if (assetLocationValue.trim()) {
+              assetData.asset_location = assetLocationValue.trim();
+            }
+            
+            // Include installation date (default to today if not provided)
+            const installationDateValue = installationDates[assetId] || asset?.installation_date || today;
+            assetData.installation_date = installationDateValue;
             
             return assetData;
           });
@@ -348,7 +389,7 @@ export default function EditRentalUnitPage() {
       if (statusUpdates.length > 0) {
         try {
           for (const asset of statusUpdates) {
-            const updateData: { status: string; maintenance_notes?: string; quantity?: number; serial_numbers?: string } = {
+            const updateData: { status: string; maintenance_notes?: string; quantity?: number; serial_numbers?: string; asset_location?: string; installation_date?: string } = {
               status: asset.status || 'working',
               quantity: asset.quantity || 1
             };
@@ -362,6 +403,18 @@ export default function EditRentalUnitPage() {
             const serialNumbersValue = serialNumbers[asset.id] || asset.serial_numbers || '';
             if (serialNumbersValue.trim()) {
               updateData.serial_numbers = serialNumbersValue.trim();
+            }
+            
+            // Include asset location if provided
+            const assetLocationValue = assetLocations[asset.id] || asset.asset_location || '';
+            if (assetLocationValue.trim()) {
+              updateData.asset_location = assetLocationValue.trim();
+            }
+            
+            // Include installation date if provided
+            const installationDateValue = installationDates[asset.id] || asset.installation_date || '';
+            if (installationDateValue) {
+              updateData.installation_date = installationDateValue;
             }
             
             await rentalUnitsAPI.updateAssetStatus(parseInt(rentalUnitId), asset.id, updateData);
@@ -762,33 +815,131 @@ export default function EditRentalUnitPage() {
               </div>
 
               {/* Tenant Assignment */}
-              <div className="space-y-4">
+              <div className="space-y-4 border-t pt-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Tenant Assignment
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Tenant Assignment</h3>
+                  <p className="text-sm text-gray-500 mb-4">
+                    View or manage the tenant assigned to this rental unit
+                  </p>
+                </div>
+
+                {/* Display Current Tenant */}
+                {currentTenant && formData.tenant_id && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-3">
+                          <User className="h-5 w-5 text-blue-600" />
+                          <h4 className="text-base font-semibold text-gray-900">
+                            Currently Assigned Tenant
+                          </h4>
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            Occupied
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-700">Name:</span>
+                            <span className="text-sm text-gray-900">
+                              {currentTenant.full_name || `${currentTenant.first_name} ${currentTenant.last_name}`}
+                            </span>
+                          </div>
+                          {currentTenant.phone && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-700">Phone:</span>
+                              <span className="text-sm text-gray-900">{currentTenant.phone}</span>
+                            </div>
+                          )}
+                          {currentTenant.email && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-700">Email:</span>
+                              <a 
+                                href={`mailto:${currentTenant.email}`}
+                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                {currentTenant.email}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Link 
+                          href={`/tenants/${currentTenant.id}`}
+                          prefetch={true}
+                          className="inline-flex items-center justify-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-md hover:bg-blue-200 transition-colors"
+                        >
+                          View Details
+                        </Link>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              tenant_id: '',
+                              status: 'available'
+                            }));
+                            setCurrentTenant(null);
+                          }}
+                          className="text-xs px-3 py-1.5 text-red-600 border-red-200 hover:bg-red-50"
+                        >
+                          Remove Tenant
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Assign New Tenant or Change Tenant */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {currentTenant ? 'Change Tenant' : 'Assign Tenant'}
                   </label>
                   <select
                     value={formData.tenant_id}
                     onChange={(e) => {
                       const tenantId = e.target.value;
+                      const selectedTenant = tenants.find(t => t.id.toString() === tenantId);
+                      
                       setFormData(prev => ({ 
                         ...prev, 
                         tenant_id: tenantId,
                         status: tenantId ? 'occupied' : 'available'
                       }));
+
+                      // Update current tenant state
+                      if (selectedTenant) {
+                        setCurrentTenant({
+                          id: selectedTenant.id,
+                          first_name: selectedTenant.first_name,
+                          last_name: selectedTenant.last_name,
+                          email: selectedTenant.email,
+                          phone: selectedTenant.phone,
+                          full_name: selectedTenant.full_name || `${selectedTenant.first_name} ${selectedTenant.last_name}`
+                        });
+                      } else {
+                        setCurrentTenant(null);
+                      }
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">No tenant assigned</option>
+                    <option value="">{currentTenant ? 'Select a different tenant...' : 'Select a tenant to assign...'}</option>
                     {tenants.map((tenant) => (
                       <option key={tenant.id} value={tenant.id.toString()}>
                         {tenant.full_name || `${tenant.first_name} ${tenant.last_name}`}
                         {tenant.phone && ` - ${tenant.phone}`}
+                        {tenant.email && ` (${tenant.email})`}
                       </option>
                     ))}
                   </select>
+                  {tenants.length === 0 && (
+                    <p className="mt-2 text-sm text-gray-500">
+                      No tenants available. <Link href="/tenants/new" className="text-blue-600 hover:underline">Create a new tenant</Link> first.
+                    </p>
+                  )}
                 </div>
-
               </div>
 
               {/* Asset Management */}
@@ -813,14 +964,23 @@ export default function EditRentalUnitPage() {
                               if (!selectedAssets.includes(assetId)) {
                                 setSelectedAssets(prev => [...prev, assetId]);
                                 // Set default quantity to 1 for new assets
+                                const today = new Date().toISOString().split('T')[0]; // Get today's date in YYYY-MM-DD format
                                 const updatedAssets = assets.map(asset => 
-                                  asset.id === assetId ? { ...asset, quantity: 1, serial_numbers: '' } : asset
+                                  asset.id === assetId ? { ...asset, quantity: 1, serial_numbers: '', asset_location: '', installation_date: today } : asset
                                 );
                                 setAssets(updatedAssets);
-                                // Initialize serial numbers for this asset
+                                // Initialize fields for this asset
                                 setSerialNumbers(prev => ({
                                   ...prev,
                                   [assetId]: ''
+                                }));
+                                setAssetLocations(prev => ({
+                                  ...prev,
+                                  [assetId]: ''
+                                }));
+                                setInstallationDates(prev => ({
+                                  ...prev,
+                                  [assetId]: today
                                 }));
                               }
                               e.target.value = ''; // Reset dropdown
@@ -847,10 +1007,10 @@ export default function EditRentalUnitPage() {
                                 <tr>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Asset Name</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Brand</th>
-                                  <th className="text-left py-3 px-4 font-medium text-gray-600">Asset Serial No</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Category</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Quantity</th>
-                                  <th className="text-left py-3 px-4 font-medium text-gray-600">Serial Numbers</th>
+                                  <th className="text-left py-3 px-4 font-medium text-gray-600">Asset Location</th>
+                                  <th className="text-left py-3 px-4 font-medium text-gray-600">Installation Date</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
                                   <th className="text-left py-3 px-4 font-medium text-gray-600">Maintenance Notes</th>
                                   <th className="text-right py-3 px-4 font-medium text-gray-600">Actions</th>
@@ -868,9 +1028,6 @@ export default function EditRentalUnitPage() {
                                       </td>
                                       <td className="py-3 px-4">
                                         <div className="text-gray-600">{asset.brand || 'N/A'}</div>
-                                      </td>
-                                      <td className="py-3 px-4">
-                                        <div className="text-gray-600">{asset.serial_no || 'N/A'}</div>
                                       </td>
                                       <td className="py-3 px-4">
                                         <div className="text-gray-600">{asset.category}</div>
@@ -893,17 +1050,31 @@ export default function EditRentalUnitPage() {
                                         />
                                       </td>
                                       <td className="py-3 px-4">
-                                        <textarea
-                                          placeholder="Enter serial numbers (one per line or comma-separated)"
-                                          value={serialNumbers[assetId] || asset.serial_numbers || ''}
+                                        <input
+                                          type="text"
+                                          placeholder="e.g., Living Room, Kitchen"
+                                          value={assetLocations[assetId] || asset.asset_location || ''}
                                           onChange={(e) => {
-                                            setSerialNumbers(prev => ({
+                                            setAssetLocations(prev => ({
                                               ...prev,
                                               [assetId]: e.target.value
                                             }));
                                           }}
-                                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
-                                          rows={2}
+                                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                          maxLength={255}
+                                        />
+                                      </td>
+                                      <td className="py-3 px-4">
+                                        <input
+                                          type="date"
+                                          value={installationDates[assetId] || asset.installation_date || ''}
+                                          onChange={(e) => {
+                                            setInstallationDates(prev => ({
+                                              ...prev,
+                                              [assetId]: e.target.value
+                                            }));
+                                          }}
+                                          className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                                         />
                                       </td>
                                       <td className="py-3 px-4">

@@ -303,15 +303,32 @@ export default function InvoiceTemplatesPage() {
     }
 
     try {
-      const templateData: Partial<InvoiceTemplate> = {
-        name: templateName,
-        description: templateDescription,
+      // Get the latest content from the editor
+      const currentHtmlContent = editorRef.current?.innerHTML || htmlContent || getDefaultTemplate();
+      
+      // Ensure we have content
+      if (!currentHtmlContent || currentHtmlContent.trim() === '') {
+        toast.error('Template content cannot be empty');
+        return;
+      }
+
+      // Prepare template data - backend now handles default for template_data if missing
+      const templateData: Record<string, any> = {
+        name: templateName.trim(),
         type: templateType,
-        template_data: {},
-        html_content: htmlContent,
-        styles: templateStyles,
+        template_data: [], // Send as empty array - backend will handle if missing
+        html_content: currentHtmlContent,
         is_active: true,
       };
+
+      // Only include optional fields if they have values
+      if (templateDescription && templateDescription.trim()) {
+        templateData.description = templateDescription.trim();
+      }
+
+      if (templateStyles && Object.keys(templateStyles).length > 0) {
+        templateData.styles = templateStyles;
+      }
 
       if (selectedTemplate) {
         await invoiceTemplatesAPI.update(selectedTemplate.id, templateData);
@@ -325,9 +342,31 @@ export default function InvoiceTemplatesPage() {
       setIsEditing(false);
       setSelectedTemplate(null);
       resetForm();
-    } catch (error) {
-      console.error('Error saving template:', error);
-      toast.error('Failed to save template');
+    } catch (error: any) {
+      console.error('=== ERROR SAVING TEMPLATE ===');
+      console.error('Error:', error);
+      console.error('Error response:', error?.response);
+      console.error('Error response data:', error?.response?.data);
+      console.error('Request data that was sent:', templateData);
+      
+      // Show detailed error message from backend validation
+      if (error?.response?.data?.errors) {
+        const validationErrors = error.response.data.errors;
+        console.error('Validation errors:', validationErrors);
+        const errorMessages = Object.entries(validationErrors)
+          .map(([field, messages]) => {
+            const msgArray = Array.isArray(messages) ? messages : [messages];
+            return `${field}: ${msgArray.join(', ')}`;
+          })
+          .join('; ');
+        toast.error(`Validation failed: ${errorMessages}`, { duration: 8000 });
+      } else if (error?.response?.data?.message) {
+        console.error('Error message:', error.response.data.message);
+        toast.error(error.response.data.message, { duration: 5000 });
+      } else {
+        console.error('Unknown error:', error?.message);
+        toast.error(`Failed to save template: ${error?.message || 'Unknown error'}`);
+      }
     }
   };
 
