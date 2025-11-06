@@ -19,6 +19,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withSchedule(function (\Illuminate\Console\Scheduling\Schedule $schedule): void {
         // Run reminder sending command daily at 9:00 AM
         $schedule->command('reminders:send')->dailyAt('09:00');
+        
+        // Run automatic rent invoice generation daily (will check if it's the configured date)
+        $schedule->command('invoices:generate-rent')->dailyAt('00:01');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

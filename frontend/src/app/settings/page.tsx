@@ -4,11 +4,24 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/UI/Card';
 import { Button } from '../../components/UI/Button';
 import { Input } from '../../components/UI/Input';
-import { Settings, Save, Building2, DollarSign, Bell, FileText, Mail, Send, Upload } from 'lucide-react';
+import { Settings, Save, Building2, DollarSign, Bell, FileText, Mail, Send, Upload, Calendar, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 import { settingsAPI, emailSettingsAPI, EmailSetting } from '../../services/api';
 import toast from 'react-hot-toast';
 import SidebarLayout from '../../components/Layout/SidebarLayout';
+
+// Helper function to get ordinal suffix
+function getOrdinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) {
+    return 'th';
+  }
+  switch (day % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+}
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
@@ -45,10 +58,17 @@ export default function SettingsPage() {
     property_types: ['apartment', 'house', 'villa', 'studio'],
     payment_types: ['rent', 'deposit', 'maintenance', 'utilities']
   });
+  const [invoiceGenerationSettings, setInvoiceGenerationSettings] = useState({
+    invoice_generation_date: 1,
+    invoice_generation_enabled: false,
+    invoice_due_date_offset: 7,
+  });
+  const [invoiceGenLoading, setInvoiceGenLoading] = useState(false);
 
   useEffect(() => {
     fetchSettings();
     fetchEmailSettings();
+    fetchInvoiceGenerationSettings();
   }, []);
 
   const fetchSettings = async () => {
@@ -87,6 +107,42 @@ export default function SettingsPage() {
       }
     } catch (error) {
       console.error('Error fetching email settings:', error);
+    }
+  };
+
+  const fetchInvoiceGenerationSettings = async () => {
+    try {
+      const response = await settingsAPI.getInvoiceGenerationSettings();
+      if (response.data?.success && response.data.data) {
+        setInvoiceGenerationSettings(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching invoice generation settings:', error);
+    }
+  };
+
+  const handleInvoiceGenSettingChange = (field: string, value: number | boolean) => {
+    setInvoiceGenerationSettings(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleSaveInvoiceGenerationSettings = async () => {
+    setInvoiceGenLoading(true);
+    try {
+      const response = await settingsAPI.updateInvoiceGenerationSettings(invoiceGenerationSettings);
+      if (response.data?.success) {
+        toast.success('Invoice generation settings saved successfully');
+        setInvoiceGenerationSettings(response.data.data);
+      } else {
+        toast.error(response.data?.message || 'Failed to save invoice generation settings');
+      }
+    } catch (error: any) {
+      console.error('Error saving invoice generation settings:', error);
+      toast.error(error.response?.data?.message || 'Failed to save invoice generation settings');
+    } finally {
+      setInvoiceGenLoading(false);
     }
   };
 
@@ -274,6 +330,109 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Invoice Generation Settings */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-500 rounded-lg">
+                <Calendar className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Automatic Invoice Generation</CardTitle>
+                <CardDescription>Configure automatic monthly rent invoice generation for all occupied units</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center space-x-4 mb-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={invoiceGenerationSettings.invoice_generation_enabled}
+                  onChange={(e) => handleInvoiceGenSettingChange('invoice_generation_enabled', e.target.checked)}
+                  className="mr-2 w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Enable automatic invoice generation</span>
+              </label>
+            </div>
+            
+            {invoiceGenerationSettings.invoice_generation_enabled && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Invoice Generation Date <span className="text-red-500">*</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">Day of month to automatically generate invoices (1-31)</p>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={invoiceGenerationSettings.invoice_generation_date}
+                    onChange={(e) => handleInvoiceGenSettingChange('invoice_generation_date', parseInt(e.target.value) || 1)}
+                    placeholder="1"
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Invoices will be generated on the {invoiceGenerationSettings.invoice_generation_date}{getOrdinalSuffix(invoiceGenerationSettings.invoice_generation_date)} of each month
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Due Date Offset (Days)
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">Number of days after invoice date to set due date</p>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={invoiceGenerationSettings.invoice_due_date_offset}
+                    onChange={(e) => handleInvoiceGenSettingChange('invoice_due_date_offset', parseInt(e.target.value) || 7)}
+                    placeholder="7"
+                    className="w-full"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Due date will be {invoiceGenerationSettings.invoice_due_date_offset} days after invoice date
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                onClick={handleSaveInvoiceGenerationSettings}
+                disabled={invoiceGenLoading}
+                className="flex items-center gap-2"
+              >
+                {invoiceGenLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    Save Invoice Generation Settings
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {invoiceGenerationSettings.invoice_generation_enabled && (
+              <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-start space-x-2">
+                  <CheckCircle className="h-5 w-5 text-green-600 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-green-800">Automatic Generation Active</p>
+                    <p className="text-xs text-green-700 mt-1">
+                      The system will automatically generate rent invoices for all occupied rental units on the {invoiceGenerationSettings.invoice_generation_date}{getOrdinalSuffix(invoiceGenerationSettings.invoice_generation_date)} of each month at 12:01 AM.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

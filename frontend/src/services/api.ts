@@ -45,7 +45,7 @@ if (typeof window !== 'undefined' && (process.env.NODE_ENV === 'development' || 
 // Create axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // Increased to 30 seconds for better reliability
+  timeout: 60000, // Increased to 60 seconds for better reliability with slow connections
   headers: {
     'Content-Type': 'application/json',
   },
@@ -60,6 +60,20 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
+    
+    // Log POST/PUT requests for debugging (only in development)
+    if ((config.method === 'post' || config.method === 'put') && 
+        (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_DEBUG_API === 'true')) {
+      if (config.url?.includes('invoice-templates')) {
+        console.log('📤 API Request:', {
+          url: config.url,
+          method: config.method,
+          data: config.data,
+          dataStringified: JSON.stringify(config.data),
+        });
+      }
+    }
+    
     return config;
   },
   (error) => {
@@ -182,7 +196,7 @@ interface User {
   is_active: boolean;
 }
 
-interface Property {
+export interface Property {
   id: number;
   name: string;
   type: string;
@@ -290,10 +304,24 @@ export interface Tenant {
   updated_at: string;
   // Computed properties
   full_name?: string;
+  // Rental units relationship
+  rental_units?: Array<{
+    id: number;
+    tenant_id: number;
+    property_id: number;
+    unit_number: string;
+    status: string;
+    rent_amount?: number;
+    currency?: string;
+    property?: {
+      id: number;
+      name: string;
+    };
+  }>;
 }
 
 
-interface Asset {
+export interface Asset {
   id: number;
   name: string;
   brand?: string;
@@ -412,6 +440,9 @@ export const propertiesAPI = {
 export const tenantsAPI = {
   getAll: (params?: Record<string, unknown>) => api.get('/tenants', { params }),
   getById: (id: number) => api.get(`/tenants/${id}`),
+  bulkCreate: (data: { tenants: Partial<Tenant>[], options?: { skip_duplicates?: boolean; skip_errors?: boolean; validate_only?: boolean } }) => 
+    api.post('/tenants/bulk', data),
+  getBulkTemplate: () => api.get('/tenants/bulk/template', { responseType: 'blob' }),
   create: (tenantData: Partial<Tenant>, files?: File[]) => {
     const formData = new FormData();
     
@@ -509,10 +540,11 @@ export const assetsAPI = {
           delete: (id: number) => api.delete(`/rental-units/${id}`),
           getByProperty: (propertyId: number) => api.get(`/rental-units/property/${propertyId}`),
           addAssets: (unitId: number, assets: Array<{asset_id: number, quantity: number, serial_numbers?: string}>) => api.post(`/rental-units/${unitId}/assets`, { assets }),
+          bulkAssignAssets: (data: { rental_unit_ids: number[], assets: Array<{asset_id: number, quantity: number, serial_numbers?: string}> }) => api.post('/rental-units/bulk-assign-assets', data),
           removeAsset: (unitId: number, assetId: number) => api.delete(`/rental-units/${unitId}/assets/${assetId}`),
           getAssets: (unitId: number) => api.get(`/rental-units/${unitId}/assets`),
           updateAssetStatus: (unitId: number, assetId: number, data: { status: string; maintenance_notes?: string; quantity?: number; serial_numbers?: string }) => api.patch(`/rental-units/${unitId}/assets/${assetId}/status`, data),
-          getMaintenanceAssets: () => api.get('/rental-units/maintenance-assets'),
+          getMaintenanceAssets: (params?: { page?: number; per_page?: number }) => api.get('/rental-units/maintenance-assets', { params }),
         };
 
 // Settings API
@@ -795,6 +827,12 @@ export const rentInvoicesAPI = {
 
 export const settingsAPI = {
   getDropdowns: () => api.get('/settings/dropdowns'),
+  getInvoiceGenerationSettings: () => api.get('/settings/invoice-generation'),
+  updateInvoiceGenerationSettings: (data: {
+    invoice_generation_date: number;
+    invoice_generation_enabled: boolean;
+    invoice_due_date_offset?: number;
+  }) => api.post('/settings/invoice-generation', data),
 };
 
 export const rentalUnitTypesAPI = {
@@ -818,6 +856,17 @@ export const tenantLedgerAPI = {
   create: (data: Partial<TenantLedger>) => api.post('/tenant-ledgers', data),
   update: (id: number, data: Partial<TenantLedger>) => api.put(`/tenant-ledgers/${id}`, data),
   delete: (id: number) => api.delete(`/tenant-ledgers/${id}`),
+  bulkPayment: (data: {
+    tenant_id: number;
+    payment_type_id: number;
+    transaction_date: string;
+    invoice_ids: number[];
+    payment_method?: string;
+    transfer_reference_no?: string;
+    remarks?: string;
+    created_by?: string;
+    rental_unit_id?: number;
+  }) => api.post('/tenant-ledgers/bulk-payment', data),
   getTenantBalance: (tenantId: number) => api.get(`/tenant-ledgers/tenant/${tenantId}/balance`),
   getTenantSummary: (tenantId: number, params?: Record<string, unknown>) => api.get(`/tenant-ledgers/tenant/${tenantId}/summary`, { params }),
   getAllTenantBalances: (params?: Record<string, unknown>) => api.get('/tenant-ledgers/balances/all', { params }),

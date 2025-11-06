@@ -74,11 +74,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/update-profile', [AuthController::class, 'updateProfile']);
 
     // Property routes
-    Route::apiResource('properties', PropertyController::class);
-    Route::get('/properties/{property}/capacity', [PropertyController::class, 'capacity']);
+    // Specific routes should be defined before resource routes to avoid conflicts
     Route::get('/properties/import/template', [PropertyController::class, 'downloadTemplate']);
     Route::post('/properties/import/preview', [PropertyController::class, 'previewImport']);
     Route::post('/properties/import', [PropertyController::class, 'import']);
+    Route::get('/properties/{property}/capacity', [PropertyController::class, 'capacity']);
+    
+    // Define DELETE route explicitly to ensure it's registered correctly
+    // The where clause ensures numeric IDs, but route model binding will still work
+    Route::delete('/properties/{property}', [PropertyController::class, 'destroy'])
+        ->where('property', '[0-9]+')
+        ->name('properties.destroy');
+    
+    // Use apiResource for other routes (excluding destroy since we defined it explicitly)
+    Route::apiResource('properties', PropertyController::class)->except(['destroy']);
 
     // Rental Unit routes
     Route::get('/rental-units/maintenance-assets', [RentalUnitController::class, 'getMaintenanceAssets']);
@@ -88,6 +97,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/rental-units/bulk', [RentalUnitController::class, 'bulkStore']);
     Route::get('/rental-units/property/{property}', [RentalUnitController::class, 'getByProperty']);
     Route::post('/rental-units/{rentalUnit}/assets', [RentalUnitController::class, 'addAssets']);
+    Route::post('/rental-units/bulk-assign-assets', [RentalUnitController::class, 'bulkAssignAssets']);
     Route::delete('/rental-units/{rentalUnit}/assets/{asset}', [RentalUnitController::class, 'removeAsset']);
     Route::get('/rental-units/{rentalUnit}/assets', [RentalUnitController::class, 'getAssets']);
     Route::patch('/rental-units/{rentalUnit}/assets/{assetId}/status', [RentalUnitController::class, 'updateAssetStatus']);
@@ -102,6 +112,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Tenant routes
     Route::apiResource('tenants', TenantController::class);
     Route::post('/tenants/{tenant}/update', [TenantController::class, 'update']); // Additional POST route for updates with files
+    Route::post('/tenants/bulk', [TenantController::class, 'bulkStore']); // Bulk tenant creation
+    Route::get('/tenants/bulk/template', [TenantController::class, 'downloadTemplate']); // Download template
 
     // Dashboard routes
     Route::get('/dashboard/statistics', [DashboardController::class, 'statistics']);
@@ -123,6 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Payment Record routes
     Route::apiResource('payment-records', PaymentRecordController::class);
+    Route::get('/payment-records/debug/check', [PaymentRecordController::class, 'debugCheck']);
 
     // Maintenance routes
     Route::apiResource('maintenance', MaintenanceController::class);
@@ -156,6 +169,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Tenant Ledger routes
     Route::apiResource('tenant-ledgers', TenantLedgerController::class);
+    Route::post('/tenant-ledgers/bulk-payment', [TenantLedgerController::class, 'bulkPayment']);
     Route::get('/tenant-ledgers/tenant/{tenantId}/balance', [TenantLedgerController::class, 'getTenantBalance']);
     Route::get('/tenant-ledgers/tenant/{tenantId}/summary', [TenantLedgerController::class, 'getTenantSummary']);
     Route::get('/tenant-ledgers/balances/all', [TenantLedgerController::class, 'getAllTenantBalances']);
@@ -186,6 +200,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/email-settings', [EmailSettingController::class, 'index']);
     Route::post('/email-settings', [EmailSettingController::class, 'store']);
     Route::post('/email-settings/test', [EmailSettingController::class, 'testEmail']);
+
+    // Invoice Generation Settings routes
+    Route::get('/settings/invoice-generation', [SettingsController::class, 'getInvoiceGenerationSettings']);
+    Route::post('/settings/invoice-generation', [SettingsController::class, 'updateInvoiceGenerationSettings']);
 
     // Reminder Configuration routes
     Route::apiResource('reminder-configurations', ReminderConfigurationController::class);
