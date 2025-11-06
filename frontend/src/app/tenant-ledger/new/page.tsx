@@ -6,6 +6,7 @@ import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
 import { Input } from '@/components/UI/Input';
 import { Select } from '@/components/UI/Select';
+import { SearchableSelect } from '@/components/UI/SearchableSelect';
 import { FormSection } from '@/components/UI/FormSection';
 import { Textarea } from '@/components/UI/Textarea';
 import { ArrowLeft, Save, X, CheckCircle, Clock, AlertCircle } from 'lucide-react';
@@ -43,13 +44,15 @@ export default function NewTenantLedgerPage() {
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
   const [selectedMaintenanceCosts, setSelectedMaintenanceCosts] = useState<number[]>([]);
   const [selectedMaintenanceInvoices, setSelectedMaintenanceInvoices] = useState<number[]>([]);
-  const [currentInvoiceType, setCurrentInvoiceType] = useState<'rent' | 'maintenance' | null>(null);
+  const [currentInvoiceTypes, setCurrentInvoiceTypes] = useState<('rent' | 'maintenance')[]>([]);
+  const [selectedInvoiceTypes, setSelectedInvoiceTypes] = useState<('rent' | 'maintenance')[]>([]);
   const [paymentTypeLocked, setPaymentTypeLocked] = useState(false);
   const [showInvoiceTypeModal, setShowInvoiceTypeModal] = useState(false);
   const [pendingTenantId, setPendingTenantId] = useState<number | null>(null);
   const [selectedRentalUnitId, setSelectedRentalUnitId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [useBulkPayment, setUseBulkPayment] = useState(true); // Default to bulk payment for multiple invoices
   const [formData, setFormData] = useState<TenantLedgerFormData>({
     tenant_id: 0,
     payment_type_id: 0,
@@ -133,12 +136,10 @@ export default function NewTenantLedgerPage() {
     }
   };
 
-  const fetchUnpaidInvoices = async (tenantId: number, invoiceType: 'rent' | 'maintenance', rentalUnitId?: number) => {
+  const fetchUnpaidInvoices = async (tenantId: number, invoiceTypes: ('rent' | 'maintenance')[], rentalUnitId?: number) => {
     try {
-      console.log('Fetching unpaid invoices for tenant:', tenantId, 'type:', invoiceType);
+      console.log('Fetching unpaid invoices for tenant:', tenantId, 'types:', invoiceTypes);
       
-      if (invoiceType === 'rent') {
-        // Fetch only rent invoices
         const params: Record<string, unknown> = { 
           tenant_id: tenantId, 
           status: 'pending,overdue' 
@@ -149,38 +150,39 @@ export default function NewTenantLedgerPage() {
           params.rental_unit_id = rentalUnitId;
         }
         
-        const rentResponse = await rentInvoicesAPI.getAll(params);
+      // Fetch invoices in parallel for all selected types
+      const fetchPromises: Promise<void>[] = [];
         
+      if (invoiceTypes.includes('rent')) {
+        fetchPromises.push(
+          rentInvoicesAPI.getAll(params).then(rentResponse => {
         console.log('Rent invoices response:', rentResponse.data);
         const rentInvoices = rentResponse.data.invoices || [];
         console.log('Rent invoices found:', rentInvoices.length);
-        
         setUnpaidInvoices(rentInvoices);
-        setUnpaidMaintenanceCosts([]); // Clear maintenance costs
-        setCurrentInvoiceType('rent');
+          })
+        );
       } else {
-        // Fetch only maintenance invoices
-        const params: Record<string, unknown> = { 
-          tenant_id: tenantId, 
-          status: 'pending,overdue' 
-        };
-        
-        // Add rental unit filter if provided
-        if (rentalUnitId) {
-          params.rental_unit_id = rentalUnitId;
-        }
-        
-        const maintenanceResponse = await maintenanceInvoicesAPI.getAll(params);
-        
+        setUnpaidInvoices([]);
+      }
+      
+      if (invoiceTypes.includes('maintenance')) {
+        fetchPromises.push(
+          maintenanceInvoicesAPI.getAll(params).then(maintenanceResponse => {
         console.log('Maintenance invoices response:', maintenanceResponse.data);
         const maintenanceInvoices = maintenanceResponse.data.maintenance_invoices || [];
         console.log('Maintenance invoices found:', maintenanceInvoices.length);
-        
         setUnpaidMaintenanceInvoices(maintenanceInvoices);
-        setUnpaidMaintenanceCosts([]); // Clear old maintenance costs
-        setUnpaidInvoices([]); // Clear rent invoices
-        setCurrentInvoiceType('maintenance');
+          })
+        );
+      } else {
+        setUnpaidMaintenanceInvoices([]);
       }
+      
+      await Promise.all(fetchPromises);
+      
+      setCurrentInvoiceTypes(invoiceTypes);
+      setUnpaidMaintenanceCosts([]); // Clear maintenance costs
       
       setSelectedInvoices([]); // Reset selected invoices
       setSelectedMaintenanceCosts([]); // Reset selected maintenance costs
@@ -196,6 +198,19 @@ export default function NewTenantLedgerPage() {
       setUnpaidMaintenanceInvoices([]);
     }
   };
+
+  // Helper function to format tenant display with property and unit info
+  const getTenantDisplayText = (tenant: Tenant, unit?: { property?: { name?: string }; unit_number?: string }): string => {
+    const tenantName = tenant.full_name || `${tenant.first_name} ${tenant.last_name}`;
+    if (unit && unit.property?.name && unit.unit_number) {
+      return `${tenantName} - ${unit.property.name} - Unit ${unit.unit_number}`;
+    }
+    return tenantName;
+  };
+
+  // Get selected tenant details for display
+  const selectedTenant = tenants.find(t => t.id === formData.tenant_id);
+  const selectedTenantUnits = selectedTenant?.rental_units || [];
 
   const handleTenantChange = (tenantId: number) => {
     console.log('Tenant changed to:', tenantId);
@@ -223,7 +238,7 @@ export default function NewTenantLedgerPage() {
       setSelectedInvoices([]);
       setSelectedMaintenanceCosts([]);
       setSelectedMaintenanceInvoices([]);
-      setCurrentInvoiceType(null);
+      setCurrentInvoiceTypes([]);
       setPaymentTypeLocked(false); // Only unlock when tenant is cleared
       setPendingTenantId(null);
       // Clear payment type when tenant is cleared
@@ -281,7 +296,7 @@ export default function NewTenantLedgerPage() {
         // Only fetch invoices if invoiceType is not null
         if (invoiceType) {
           // Fetch invoices for ALL rental units of the selected tenant (no specific rental unit filter)
-          fetchUnpaidInvoices(formData.tenant_id, invoiceType, undefined);
+          fetchUnpaidInvoices(formData.tenant_id, [invoiceType], undefined);
         } else {
           // Clear any existing invoices for advance payments
           setUnpaidInvoices([]);
@@ -290,7 +305,7 @@ export default function NewTenantLedgerPage() {
           setSelectedInvoices([]);
           setSelectedMaintenanceCosts([]);
           setSelectedMaintenanceInvoices([]);
-          setCurrentInvoiceType(null);
+          setCurrentInvoiceTypes([]);
         }
       }
     } else {
@@ -301,69 +316,70 @@ export default function NewTenantLedgerPage() {
       setSelectedInvoices([]);
       setSelectedMaintenanceCosts([]);
       setSelectedMaintenanceInvoices([]);
-      setCurrentInvoiceType(null);
+      setCurrentInvoiceTypes([]);
       setPaymentTypeLocked(false);
     }
   };
 
-  const handleInvoiceTypeSelection = (paymentTypeId: number) => {
-    console.log('Payment type selected:', paymentTypeId);
-    const selectedPaymentType = paymentTypes.find(type => type.id === paymentTypeId);
-    console.log('Selected payment type:', selectedPaymentType);
-    
-    if (pendingTenantId && selectedPaymentType) {
-      // Set the payment type first
-      setFormData(prev => ({ ...prev, payment_type_id: paymentTypeId }));
-      setPaymentTypeLocked(true);
-      console.log('Payment type locked:', true, 'Payment type ID:', paymentTypeId);
-      
-      // Determine invoice type based on payment type name
-      const paymentTypeName = selectedPaymentType.name.toLowerCase();
-      let invoiceType: 'rent' | 'maintenance' | null = null; // default to null for advance payments
-      
-      // Check if it's an advance rent payment
-      if (paymentTypeName.includes('advance') && paymentTypeName.includes('rent')) {
-        // For advance rent payments, don't show any invoices
-        invoiceType = null;
-        console.log('Advance rent payment detected - no invoices will be shown');
-      }
-      // Only show maintenance costs for maintenance/repair related payment types
-      else if (paymentTypeName.includes('maintenance') || 
-          paymentTypeName.includes('repair') || 
-          paymentTypeName.includes('fix') ||
-          paymentTypeName.includes('service')) {
-        invoiceType = 'maintenance';
-      }
-      // For all other payment types (rent, late fee, security deposit, utilities, etc.), show rent invoices
-      else {
-        invoiceType = 'rent';
-      }
-      
-      console.log('Payment type:', paymentTypeName, '-> Invoice type:', invoiceType);
-      
-      // Only fetch invoices if invoiceType is not null
-      if (invoiceType) {
-        // Fetch invoices for ALL rental units of the selected tenant (no specific rental unit filter)
-        fetchUnpaidInvoices(pendingTenantId, invoiceType, undefined);
+  const handleInvoiceTypeToggle = (invoiceType: 'rent' | 'maintenance', checked: boolean) => {
+    setSelectedInvoiceTypes(prev => {
+      if (checked) {
+        // Add invoice type if not already in array
+        if (!prev.includes(invoiceType)) {
+          return [...prev, invoiceType];
+        }
+        return prev;
       } else {
-        // Clear any existing invoices for advance payments
+        // Remove invoice type from array
+        return prev.filter(type => type !== invoiceType);
+      }
+    });
+  };
+
+  const handleConfirmInvoiceTypeSelection = () => {
+    if (pendingTenantId && selectedInvoiceTypes.length > 0) {
+      // Fetch invoices for all selected types
+      fetchUnpaidInvoices(pendingTenantId, selectedInvoiceTypes, undefined);
+      
+      // Set a default payment type if none is set (use first available)
+      if (formData.payment_type_id === 0) {
+        // Try to find a rent payment type first, then maintenance
+        const rentPaymentType = paymentTypes.find(type => 
+          type.name.toLowerCase() === 'rent'
+        );
+        const maintenancePaymentType = paymentTypes.find(type => 
+          type.name.toLowerCase().includes('maintenance')
+        );
+        
+        if (selectedInvoiceTypes.includes('rent') && rentPaymentType) {
+          setFormData(prev => ({ ...prev, payment_type_id: rentPaymentType.id }));
+        } else if (selectedInvoiceTypes.includes('maintenance') && maintenancePaymentType) {
+          setFormData(prev => ({ ...prev, payment_type_id: maintenancePaymentType.id }));
+        }
+      }
+      
+      setPaymentTypeLocked(true);
+    } else if (pendingTenantId && selectedInvoiceTypes.length === 0) {
+      // Clear invoices if no types selected
         setUnpaidInvoices([]);
         setUnpaidMaintenanceCosts([]);
         setUnpaidMaintenanceInvoices([]);
         setSelectedInvoices([]);
         setSelectedMaintenanceCosts([]);
         setSelectedMaintenanceInvoices([]);
-        setCurrentInvoiceType(null);
+      setCurrentInvoiceTypes([]);
       }
-    }
+    
     setShowInvoiceTypeModal(false);
     setPendingTenantId(null);
+    setSelectedInvoiceTypes([]); // Reset for next time
   };
 
   const handleCloseModal = () => {
     console.log('Modal closed without selection');
     setShowInvoiceTypeModal(false);
     setPendingTenantId(null);
+    setSelectedInvoiceTypes([]);
     // Reset tenant selection if no type was chosen
     setFormData(prev => ({ ...prev, tenant_id: 0 }));
   };
@@ -426,11 +442,9 @@ export default function NewTenantLedgerPage() {
       
       if (invoiceType === 'rent' && rentPaymentType) {
         setFormData(prev => ({ ...prev, payment_type_id: rentPaymentType.id }));
-        setCurrentInvoiceType('rent');
         setPaymentTypeLocked(true);
       } else if (invoiceType === 'maintenance' && maintenancePaymentType) {
         setFormData(prev => ({ ...prev, payment_type_id: maintenancePaymentType.id }));
-        setCurrentInvoiceType('maintenance');
         setPaymentTypeLocked(true);
       }
     } else {
@@ -443,7 +457,7 @@ export default function NewTenantLedgerPage() {
         selectedMaintenanceCosts.length > 0;
       
       if (!hasRentSelected && !hasMaintenanceSelected) {
-        // Don't reset currentInvoiceType - it should remain as selected from popup
+        // Don't reset currentInvoiceTypes - they should remain as selected from popup
         // Keep payment type locked when set from popup - don't reset it
         // The payment type should remain as originally selected
       }
@@ -467,14 +481,13 @@ export default function NewTenantLedgerPage() {
         const rentPaymentType = paymentTypes.find(type => type.name.toLowerCase() === 'rent');
         if (rentPaymentType) {
           setFormData(prev => ({ ...prev, payment_type_id: rentPaymentType.id }));
-          setCurrentInvoiceType('rent');
           setPaymentTypeLocked(true);
         }
     } else {
       setSelectedInvoices([]);
         console.log('Deselected all rent invoices');
         
-        // Don't reset currentInvoiceType - it should remain as selected from popup
+        // Don't reset currentInvoiceTypes - they should remain as selected from popup
         // Keep payment type locked when set from popup
         // Don't reset payment type - it should remain as originally selected
       }
@@ -488,14 +501,13 @@ export default function NewTenantLedgerPage() {
         const maintenancePaymentType = paymentTypes.find(type => type.name.toLowerCase().includes('maintenance'));
         if (maintenancePaymentType) {
           setFormData(prev => ({ ...prev, payment_type_id: maintenancePaymentType.id }));
-          setCurrentInvoiceType('maintenance');
           setPaymentTypeLocked(true);
         }
       } else {
         setSelectedMaintenanceInvoices([]);
         console.log('Deselected all maintenance invoices');
         
-        // Don't reset currentInvoiceType - it should remain as selected from popup
+        // Don't reset currentInvoiceTypes - they should remain as selected from popup
         // Keep payment type locked when set from popup
         // Don't reset payment type - it should remain as originally selected
       }
@@ -550,11 +562,11 @@ export default function NewTenantLedgerPage() {
     setFormData(prev => ({
       ...prev,
       credit_amount: totalAmount,
-      debit_amount: (selectedInvoices.length > 0 || selectedMaintenanceCosts.length > 0) ? 0 : prev.debit_amount,
-      description: (selectedInvoices.length > 0 || selectedMaintenanceCosts.length > 0) 
+      debit_amount: (selectedInvoices.length > 0 || selectedMaintenanceInvoices.length > 0) ? 0 : prev.debit_amount,
+      description: (selectedInvoices.length > 0 || selectedMaintenanceInvoices.length > 0) 
         ? `Payment for: ${allSelectedNumbers}`
         : prev.description,
-      reference_no: (selectedInvoices.length > 0 || selectedMaintenanceCosts.length > 0) 
+      reference_no: (selectedInvoices.length > 0 || selectedMaintenanceInvoices.length > 0) 
         ? allSelectedNumbers
         : prev.reference_no,
     }));
@@ -593,7 +605,7 @@ export default function NewTenantLedgerPage() {
       }
 
       // If no invoices are selected, validate manual amounts
-      if (selectedInvoices.length === 0) {
+      if (selectedInvoices.length === 0 && selectedMaintenanceInvoices.length === 0) {
         if (!formData.description) {
           toast.error('Please enter a description');
           return;
@@ -616,38 +628,122 @@ export default function NewTenantLedgerPage() {
         }
       }
 
-      // If invoices are selected, create separate entries for each invoice
-      if (selectedInvoices.length > 0) {
-        const selectedInvoiceData = unpaidInvoices.filter(invoice => selectedInvoices.includes(invoice.id));
+      // If invoices are selected, create either bulk payment or separate entries
+      const hasRentInvoices = selectedInvoices.length > 0;
+      const hasMaintenanceInvoices = selectedMaintenanceInvoices.length > 0;
+      const hasMixedInvoiceTypes = hasRentInvoices && hasMaintenanceInvoices;
+      
+      if (hasRentInvoices || hasMaintenanceInvoices) {
+        // Get appropriate payment types
+        const rentPaymentType = paymentTypes.find(type => type.name.toLowerCase() === 'rent');
+        const maintenancePaymentType = paymentTypes.find(type => type.name.toLowerCase().includes('maintenance'));
         
-        console.log('Creating separate entries for invoices:', selectedInvoiceData);
+        let totalEntriesCreated = 0;
         
-        // Create separate ledger entry for each selected invoice
-        for (const invoice of selectedInvoiceData) {
-          console.log('Creating entry for invoice:', invoice.invoice_number);
-          console.log('Selected rental unit ID:', selectedRentalUnitId);
+        // Handle rent invoices
+        if (hasRentInvoices) {
+          const selectedRentInvoiceData = unpaidInvoices.filter(invoice => selectedInvoices.includes(invoice.id));
           
-          const submitData = {
+          if (useBulkPayment && selectedRentInvoiceData.length > 1 && !hasMixedInvoiceTypes) {
+            // Create a single bulk payment entry for rent invoices only (when not mixed)
+            console.log('Creating bulk payment for rent invoices:', selectedRentInvoiceData);
+          
+          const bulkPaymentData = {
             tenant_id: formData.tenant_id,
-            payment_type_id: formData.payment_type_id,
+              payment_type_id: rentPaymentType?.id || formData.payment_type_id,
             transaction_date: formData.transaction_date,
-            description: `Payment for Invoice ${invoice.invoice_number}`,
-            reference_no: invoice.invoice_number,
+              invoice_ids: selectedRentInvoiceData.map(inv => inv.id),
             ...(formData.payment_method && { payment_method: formData.payment_method }),
             ...(formData.transfer_reference_no && { transfer_reference_no: formData.transfer_reference_no }),
             ...(formData.remarks && { remarks: formData.remarks }),
             ...(formData.created_by && { created_by: formData.created_by }),
-            // Credit amount for payment
-            credit_amount: invoice.total_amount,
-            // Include rental unit ID for proper unit association (only if it exists)
             ...(selectedRentalUnitId && selectedRentalUnitId > 0 && { rental_unit_id: selectedRentalUnitId }),
           };
 
-          console.log('Submitting data for invoice:', invoice.invoice_number, submitData);
-          await tenantLedgerAPI.create(submitData);
+            console.log('Submitting bulk payment data for rent:', bulkPaymentData);
+          await tenantLedgerAPI.bulkPayment(bulkPaymentData);
+            totalEntriesCreated += 1;
+        } else {
+            // Create separate ledger entry for each rent invoice
+            console.log('Creating separate entries for rent invoices:', selectedRentInvoiceData);
+            
+            for (const invoice of selectedRentInvoiceData) {
+              const submitData = {
+                tenant_id: formData.tenant_id,
+                payment_type_id: rentPaymentType?.id || formData.payment_type_id,
+                transaction_date: formData.transaction_date,
+                description: `Payment for Invoice ${invoice.invoice_number}`,
+                reference_no: invoice.invoice_number,
+                ...(formData.payment_method && { payment_method: formData.payment_method }),
+                ...(formData.transfer_reference_no && { transfer_reference_no: formData.transfer_reference_no }),
+                ...(formData.remarks && { remarks: formData.remarks }),
+                ...(formData.created_by && { created_by: formData.created_by }),
+                credit_amount: invoice.total_amount,
+                ...(selectedRentalUnitId && selectedRentalUnitId > 0 && { rental_unit_id: selectedRentalUnitId }),
+              };
+
+              console.log('Submitting data for rent invoice:', invoice.invoice_number, submitData);
+              await tenantLedgerAPI.create(submitData);
+              totalEntriesCreated += 1;
+            }
+          }
         }
         
-        toast.success(`Successfully created ${selectedInvoiceData.length} payment entries`);
+        // Handle maintenance invoices separately with maintenance payment type
+        if (hasMaintenanceInvoices) {
+          const selectedMaintenanceInvoiceData = unpaidMaintenanceInvoices.filter(invoice => selectedMaintenanceInvoices.includes(invoice.id));
+          
+          if (useBulkPayment && selectedMaintenanceInvoiceData.length > 1 && !hasMixedInvoiceTypes) {
+            // Create a single bulk payment entry for maintenance invoices only (when not mixed)
+            console.log('Creating bulk payment for maintenance invoices:', selectedMaintenanceInvoiceData);
+            
+            const bulkPaymentData = {
+              tenant_id: formData.tenant_id,
+              payment_type_id: maintenancePaymentType?.id || formData.payment_type_id,
+              transaction_date: formData.transaction_date,
+              invoice_ids: selectedMaintenanceInvoiceData.map(inv => inv.id),
+              ...(formData.payment_method && { payment_method: formData.payment_method }),
+              ...(formData.transfer_reference_no && { transfer_reference_no: formData.transfer_reference_no }),
+              ...(formData.remarks && { remarks: formData.remarks }),
+              ...(formData.created_by && { created_by: formData.created_by }),
+              ...(selectedRentalUnitId && selectedRentalUnitId > 0 && { rental_unit_id: selectedRentalUnitId }),
+            };
+
+            console.log('Submitting bulk payment data for maintenance:', bulkPaymentData);
+            await tenantLedgerAPI.bulkPayment(bulkPaymentData);
+            totalEntriesCreated += 1;
+          } else {
+            // Create separate ledger entry for each maintenance invoice
+            console.log('Creating separate entries for maintenance invoices:', selectedMaintenanceInvoiceData);
+            
+            for (const invoice of selectedMaintenanceInvoiceData) {
+            const submitData = {
+              tenant_id: formData.tenant_id,
+                payment_type_id: maintenancePaymentType?.id || formData.payment_type_id,
+              transaction_date: formData.transaction_date,
+              description: `Payment for Invoice ${invoice.invoice_number}`,
+              reference_no: invoice.invoice_number,
+              ...(formData.payment_method && { payment_method: formData.payment_method }),
+              ...(formData.transfer_reference_no && { transfer_reference_no: formData.transfer_reference_no }),
+              ...(formData.remarks && { remarks: formData.remarks }),
+              ...(formData.created_by && { created_by: formData.created_by }),
+              credit_amount: invoice.total_amount,
+              ...(selectedRentalUnitId && selectedRentalUnitId > 0 && { rental_unit_id: selectedRentalUnitId }),
+            };
+
+              console.log('Submitting data for maintenance invoice:', invoice.invoice_number, submitData);
+            await tenantLedgerAPI.create(submitData);
+              totalEntriesCreated += 1;
+            }
+          }
+        }
+        
+        // Show success message
+        if (hasMixedInvoiceTypes) {
+          toast.success(`Successfully created payment entries: ${selectedInvoices.length} rent + ${selectedMaintenanceInvoices.length} maintenance invoices`);
+        } else {
+          toast.success(`Successfully created ${totalEntriesCreated} payment ${totalEntriesCreated === 1 ? 'entry' : 'entries'}`);
+        }
       } else {
         // Single entry for manual debit/credit
         const submitData = {
@@ -770,21 +866,58 @@ export default function NewTenantLedgerPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Tenant *
                     </label>
-                    <Select
-                      value={formData.tenant_id}
-                      onChange={(e) => handleTenantChange(Number(e.target.value))}
-                      required
-                    >
-                      <option value={0}>Select Tenant ({tenants.length} available)</option>
-                      {tenants.map(tenant => {
-                        console.log('Rendering tenant:', tenant);
-                        return (
-                          <option key={tenant.id} value={tenant.id}>
-                            {tenant.full_name || `${tenant.first_name} ${tenant.last_name}`}
-                          </option>
-                        );
+                    <SearchableSelect
+                      options={tenants.flatMap(tenant => {
+                        // If tenant has rental units, show each unit as a separate option
+                        if (tenant.rental_units && tenant.rental_units.length > 0) {
+                          return tenant.rental_units.map((unit) => ({
+                            value: tenant.id,
+                            label: getTenantDisplayText(tenant, unit),
+                          }));
+                        }
+                        // If no rental units, just show tenant name
+                        return [{
+                          value: tenant.id,
+                          label: tenant.full_name || `${tenant.first_name} ${tenant.last_name}`,
+                        }];
                       })}
-                    </Select>
+                      value={formData.tenant_id}
+                      onChange={(val) => handleTenantChange(Number(val))}
+                      placeholder={`Select Tenant (${tenants.length} available)`}
+                      searchPlaceholder="Search tenants by name or unit..."
+                      required
+                    />
+                    {/* Display selected tenant details */}
+                    {selectedTenant && selectedTenantUnits.length > 0 && (
+                      <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="text-sm font-medium text-blue-900 mb-1">
+                          Selected Tenant Details:
+                        </div>
+                        <div className="space-y-1">
+                          {selectedTenantUnits.map((unit) => (
+                            <div key={unit.id} className="text-sm text-blue-700">
+                              <span className="font-medium">{selectedTenant.full_name || `${selectedTenant.first_name} ${selectedTenant.last_name}`}</span>
+                              {unit.property?.name && (
+                                <> - <span className="font-medium">{unit.property.name}</span></>
+                              )}
+                              {unit.unit_number && (
+                                <> - <span className="font-medium">Unit {unit.unit_number}</span></>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedTenant && (!selectedTenantUnits || selectedTenantUnits.length === 0) && (
+                      <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                        <div className="text-sm font-medium text-gray-900">
+                          {selectedTenant.full_name || `${selectedTenant.first_name} ${selectedTenant.last_name}`}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          No rental units assigned
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Rental Unit selection is now hidden - invoices are fetched for all units of the tenant */}
@@ -944,7 +1077,7 @@ export default function NewTenantLedgerPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Credit Amount (Payment Received)
-                      {selectedInvoices.length > 0 && (
+                      {(selectedInvoices.length > 0 || selectedMaintenanceInvoices.length > 0) && (
                         <span className="text-blue-600 text-xs ml-2">(Auto-calculated from selected invoices)</span>
                       )}
                       {isAdvanceRentPayment() && (
@@ -958,7 +1091,7 @@ export default function NewTenantLedgerPage() {
                       value={formData.credit_amount || ''}
                       onChange={(e) => {
                         // Allow manual changes if no invoices are selected OR if it's an advance rent payment
-                        if (selectedInvoices.length === 0 || isAdvanceRentPayment()) {
+                        if ((selectedInvoices.length === 0 && selectedMaintenanceInvoices.length === 0) || isAdvanceRentPayment()) {
                           const numericValue = parseFloat(e.target.value) || 0;
                           setFormData(prev => ({ 
                             ...prev, 
@@ -968,8 +1101,8 @@ export default function NewTenantLedgerPage() {
                         }
                       }}
                       placeholder="0.00"
-                      readOnly={selectedInvoices.length > 0 && !isAdvanceRentPayment()}
-                      className={selectedInvoices.length > 0 && !isAdvanceRentPayment() ? 'bg-blue-50 border-blue-200' : ''}
+                      readOnly={(selectedInvoices.length > 0 || selectedMaintenanceInvoices.length > 0) && !isAdvanceRentPayment()}
+                      className={(selectedInvoices.length > 0 || selectedMaintenanceInvoices.length > 0) && !isAdvanceRentPayment() ? 'bg-blue-50 border-blue-200' : ''}
                     />
                     <p className="text-sm text-gray-500 mt-1">
                       Amount received from tenant (payments, refunds, deposits)
@@ -1021,24 +1154,55 @@ export default function NewTenantLedgerPage() {
             </Card>
 
             {/* Unpaid Invoices Section */}
-            {formData.tenant_id > 0 && currentInvoiceType && (
+            {formData.tenant_id > 0 && currentInvoiceTypes.length > 0 && (
               <Card className="p-6">
-                <FormSection title={`Unpaid ${currentInvoiceType === 'rent' ? 'Rent Invoices' : 'Maintenance Costs'}`}>
+                <FormSection title={`Unpaid ${currentInvoiceTypes.length === 2 ? 'Rent & Maintenance Invoices' : currentInvoiceTypes.includes('rent') ? 'Rent Invoices' : 'Maintenance Invoices'}`}>
                   <div className="space-y-4">
                     {/* Debug status removed */}
                     
-                    {currentInvoiceType && (
+                    {currentInvoiceTypes.length > 0 && (
                       <div>
                         <div className="text-sm text-gray-600 mb-4">
-                          Select {currentInvoiceType === 'rent' ? 'rent invoices' : 'maintenance costs'} to create payment entries. 
-                          The payment type will be automatically set based on your selection.
+                          Select invoices to create payment entries. 
+                          {currentInvoiceTypes.length === 2 
+                            ? 'You can select both rent and maintenance invoices. Each invoice type will be processed with its appropriate payment type automatically.' 
+                            : `Select ${currentInvoiceTypes.includes('rent') ? 'rent invoices' : 'maintenance invoices'} to create payment entries.`}
+                          {currentInvoiceTypes.length === 2 && (
+                            <span className="block mt-2 text-blue-600 font-medium">
+                              Note: When both invoice types are selected, separate payment entries will be created for each type with the correct payment type.
+                            </span>
+                          )}
                         </div>
                         
-                        {/* Invoices Section */}
-                        {currentInvoiceType === 'rent' && (
+                        {/* Rent Invoices Section */}
+                        {currentInvoiceTypes.includes('rent') && (
                           <div className="space-y-3">
                             {unpaidInvoices.length > 0 ? (
                               <div>
+                                {/* Bulk Payment Toggle - Show only when multiple invoices are selected */}
+                                {selectedInvoices.length > 1 && (
+                                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div className="flex items-center space-x-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={useBulkPayment}
+                                        onChange={(e) => setUseBulkPayment(e.target.checked)}
+                                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                      />
+                                      <div className="flex-1">
+                                        <div className="font-medium text-gray-900">
+                                          Combine into Single Payment
+                                        </div>
+                                        <div className="text-sm text-gray-600">
+                                          {useBulkPayment 
+                                            ? `Create one payment entry for all ${selectedInvoices.length} invoices (Recommended)`
+                                            : `Create separate payment entry for each of the ${selectedInvoices.length} invoices`}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                                
                                 {/* Select All Invoices */}
                         <div className="mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
                           <div className="flex items-center space-x-3">
@@ -1146,8 +1310,13 @@ export default function NewTenantLedgerPage() {
                           </div>
                         )}
                         
+                        {/* Separator when both types are shown */}
+                        {currentInvoiceTypes.includes('rent') && currentInvoiceTypes.includes('maintenance') && (
+                          <div className="my-6 border-t border-gray-300"></div>
+                        )}
+                        
                         {/* Maintenance Invoices Section */}
-                        {currentInvoiceType === 'maintenance' && (
+                        {currentInvoiceTypes.includes('maintenance') && (
                           <div className="space-y-3">
                             {unpaidMaintenanceInvoices.length > 0 ? (
                               <div>
@@ -1202,26 +1371,18 @@ export default function NewTenantLedgerPage() {
                                           ? 'border-green-500 bg-green-50'
                                           : 'border-gray-200 hover:border-gray-300'
                                       }`}
-                                      onClick={() => {
-                                        if (selectedMaintenanceInvoices.includes(invoice.id)) {
-                                          setSelectedMaintenanceInvoices(prev => prev.filter(id => id !== invoice.id));
-                                        } else {
-                                          setSelectedMaintenanceInvoices(prev => [...prev, invoice.id]);
-                                        }
-                                      }}
+                                      onClick={() => handleInvoiceSelect(invoice.id, !selectedMaintenanceInvoices.includes(invoice.id), 'maintenance')}
                                     >
                                       <div className="flex items-center justify-between">
                                         <div className="flex items-center space-x-3">
                                           <input
                                             type="checkbox"
+                                            key={`checkbox-maintenance-${invoice.id}-${selectedMaintenanceInvoices.includes(invoice.id)}`}
                                             checked={selectedMaintenanceInvoices.includes(invoice.id)}
                                             onChange={(e) => {
                                               e.stopPropagation();
-                                              if (e.target.checked) {
-                                                setSelectedMaintenanceInvoices(prev => [...prev, invoice.id]);
-                                              } else {
-                                                setSelectedMaintenanceInvoices(prev => prev.filter(id => id !== invoice.id));
-                                              }
+                                              console.log('Maintenance checkbox onChange triggered:', { invoiceId: invoice.id, checked: e.target.checked });
+                                              handleInvoiceSelect(invoice.id, e.target.checked, 'maintenance');
                                             }}
                                             className="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
                                           />
@@ -1329,60 +1490,73 @@ export default function NewTenantLedgerPage() {
         </form>
 
 
-        {/* Payment Type Selection Modal */}
+        {/* Invoice Type Selection Modal */}
         {showInvoiceTypeModal && (
           <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl p-6 max-w-lg w-full mx-4">
-              <div className="text-center">
+              <div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Select Payment Type
+                  Select Invoice Types
                 </h3>
                 <p className="text-sm text-gray-600 mb-6">
-                  Choose the payment type to view relevant invoices for this tenant
+                  Choose which invoice types to view for this tenant. You can select multiple types.
                 </p>
                 
-                <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {paymentTypes.map((paymentType) => {
-                    const isMaintenance = paymentType.name.toLowerCase().includes('maintenance') || 
-                                        paymentType.name.toLowerCase().includes('repair');
-                    const isAdvanceRent = paymentType.name.toLowerCase().includes('advance') && 
-                                         paymentType.name.toLowerCase().includes('rent');
-                    
-                    let borderColor = 'border-gray-200 hover:border-gray-300';
-                    let hoverBg = 'hover:bg-gray-50';
-                    
-                    if (isMaintenance) {
-                      borderColor = 'border-green-200 hover:border-green-300';
-                      hoverBg = 'hover:bg-green-50';
-                    } else if (isAdvanceRent) {
-                      borderColor = 'border-blue-200 hover:border-blue-300';
-                      hoverBg = 'hover:bg-blue-50';
-                      // textColor = 'text-blue-900';
-                    }
-                    
-                    return (
-                      <button
-                        key={paymentType.id}
-                        onClick={() => handleInvoiceTypeSelection(paymentType.id)}
-                        className={`w-full p-3 border rounded-lg transition-colors text-left ${borderColor} ${hoverBg}`}
-                      >
-                        <div className="font-medium text-gray-900">{paymentType.name}</div>
-                        {isAdvanceRent && (
-                          <div className="text-xs text-blue-600 mt-1">
-                            No invoices will be shown - enter credit amount only
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="space-y-3 mb-6">
+                  {/* Rent Invoices Option */}
+                  <label className="flex items-start space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-colors hover:bg-blue-50 border-blue-200 hover:border-blue-300">
+                    <input
+                      type="checkbox"
+                      checked={selectedInvoiceTypes.includes('rent')}
+                      onChange={(e) => handleInvoiceTypeToggle('rent', e.target.checked)}
+                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900">Rent Invoices</div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        View and select unpaid rent invoices for this tenant
+                      </div>
+                    </div>
+                  </label>
+                  
+                  {/* Maintenance Invoices Option */}
+                  <label className="flex items-start space-x-3 p-4 border-2 rounded-lg cursor-pointer transition-colors hover:bg-green-50 border-green-200 hover:border-green-300">
+                    <input
+                      type="checkbox"
+                      checked={selectedInvoiceTypes.includes('maintenance')}
+                      onChange={(e) => handleInvoiceTypeToggle('maintenance', e.target.checked)}
+                      className="mt-1 h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-900">Maintenance Invoices</div>
+                      <div className="text-sm text-gray-500 mt-1">
+                        View and select unpaid maintenance invoices for this tenant
+                      </div>
+                    </div>
+                  </label>
                 </div>
                 
-                <div className="mt-6 pt-4 border-t">
+                {selectedInvoiceTypes.length === 0 && (
+                  <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="text-sm text-yellow-800">
+                      Please select at least one invoice type to continue.
+                    </p>
+                          </div>
+                        )}
+                
+                <div className="flex justify-end gap-3 pt-4 border-t">
                   <button
                     onClick={handleCloseModal}
                     className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
                   >
                     Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmInvoiceTypeSelection}
+                    disabled={selectedInvoiceTypes.length === 0}
+                    className="text-sm bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    Continue
                   </button>
                 </div>
               </div>

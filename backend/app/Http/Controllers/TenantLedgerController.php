@@ -34,6 +34,11 @@ class TenantLedgerController extends Controller
             $query->byPaymentType($request->payment_type_id);
         }
 
+        // Filter by rental unit
+        if ($request->has('rental_unit_id') && $request->rental_unit_id) {
+            $query->where('rental_unit_id', $request->rental_unit_id);
+        }
+
         // Filter by transaction type
         if ($request->has('transaction_type')) {
             if ($request->transaction_type === 'debit') {
@@ -131,44 +136,61 @@ class TenantLedgerController extends Controller
         }
         
         // Add rental unit information to each entry using pre-loaded data
-        $ledgerEntries->getCollection()->transform(function ($entry) use ($rentalUnitsById, $invoicesByReference, $occupiedUnitsByTenant) {
+        $transformedEntries = $ledgerEntries->getCollection()->map(function ($entry) use ($rentalUnitsById, $invoicesByReference, $occupiedUnitsByTenant) {
             $rentalUnit = null;
             
-            // First, try to use the direct rental_unit_id relationship (pre-loaded)
-            if ($entry->rental_unit_id && isset($rentalUnitsById[$entry->rental_unit_id])) {
+            // First, try to use the eager-loaded rentalUnit relationship
+            if ($entry->relationLoaded('rentalUnit') && $entry->rentalUnit) {
+                $rentalUnit = $entry->rentalUnit;
+            }
+            // Second, try to use the direct rental_unit_id from batch-loaded data
+            elseif ($entry->rental_unit_id && isset($rentalUnitsById[$entry->rental_unit_id])) {
                 $rentalUnit = $rentalUnitsById[$entry->rental_unit_id];
             }
-            
             // Fallback: try to find the rental unit through the invoice reference (pre-loaded)
-            if (!$rentalUnit && $entry->reference_no && isset($invoicesByReference[$entry->reference_no])) {
+            elseif ($entry->reference_no && isset($invoicesByReference[$entry->reference_no])) {
                 $invoice = $invoicesByReference[$entry->reference_no];
                 if ($invoice->rentalUnit) {
                     $rentalUnit = $invoice->rentalUnit;
                 }
             }
-            
             // Final fallback: Get the first occupied rental unit for this tenant (pre-loaded)
-            if (!$rentalUnit && isset($occupiedUnitsByTenant[$entry->tenant_id])) {
+            elseif (isset($occupiedUnitsByTenant[$entry->tenant_id])) {
                 $rentalUnit = $occupiedUnitsByTenant[$entry->tenant_id];
             }
             
+            // Build rental_unit data structure
+            $rentalUnitData = null;
             if ($rentalUnit) {
-                $entry->rental_unit = [
-                    'unit_number' => $rentalUnit->unit_number,
+                $rentalUnitData = [
+                    'unit_number' => $rentalUnit->unit_number ?? 'N/A',
                     'property' => [
-                        'name' => $rentalUnit->property->name ?? null
+                        'name' => $rentalUnit->property->name ?? 'Unknown Property'
                     ]
                 ];
-            } else {
-                $entry->rental_unit = null;
             }
             
-            return $entry;
+            // Convert entry to array and add rental_unit
+            $entryArray = $entry->toArray();
+            $entryArray['rental_unit'] = $rentalUnitData;
+            
+            return $entryArray;
         });
+
+        // Build the paginated response manually
+        $responseData = [
+            'data' => $transformedEntries->all(),
+            'current_page' => $ledgerEntries->currentPage(),
+            'last_page' => $ledgerEntries->lastPage(),
+            'per_page' => $ledgerEntries->perPage(),
+            'total' => $ledgerEntries->total(),
+            'from' => $ledgerEntries->firstItem(),
+            'to' => $ledgerEntries->lastItem(),
+        ];
 
         return response()->json([
             'success' => true,
-            'data' => $ledgerEntries,
+            'data' => $responseData,
             'message' => 'Tenant ledger entries retrieved successfully'
         ]);
     }
@@ -578,6 +600,131 @@ class TenantLedgerController extends Controller
 
         } catch (\Exception $e) {
             Log::error("Failed to update invoice status for ledger entry {$ledgerEntry->ledger_id}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Create a bulk payment that combines multiple invoices into a single payment entry
+     */
+    public function bulkPayment(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'tenant_id' => 'required|exists:tenants,id',
+                'payment_type_id' => 'required|exists:payment_types,id',
+                'transaction_date' => 'required|date',
+                'invoice_ids' => 'required|array|min:1',
+                'invoice_ids.*' => 'required|integer|exists:rent_invoices,id',
+                'payment_method' => 'nullable|string|max:255',
+                'transfer_reference_no' => 'nullable|string|max:255',
+                'remarks' => 'nullable|string',
+                'created_by' => 'nullable|string|max:255',
+                'rental_unit_id' => 'nullable|exists:rental_units,id',
+            ]);
+
+            DB::beginTransaction();
+
+            // Fetch all invoices and validate they belong to the same tenant
+            $invoices = RentInvoice::whereIn('id', $validated['invoice_ids'])
+                ->where('tenant_id', $validated['tenant_id'])
+                ->where('status', '!=', 'paid')
+                ->get();
+
+            if ($invoices->count() !== count($validated['invoice_ids'])) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Some invoices were not found, already paid, or do not belong to this tenant',
+                ], 400);
+            }
+
+            // Calculate total amount
+            $totalAmount = $invoices->sum('total_amount');
+            
+            // Create invoice numbers list for description
+            $invoiceNumbers = $invoices->pluck('invoice_number')->toArray();
+            $invoiceNumbersStr = implode(', ', $invoiceNumbers);
+
+            // Create a single ledger entry for the combined payment
+            $ledgerEntry = TenantLedger::create([
+                'tenant_id' => $validated['tenant_id'],
+                'payment_type_id' => $validated['payment_type_id'],
+                'rental_unit_id' => $validated['rental_unit_id'] ?? $invoices->first()->rental_unit_id,
+                'transaction_date' => $validated['transaction_date'],
+                'description' => "Bulk Payment for Invoices: {$invoiceNumbersStr}",
+                'reference_no' => 'BULK-' . implode('-', array_map(function($num) {
+                    return str_replace('INV-', '', $num);
+                }, $invoiceNumbers)),
+                'credit_amount' => $totalAmount,
+                'debit_amount' => 0,
+                'payment_method' => $validated['payment_method'] ?? null,
+                'transfer_reference_no' => $validated['transfer_reference_no'] ?? null,
+                'remarks' => $validated['remarks'] ?? "Bulk payment covering " . count($invoices) . " invoice(s)",
+                'created_by' => $validated['created_by'] ?? 'System',
+            ]);
+
+            // Mark all invoices as paid
+            $paymentDetails = [
+                'payment_date' => $validated['transaction_date'],
+                'payment_method' => $validated['payment_method'] ?? null,
+                'payment_reference' => $validated['transfer_reference_no'] ?? null,
+                'notes' => $validated['remarks'] ?? "Bulk payment covering multiple invoices",
+                'total_amount' => $totalAmount,
+                'bulk_payment' => true,
+                'ledger_entry_id' => $ledgerEntry->ledger_id,
+            ];
+
+            $markedInvoices = [];
+            foreach ($invoices as $invoice) {
+                // Mark invoice as paid with payment details
+                $invoicePaymentDetails = array_merge($paymentDetails, [
+                    'invoice_amount' => $invoice->total_amount,
+                    'invoice_number' => $invoice->invoice_number,
+                ]);
+                
+                $invoice->markAsPaid($invoicePaymentDetails, true); // Skip ledger entry since we created it
+                $markedInvoices[] = $invoice->invoice_number;
+            }
+
+            DB::commit();
+
+            Log::info('Bulk payment created successfully', [
+                'ledger_entry_id' => $ledgerEntry->ledger_id,
+                'tenant_id' => $validated['tenant_id'],
+                'total_amount' => $totalAmount,
+                'invoice_count' => count($invoices),
+                'invoice_numbers' => $markedInvoices,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'ledger_entry' => $ledgerEntry->load(['tenant', 'paymentType', 'rentalUnit']),
+                    'invoices' => $invoices,
+                    'total_amount' => $totalAmount,
+                    'invoice_count' => count($invoices),
+                ],
+                'message' => 'Bulk payment created successfully for ' . count($invoices) . ' invoice(s)',
+            ], 201);
+
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Bulk payment failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create bulk payment',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 

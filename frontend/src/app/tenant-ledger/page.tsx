@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, TenantLedger, Tenant, PaymentType } from '@/services/api';
+import { tenantLedgerAPI, tenantsAPI, paymentTypesAPI, rentalUnitsAPI, TenantLedger, Tenant, PaymentType, RentalUnit } from '@/services/api';
 import { Button } from '@/components/UI/Button';
 import { Card } from '@/components/UI/Card';
 import { Input } from '@/components/UI/Input';
@@ -14,8 +14,10 @@ import SidebarLayout from '../../components/Layout/SidebarLayout';
 export default function TenantLedgerPage() {
   const router = useRouter();
   const [ledgerEntries, setLedgerEntries] = useState<TenantLedger[]>([]);
+  const [allEntriesForStats, setAllEntriesForStats] = useState<TenantLedger[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [paymentTypes, setPaymentTypes] = useState<PaymentType[]>([]);
+  const [rentalUnits, setRentalUnits] = useState<RentalUnit[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Multi-selection state
@@ -26,6 +28,7 @@ export default function TenantLedgerPage() {
   const [filters, setFilters] = useState({
     tenant_id: '',
     payment_type_id: '',
+    rental_unit_id: '',
     transaction_type: '',
     start_date: '',
     end_date: '',
@@ -44,21 +47,34 @@ export default function TenantLedgerPage() {
     loadData();
   }, [filters, pagination.current_page]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Refresh data when returning to this page (e.g., after editing)
+  useEffect(() => {
+    const handleFocus = () => {
+      loadData();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [tenantsRes, paymentTypesRes] = await Promise.all([
+      const [tenantsRes, paymentTypesRes, rentalUnitsRes] = await Promise.all([
         tenantsAPI.getAll(),
         paymentTypesAPI.getAll(),
+        rentalUnitsAPI.getAll({ per_page: 1000 }), // Get all units for the filter
       ]);
 
       const tenantsData = tenantsRes.data?.tenants || [];
       const paymentTypesData = paymentTypesRes.data?.payment_types || [];
+      const rentalUnitsData = rentalUnitsRes.data?.rentalUnits || rentalUnitsRes.data?.data?.data || [];
 
       setTenants(tenantsData);
       setPaymentTypes(paymentTypesData);
+      setRentalUnits(Array.isArray(rentalUnitsData) ? rentalUnitsData : []);
 
-      // Load ledger entries with filters
+      // Load ledger entries with filters for display (paginated)
       const params = {
         page: pagination.current_page,
         per_page: pagination.per_page,
@@ -81,21 +97,68 @@ export default function TenantLedgerPage() {
           total: meta.total || 0,
         }));
       }
+
+      // Load all entries for stats calculation (without pagination, but with same filters)
+      const statsParams = {
+        per_page: 10000, // Large number to get all entries
+        ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '')),
+      };
+
+      try {
+        const statsResponse = await tenantLedgerAPI.getAll(statsParams);
+        const statsData = statsResponse.data?.data?.data || statsResponse.data?.data || [];
+        setAllEntriesForStats(Array.isArray(statsData) ? statsData : []);
+      } catch (statsError) {
+        console.error('Error loading stats data:', statsError);
+        // If stats load fails, use paginated data as fallback
+        setAllEntriesForStats(Array.isArray(ledgerData) ? ledgerData : []);
+      }
     } catch (error: unknown) {
       console.error('Error loading data:', error);
-      const axiosError = error as { response?: { status?: number; data?: unknown } };
-      console.error('Error details:', axiosError.response?.data);
+      const axiosError = error as { 
+        message?: string;
+        code?: string;
+        response?: { 
+          status?: number; 
+          data?: unknown;
+          statusText?: string;
+        };
+        request?: unknown;
+      };
+      
+      console.error('Error details:', {
+        message: axiosError.message,
+        code: axiosError.code,
+        status: axiosError.response?.status,
+        statusText: axiosError.response?.statusText,
+        data: axiosError.response?.data,
+        hasResponse: !!axiosError.response,
+        hasRequest: !!axiosError.request
+      });
       
       // Set empty array to prevent map error
       setLedgerEntries([]);
+      setAllEntriesForStats([]);
+      setTenants([]);
+      setPaymentTypes([]);
+      setRentalUnits([]);
       
-      // Show appropriate error message
-      if (axiosError.response?.status === 401) {
+      // Show appropriate error message based on error type
+      if (axiosError.code === 'ERR_NETWORK' || axiosError.message === 'Network Error') {
+        toast.error(
+          'Network Error: Cannot connect to the server. Please check if the backend API is running on http://localhost:8000',
+          { duration: 5000 }
+        );
+      } else if (axiosError.response?.status === 401) {
         toast.error('Please log in to access ledger entries');
       } else if (axiosError.response?.status === 500) {
         toast.error('Server error. Please try again later.');
+      } else if (axiosError.response?.status === 404) {
+        toast.error('API endpoint not found. Please check the API configuration.');
+      } else if (axiosError.response) {
+        toast.error(`Failed to load data: ${axiosError.response.statusText || 'Unknown error'}`);
       } else {
-        toast.error('Failed to load ledger entries');
+        toast.error('Failed to load ledger entries. Please check your connection and try again.');
       }
     } finally {
       setLoading(false);
@@ -281,9 +344,12 @@ export default function TenantLedgerPage() {
     });
   };
 
-  // Calculate statistics
+  // Calculate statistics using all entries (not just paginated ones)
   const calculateStats = () => {
-    if (!Array.isArray(ledgerEntries) || ledgerEntries.length === 0) {
+    // Use allEntriesForStats for accurate calculations, fallback to ledgerEntries if not loaded
+    const entriesForStats = allEntriesForStats.length > 0 ? allEntriesForStats : ledgerEntries;
+    
+    if (!Array.isArray(entriesForStats) || entriesForStats.length === 0) {
       return {
         totalTransactions: 0,
         totalDebits: 0,
@@ -295,56 +361,47 @@ export default function TenantLedgerPage() {
       };
     }
 
-    const totalTransactions = ledgerEntries.length;
+    const totalTransactions = entriesForStats.length;
     
     // Safely calculate totals with proper number validation
-    const totalDebits = ledgerEntries.reduce((sum, entry) => {
+    const totalDebits = entriesForStats.reduce((sum, entry) => {
       const amount = Number(entry.debit_amount) || 0;
       return sum + amount;
     }, 0);
     
-    const totalCredits = ledgerEntries.reduce((sum, entry) => {
+    const totalCredits = entriesForStats.reduce((sum, entry) => {
       const amount = Number(entry.credit_amount) || 0;
       return sum + amount;
     }, 0);
     
     // Get unique tenants
-    const uniqueTenantIds = new Set(ledgerEntries.map(entry => entry.tenant_id).filter(id => id != null));
+    const uniqueTenantIds = new Set(entriesForStats.map(entry => entry.tenant_id).filter(id => id != null));
     const uniqueTenants = uniqueTenantIds.size;
     
-    // Calculate balances with proper validation (removed unused variable)
-    // const balances = ledgerEntries
-    //   .map(entry => Number(entry.balance) || 0)
-    //   .filter(balance => !isNaN(balance));
+    // Calculate final balance per tenant using the latest balance from each tenant's entries
+    // The backend maintains a running balance field that accounts for transaction order
+    // We need to get the most recent balance for each tenant by sorting entries by date
     
-    // Calculate final balance per tenant (sum of debits minus credits per tenant)
-    // Only include specific units: Huvandhugadhakoalhige Units 201 & 301, Park Lane Unit 102
-    const tenantBalances = new Map();
-    ledgerEntries.forEach(entry => {
-      // Only include specific units, but don't skip paid entries - we need them for balance calculation
-      if (!isIncludedUnit(entry)) {
-        return;
-      }
-      
-      const tenantId = entry.tenant_id;
-      const debitAmount = Number(entry.debit_amount) || 0;
-      const creditAmount = Number(entry.credit_amount) || 0;
-      
-      if (!tenantBalances.has(tenantId)) {
-        tenantBalances.set(tenantId, { totalDebits: 0, totalCredits: 0 });
-      }
-      
-      const current = tenantBalances.get(tenantId);
-      tenantBalances.set(tenantId, {
-        totalDebits: current.totalDebits + debitAmount,
-        totalCredits: current.totalCredits + creditAmount
-      });
+    // Sort entries by date (descending) and ledger_id (descending) to get the latest entry per tenant
+    const sortedEntries = [...entriesForStats].sort((a, b) => {
+      const dateA = new Date(a.transaction_date).getTime();
+      const dateB = new Date(b.transaction_date).getTime();
+      if (dateB !== dateA) return dateB - dateA; // Descending by date (newest first)
+      // If dates are equal, sort by ledger_id descending (newer entries have higher IDs)
+      return (b.ledger_id || 0) - (a.ledger_id || 0);
     });
     
-    // Calculate final balances (total debits - total credits per tenant)
-    const finalBalances = Array.from(tenantBalances.values()).map(tenant => 
-      tenant.totalDebits - tenant.totalCredits
-    );
+    // Get the latest balance for each tenant (first entry we encounter after sorting)
+    const latestBalances = new Map<number, number>();
+    sortedEntries.forEach(entry => {
+      const tenantId = entry.tenant_id;
+      if (!latestBalances.has(tenantId)) {
+        // Use the balance field which represents the running total up to this transaction
+        latestBalances.set(tenantId, Number(entry.balance) || 0);
+      }
+    });
+    
+    const finalBalances = Array.from(latestBalances.values());
     
     const averageBalance = finalBalances.length > 0 
       ? finalBalances.reduce((sum, balance) => sum + balance, 0) / finalBalances.length 
@@ -355,19 +412,10 @@ export default function TenantLedgerPage() {
       .filter(balance => balance > 0)
       .reduce((sum, balance) => sum + balance, 0);
     
-    // Credit balance (only show when credits exceed debits - actual credit)
-    const creditBalance = (() => {
-      const totalDebits = ledgerEntries.reduce((sum, entry) => {
-        const debitAmount = Number(entry.debit_amount) || 0;
-        return sum + debitAmount;
-      }, 0);
-      const totalCredits = ledgerEntries.reduce((sum, entry) => {
-        const creditAmount = Number(entry.credit_amount) || 0;
-        return sum + creditAmount;
-      }, 0);
-      // Only show credit balance if credits exceed debits (actual credit)
-      return totalCredits > totalDebits ? totalCredits - totalDebits : 0;
-    })();
+    // Credit balance (negative final balances - tenants have credit/overpaid)
+    const creditBalance = Math.abs(finalBalances
+      .filter(balance => balance < 0)
+      .reduce((sum, balance) => sum + balance, 0));
 
     return {
       totalTransactions,
@@ -467,7 +515,7 @@ export default function TenantLedgerPage() {
 
         {/* Filters */}
         <Card className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Search
@@ -490,6 +538,22 @@ export default function TenantLedgerPage() {
                 {tenants.map(tenant => (
                   <option key={tenant.id} value={tenant.id}>
                     {tenant.full_name || `${tenant.first_name} ${tenant.last_name}`}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Unit
+              </label>
+              <Select
+                value={filters.rental_unit_id}
+                onChange={(e) => setFilters(prev => ({ ...prev, rental_unit_id: e.target.value }))}
+              >
+                <option value="">All Units ({rentalUnits.length} available)</option>
+                {rentalUnits.map(unit => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.property?.name || 'Unknown Property'} - Unit {unit.unit_number}
                   </option>
                 ))}
               </Select>
