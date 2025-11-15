@@ -1,0 +1,134 @@
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: rent-management-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-rent_management}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootpassword}
+      MYSQL_USER: ${DB_USERNAME:-laravel}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # Don't expose MySQL port to host - backend connects via internal network
+    # ports:
+    #   - "${DB_PORT:-3306}:3306"
+    networks:
+      - rent-management-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Laravel Backend (PHP-FPM)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: rent-management-backend
+    restart: unless-stopped
+    working_dir: /var/www/html
+    entrypoint: ["php-fpm"]
+    command: ["-F"]
+    volumes:
+      - ./backend:/var/www/html
+      - backend_storage:/var/www/html/storage
+      - backend_cache:/var/www/html/bootstrap/cache
+    environment:
+      - APP_NAME=${APP_NAME:-Rent Management}
+      - APP_ENV=${APP_ENV:-production}
+      - APP_KEY=${APP_KEY}
+      - APP_DEBUG=${APP_DEBUG:-false}
+      - APP_URL=${APP_URL:-http://localhost:8000}
+      - DB_CONNECTION=mysql
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=${DB_DATABASE:-rent_management}
+      - DB_USERNAME=${DB_USERNAME:-laravel}
+      - DB_PASSWORD=${DB_PASSWORD:-password}
+      - SANCTUM_STATEFUL_DOMAINS=${SANCTUM_STATEFUL_DOMAINS}
+      - CACHE_STORE=${CACHE_STORE:-database}
+      - SESSION_DRIVER=${SESSION_DRIVER:-database}
+      - QUEUE_CONNECTION=${QUEUE_CONNECTION:-database}
+      - HOST_UID=${HOST_UID:-1000}
+      - HOST_GID=${HOST_GID:-1000}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      - rent-management-network
+    healthcheck:
+      test: ["CMD", "php", "-r", "echo 'OK';"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Web Server
+  nginx:
+    image: nginx:alpine
+    container_name: rent-management-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./backend/public:/var/www/html/public:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - rent-management-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: runner
+      args:
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+    container_name: rent-management-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000/api}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      - backend
+    networks:
+      - rent-management-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  rent-management-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+  backend_storage:
+    driver: local
+  backend_cache:
+    driver: local
+  nginx_logs:
+    driver: local
+

@@ -1,0 +1,17 @@
+node_modules
+.git
+.gitignore
+*.md
+.env*
+!env.production.example
+logs
+temp
+*.bat
+*.sh
+*.service
+.vscode
+.idea
+.DS_Store
+coverage
+README*.md
+
